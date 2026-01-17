@@ -1,0 +1,44 @@
+{
+  "version": "2.0",
+  "enableNewPricingSystem": false,
+  "floorPrices": {
+    "taxi_moto": 6000,
+    "classic": 8000,
+    "confort": 11000,
+    "4x4": 13000,
+    "van": 15000
+  },
+  "pricePerKm": {
+    "taxi_moto": 2000,
+    "classic": 2750,
+    "confort": 3850,
+    "4x4": 4500,
+    "van": 5000
+  },
+  "floorPriceThreshold": 3.0,
+  "trafficMultiplier": 1.4,
+  "trafficPeriods": [
+    {
+      "startTime": "07:00",
+      "endTime": "09:59",
+      "daysOfWeek": [1, 2, 3, 4, 5]
+    },
+    {
+      "startTime": "16:00",
+      "endTime": "18:59",
+      "daysOfWeek": [1, 2, 3, 4, 5]
+    }
+  ],
+  "longTripThreshold": 15.0,
+  "longTripMultiplier": 1.2,
+  "reservationSurcharge": {
+    "taxi_moto": 3600,
+    "classic": 5000,
+    "confort": 7000,
+    "4x4": 8200,
+    "van": 9100
+  },
+  "reservationAdvanceMinutes": 10,
+  "enableRounding": true,
+  "roundingStep": 500
+}

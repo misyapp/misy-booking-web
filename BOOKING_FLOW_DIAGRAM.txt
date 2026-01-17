@@ -1,0 +1,206 @@
+================================================================================
+                    DIAGRAMME COMPLET DU FLUX DE RÉSERVATION
+================================================================================
+
+START (app accueil)
+   |
+   v
+home_screen.dart (CustomTripType.setYourDestination)
+   |
+   | Utilisateur clique sur "Où allez-vous?"
+   |
+   v
+┌─────────────────────────────────────────────────────────┐
+│ PickupAndDropLocation (bottom sheet)                   │
+│ - Fichier: pickup_and_drop_location_sheet.dart         │
+│ - Widget: PickupAndDropLocation                        │
+│ - État: choosePickupDropLocation                       │
+│                                                         │
+│ Structure des données de saisie:                       │
+│ pickupLocation: {lat, lng, address, controller}        │
+│ dropLocation: {lat, lng, address, controller}          │
+└─────────────────────────────────────────────────────────┘
+   |
+   | Utilisateur saisit/déplace les pins
+   |
+   v
+CONFIRMATION DES ADRESSES
+   |
+   | Appel du callback onTap(pickup, drop)
+   |
+   v
+┌─────────────────────────────────────────────────────────┐
+│ TripProvider (Memory Store)                           │
+│ - tripProvider.pickLocation = pickup                   │
+│ - tripProvider.dropLocation = drop                     │
+│ - tripProvider.createPath() [calcul route]             │
+└─────────────────────────────────────────────────────────┘
+   |
+   | Transition automatique
+   |
+   v
+┌─────────────────────────────────────────────────────────┐
+│ ChooseVehicleSheet (bottom sheet)                      │
+│ - État: CustomTripType.chooseVehicle                   │
+│ - Utilisateur sélectionne le type de véhicule         │
+│ - tripProvider.selectedVehicle = VehicleModal          │
+└─────────────────────────────────────────────────────────┘
+   |
+   | Si promo code → SelectAvailablePromocode
+   | Si paiement → SelectPaymentMethodSheet
+   |
+   v (après sélection du véhicule et paiement)
+┌─────────────────────────────────────────────────────────┐
+│ ConfirmDestination (bottom sheet) - ÉTAPE CRUCIALE     │
+│ - Fichier: confirm_destination.dart                    │
+│ - État: CustomTripType.confirmDestination              │
+│                                                         │
+│ Affichage (READ-ONLY):                                │
+│ - Adresse départ: tripProvider.pickLocation['address'] │
+│ - Adresse arrivée: tripProvider.dropLocation['address']│
+│ - Prix estimé                                          │
+│ - Type de véhicule                                     │
+│                                                         │
+│ Bouton CONFIRM => Appel createRequest()                │
+└─────────────────────────────────────────────────────────┘
+   |
+   | createRequest() 
+   | └→ createBooking(vehicleDetails, paymentMethod, 
+   |                  pickupLocation, dropLocation, ...)
+   |
+   v
+┌─────────────────────────────────────────────────────────┐
+│ TripProvider.createBooking() (Sauvegarde Firestore)    │
+│ - Fichier: /lib/provider/trip_provider.dart             │
+│ - Ligne: 2147+                                          │
+│                                                         │
+│ Création du Map<String, dynamic> data avec:            │
+│  - pickLat, pickLng, pickAddress (source: pickLocation)│
+│  - dropLat, dropLng, dropAddress (source: dropLocation)│
+│  - paymentMethod, vehicle, requestBy                   │
+│  - Calculs de prix, OTP, statut initial, etc          │
+│                                                         │
+│ Collection Firestore: bookingRequest                   │
+│ Document ID: auto-généré                              │
+│ bookingRequest.doc(bookingId).set(data)                │
+└─────────────────────────────────────────────────────────┘
+   |
+   | Transition
+   |
+   v
+┌─────────────────────────────────────────────────────────┐
+│ RequestForRide (bottom sheet)                          │
+│ - État: CustomTripType.requestForRide                  │
+│ - Message: "Contacting Drivers Nearby"                 │
+│ - Animation de chargement                              │
+│ - Affichage du trajet (pickup → drop)                  │
+└─────────────────────────────────────────────────────────┘
+   |
+   | En attente d'acceptation d'un chauffeur
+   |
+   v
+DRIVER ACCEPTS (Firestore: acceptedBy != null)
+   |
+   v
+┌─────────────────────────────────────────────────────────┐
+│ DriverOnWay (bottom sheet)                             │
+│ - État: CustomTripType.driverOnWay                     │
+│ - Tracking en temps réel du chauffeur                  │
+│ - Affichage du trajet pickup → drop                    │
+│ - Compteur d'arrivée                                   │
+└─────────────────────────────────────────────────────────┘
+   |
+   | Chauffeur arrive au pickup
+   | Trajet commence
+   |
+   v
+RIDE COMPLETE / CANCELLED
+
+
+================================================================================
+                        CHAMPS FIRESTORE ACTUELS
+================================================================================
+
+bookingRequest Document Structure:
+
+{
+  "id": "booking_12345",
+  "requestBy": "user_id",
+  "paymentMethod": "AIRTEL_MONEY",
+  "requestTime": Timestamp,
+  
+  -- ADRESSES (d'où viennent pickLocation et dropLocation) --
+  "pickLat": 18.8792,
+  "pickLng": 47.5079,
+  "pickAddress": "Ivato, Antananarivo, Madagascar",
+  "city": "Antananarivo",
+  
+  "dropLat": 18.8798,
+  "dropLng": 47.5085,
+  "dropAddress": "Analakely, Antananarivo, Madagascar",
+  
+  -- ROUTE --
+  "distance_in_km_approx": "2.5",
+  "currentRouteIndex": 0,
+  "coveredPath": [],
+  
+  -- VÉHICULE --
+  "vehicle": "vehicle_id_01",
+  "vehicle_price_per_km": 1500,
+  "vehicle_base_price": 5000,
+  
+  -- PRIX --
+  "total_ride_price": "12500",
+  "ride_price_to_pay": "12500",
+  "discount": 0,
+  "ride_driver_earning": "10625",
+  
+  -- STATUT --
+  "ride_status": "Running",
+  "status": 0,
+  "isSchedule": false,
+  "isPreviousSchedule": false,
+  "scheduleTime": Timestamp,
+  
+  -- CONDUCTEUR --
+  "acceptedBy": null (initialement),
+  "acceptedTime": null,
+  "startedTime": null,
+  "endTime": null,
+  
+  -- SÉCURITÉ --
+  "bookingOTP": "123456",
+  
+  -- AUTRES --
+  "rejectedBY": [],
+  "chats": [],
+}
+
+*** AUCUN CHAMP "flightNumber" ou "isAirport" ACTUELLEMENT ***
+
+================================================================================
+                    POINTS D'INTÉGRATION PROPOSÉS
+================================================================================
+
+POINT 1: PickupAndDropLocation.dart (détection lors saisie)
+   |
+   +-> Ajouter détection "airport/aéroport" dans l'adresse saisie
+   +-> Afficher champ conditionnel "Flight Number"
+   +-> Stocker flightNumber dans pickLocation/dropLocation Map
+
+POINT 2: ConfirmDestination.dart (confirmation)
+   |
+   +-> Vérifier si pickLocation ou dropLocation contient aéroport
+   +-> Afficher informations de vol si détecté
+   +-> Valider que flightNumber est fourni si aéroport
+
+POINT 3: TripProvider.createBooking() (Firestore)
+   |
+   +-> Extraire flightNumber de pickLocation/dropLocation
+   +-> Ajouter champs Firestore:
+       - pickFlightNumber: string
+       - dropFlightNumber: string
+       - pickIsAirport: bool
+       - dropIsAirport: bool
+
+================================================================================

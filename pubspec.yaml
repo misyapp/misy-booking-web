@@ -1,0 +1,168 @@
+name: rider_ride_hailing_app
+description: "A new Flutter project."
+# The following line prevents the package from being accidentally published to
+# pub.dev using `flutter pub publish`. This is preferred for private packages.
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+# The following defines the version and build number for your application.
+# A version number is three numbers separated by dots, like 1.2.43
+# followed by an optional build number separated by a +.
+# Both the version and the builder number may be overridden in flutter
+# build by specifying --build-name and --build-number, respectively.
+# In Android, build-name is used as versionName while build-number used as versionCode.
+# Read more about Android versioning at https://developer.android.com/studio/publish/versioning
+# In iOS, build-name is used as CFBundleShortVersionString while build-number is used as CFBundleVersion.
+# Read more about iOS versioning at
+# https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+# In Windows, build-name is used as the major, minor, and patch parts
+# of the product and file versions while build-number is used as the build suffix.
+version: 2.1.49+89
+
+environment:
+  # sdk: '>=3.3.0 <4.0.0'
+  sdk: '>=3.4.4 <4.0.0'
+
+
+# Dependencies specify other packages that your package needs in order to work.
+# To automatically upgrade your package dependencies to the latest versions
+# consider running `flutter pub upgrade --major-versions`. Alternatively,
+# dependencies can be manually updated by changing the version numbers below to
+# the latest version available on pub.dev. To see which dependencies have newer
+# versions available, run `flutter pub outdated`.
+dependencies:
+  flutter:
+    sdk: flutter
+
+
+  # The following adds the Cupertino Icons font to your application.
+  # Use with the CupertinoIcons class for iOS style icons.
+  cupertino_icons: ^1.0.2
+  image_picker: ^1.1.2
+  image_cropper: ^8.1.0
+  # file_picker: ^5.2.10
+  file_picker: ^8.1.7
+  http: ^1.1.2
+  crypto: ^3.0.3  # Pour signature HMAC OSRM2
+  flutter_spinkit: ^5.2.0
+  flutter_svg: ^2.0.7
+  loading_animation_widget: ^1.2.0+4
+  provider: ^6.1.1
+  flutter_rating_bar: ^4.0.1
+  google_maps_flutter: ^2.5.0
+  geolocator: ^13.0.2
+  url_launcher: ^6.2.2
+  shared_preferences: ^2.2.2
+  share_plus: ^7.2.1
+  app_tracking_transparency: ^2.0.6
+  cached_network_image: ^3.3.1
+  flutter_easyloading: ^3.0.5
+  firebase_core: ^3.7.0
+  firebase_auth: ^5.4.4
+  firebase_analytics: ^11.6.0
+  cloud_firestore: ^5.5.0
+  firebase_storage: ^12.4.10
+  firebase_messaging: ^15.1.4
+  flutter_local_notifications: ^17.2.3
+  flutter_facebook_auth: ^7.0.1
+  firebase_database: ^11.3.7
+  google_sign_in: ^6.2.1
+  intl: ^0.20.2
+  country_code_picker: ^3.0.0
+  fluttertoast: ^8.2.4
+  photo_view: ^0.15.0
+  flutter_polyline_points: ^2.0.0
+  geocoding: ^3.0.0
+  location: ^8.0.0
+  permission_handler: ^11.1.0
+  badges: ^3.1.2
+  custom_info_window: ^1.0.1
+  flutter_widget_from_html: ^0.15.3
+  # internet_connection_checker_plus: ^2.3.0
+  internet_connection_checker: ^1.0.0+1
+  # app_tracking_transparency: ^2.0.6
+  # flutter_otp_text_field: ^1.1.3+2
+  open_file: ^3.5.10
+  pdf: ^3.10.8
+  path_provider: ^2.1.3
+  flutter_pdfview: ^1.3.2
+  uuid: ^4.4.0
+  webview_flutter: ^4.7.0
+  googleapis_auth: ^1.6.0
+  audioplayers: ^6.1.0
+  pin_code_fields: ^8.0.1
+  open_location_code: ^1.0.1
+  csv: ^6.0.0
+  # cloud_functions: ^5.2.0  # Temporairement désactivé pour résoudre GTMSessionFetcherCore
+  googleapis: ^13.1.0
+  flutter_localization: ^0.3.1
+  connectivity_plus: ^6.0.3
+  app_links: ^3.4.5
+  video_player: ^2.8.2
+
+  flutter_localizations:
+    sdk: flutter
+  bcrypt: ^1.1.3
+
+dev_dependencies:
+  win32: ^5.5.4
+  flutter_test:
+    sdk: flutter
+
+  # The "flutter_lints" package below contains a set of recommended lints to
+  # encourage good coding practices. The lint set provided by the package is
+  # activated in the `analysis_options.yaml` file located at the root of your
+  # package. See that file for information about deactivating specific lint
+  # rules and activating additional ones.
+  flutter_lints: ^5.0.0
+  
+  # Testing dependencies for pricing system
+  mockito: ^5.4.4
+  build_runner: ^2.4.8
+  
+  # Integration tests
+  integration_test:
+    sdk: flutter
+
+# For information on the generic Dart part of this file, see the
+# following page: https://dart.dev/tools/pub/pubspec
+
+# The following section is specific to Flutter packages.
+flutter:
+
+  # The following line ensures that the Material Icons font is
+  # included with your application, so that you can use the icons in
+  # the material Icons class.
+  uses-material-design: true
+
+  # To add assets to your application, add an assets section, like this:
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/fonts/
+    - assets/map_styles/
+    - assets/audio/
+    - assets/video/
+    - assets/json_files/service_account_credential.json
+    - assets/json_files/
+
+  # An image asset can refer to one or more resolution-specific "variants", see
+  # https://flutter.dev/assets-and-images/#resolution-aware
+
+  # For details regarding adding assets from package dependencies, see
+  # https://flutter.dev/assets-and-images/#from-packages
+
+  # To add custom fonts to your application, add a fonts section here,
+  # in this "flutter" section. Each entry in this list should have a
+  # "family" key with the font family name, and a "fonts" key with a
+  # list giving the asset and other descriptors for the font. For
+  # example:
+  fonts:
+    - family: AzoSans
+      fonts:
+        - asset: assets/fonts/AzoSans-Light.ttf
+          weight: 300
+        - asset: assets/fonts/AzoSans-Medium.ttf
+          weight: 500
+  #
+  # For details regarding fonts from package dependencies,
+  # see https://flutter.dev/custom-fonts/#from-packages

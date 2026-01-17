@@ -1,0 +1,228 @@
+================================================================================
+                    INDEX - FLUX DE RÉSERVATION RIDERAPP
+================================================================================
+
+FICHIERS CRÉÉS: 6 documents pour l'exploration du flux de réservation
+OBJECTIF: Ajouter support "numéro de vol" pour courses aéroport
+DATE: 2025-11-05
+TAILLE TOTALE: ~59 KB
+
+================================================================================
+                        FICHIERS ET LEURS USAGES
+================================================================================
+
+1. BOOKING_FLOW_README.md (7.5 KB) - POINT DE DÉPART
+   └─ Guide d'orientation complet
+   └─ Lecteurs par profil (PM, Dev Frontend/Backend, Full-Stack)
+   └─ Résumé clé des 4 widgets critiques
+   └─ FAQ et support
+
+2. BOOKING_FLOW_EXECUTIVE_SUMMARY.txt (11 KB) - SYNTHÈSE
+   └─ Flux complet en 10 sections
+   └─ Points d'intégration recommandés (3 points)
+   └─ Champs Firestore actuels vs proposés
+   └─ Phases d'implémentation
+
+3. BOOKING_FLOW_ANALYSIS.md (10 KB) - RÉFÉRENCE DÉTAILLÉE
+   └─ 9 sections analytiques
+   └─ Architecture et patterns
+   └─ Cas d'usage pour flight_number
+   └─ Remarques techniques
+
+4. BOOKING_FLOW_DIAGRAM.txt (9.0 KB) - VISUELS
+   └─ Diagramme ASCII du flux complet
+   └─ Structure Firestore avec exemples
+   └─ Points d'intégration visuels
+
+5. BOOKING_FLOW_CODE_SNIPPETS.md (11 KB) - IMPLÉMENTATION
+   └─ 10 snippets de code source
+   └─ Lignes précises
+   └─ Formats de données réels
+
+6. BOOKING_FLOW_INDEX.txt (ce fichier) - NAVIGATION
+   └─ Quick reference
+   └─ Roadmap d'exploration
+
+================================================================================
+                        GUIDES DE LECTURE RAPIDES
+================================================================================
+
+POUR COMPRENDRE EN 5 MIN:
+1. Lire BOOKING_FLOW_README.md
+2. Regarder diagramme dans BOOKING_FLOW_DIAGRAM.txt
+
+POUR IMPLÉMENTER (1-2 HEURES):
+1. BOOKING_FLOW_EXECUTIVE_SUMMARY.txt (points d'intégration)
+2. BOOKING_FLOW_CODE_SNIPPETS.md (4 snippets clés)
+3. BOOKING_FLOW_ANALYSIS.md (sections 2 & 3)
+
+POUR MAÎTRISER COMPLÈTEMENT (4-6 HEURES):
+1. BOOKING_FLOW_README.md
+2. BOOKING_FLOW_EXECUTIVE_SUMMARY.txt
+3. BOOKING_FLOW_ANALYSIS.md (tout lire)
+4. BOOKING_FLOW_CODE_SNIPPETS.md (tous les snippets)
+5. BOOKING_FLOW_DIAGRAM.txt
+
+================================================================================
+                        NAVIGATION PAR SUJET
+================================================================================
+
+FLUX COMPLET:
+└─ BOOKING_FLOW_DIAGRAM.txt - Diagramme ASCII
+└─ BOOKING_FLOW_EXECUTIVE_SUMMARY.txt - Section 1
+
+WIDGETS & BOTTOM SHEETS:
+└─ BOOKING_FLOW_ANALYSIS.md - Section 2
+└─ BOOKING_FLOW_CODE_SNIPPETS.md - Snippets 1-4
+
+PASSAGE DE DONNÉES:
+└─ BOOKING_FLOW_ANALYSIS.md - Section 3
+└─ BOOKING_FLOW_CODE_SNIPPETS.md - Snippets 2-3
+
+FIRESTORE & CHAMPS:
+└─ BOOKING_FLOW_ANALYSIS.md - Sections 4-5
+└─ BOOKING_FLOW_CODE_SNIPPETS.md - Snippets 5, 10
+└─ BOOKING_FLOW_DIAGRAM.txt - Section Firestore
+
+DÉTECTION D'AÉROPORT:
+└─ BOOKING_FLOW_ANALYSIS.md - Section 6
+└─ BOOKING_FLOW_EXECUTIVE_SUMMARY.txt - Section 4
+
+POINTS D'INTÉGRATION:
+└─ BOOKING_FLOW_EXECUTIVE_SUMMARY.txt - Section 6
+└─ BOOKING_FLOW_DIAGRAM.txt - Dernière section
+└─ BOOKING_FLOW_ANALYSIS.md - Section 7
+
+ARCHITECTURE:
+└─ BOOKING_FLOW_EXECUTIVE_SUMMARY.txt - Section 7
+└─ BOOKING_FLOW_ANALYSIS.md - Sections 8-9
+└─ BOOKING_FLOW_README.md - Section Architecture
+
+================================================================================
+                        FICHIERS SOURCE À CONSULTER
+================================================================================
+
+FICHIER 1: /lib/pages/view_module/home_screen.dart
+Lignes: 1140-1184
+Contenu: Intégration de PickupAndDropLocation
+Snippet: BOOKING_FLOW_CODE_SNIPPETS.md #2
+
+FICHIER 2: /lib/bottom_sheet_widget/pickup_and_drop_location_sheet.dart
+Lignes: 43-453
+Contenu: Saisie des adresses pickup & drop
+Snippets: #1, #3
+
+FICHIER 3: /lib/bottom_sheet_widget/confirm_destination.dart
+Lignes: 206-229
+Contenu: Confirmation avant création du booking
+Snippet: #4
+
+FICHIER 4: /lib/provider/trip_provider.dart
+Lignes: 120-130, 2147-2345
+Contenu: État, Properties, createBooking()
+Snippets: #5, #7, #10
+
+FICHIER 5: /lib/contants/global_data.dart
+Lignes: 75-87
+Contenu: Enum CustomTripType
+Snippet: #6
+
+================================================================================
+                        CHECKLIST D'IMPLÉMENTATION
+================================================================================
+
+PHASE 1: Détection d'Aéroport
+  [ ] Créer airports_service.dart
+  [ ] Lister aéroports malgaches
+  [ ] Ajouter isAirport() method
+  
+  Référence: BOOKING_FLOW_ANALYSIS.md section 7
+  Snippet: #3
+
+PHASE 2: UI - Saisie du Numéro de Vol
+  [ ] Modifier PickupAndDropLocation
+  [ ] Ajouter champ conditionnel
+  [ ] Ajouter validation
+  
+  Référence: BOOKING_FLOW_ANALYSIS.md section 8
+  Snippet: #1
+
+PHASE 3: Confirmation & Validation
+  [ ] Modifier ConfirmDestination
+  [ ] Valider isAirport + flightNumber
+  [ ] Bloquer si incomplet
+  
+  Référence: BOOKING_FLOW_CODE_SNIPPETS.md #4
+  Ligne: 206-229
+
+PHASE 4: Sauvegarde Firestore
+  [ ] Modifier createBooking()
+  [ ] Ajouter 4 champs
+  [ ] Tester avec données réelles
+  
+  Référence: BOOKING_FLOW_CODE_SNIPPETS.md #5
+  Ligne: 2163+
+
+PHASE 5: Display & Analytics
+  [ ] Afficher dans RequestForRide
+  [ ] Afficher dans DriverOnWay
+  [ ] Ajouter analytics events
+
+================================================================================
+                        DONNÉES CLÉS À RETENIR
+================================================================================
+
+FORMAT LOCATION EN MÉMOIRE:
+  Map { "lat": 18.8792, "lng": 47.5079, "address": "...", "city": "..." }
+
+FORMAT LOCATION EN FIRESTORE:
+  "pickLat", "pickLng", "pickAddress", "city"
+  "dropLat", "dropLng", "dropAddress"
+
+CHAMPS À AJOUTER:
+  "pickFlightNumber", "dropFlightNumber", "pickIsAirport", "dropIsAirport"
+
+FLUX PASSAGE ADRESSES:
+  pickupLocation Map → onTap callback → tripProvider → createRequest → 
+  createBooking → Firestore document
+
+ÉTAPE CRITIQUE:
+  ConfirmDestination.dart ligne 206-229 (bouton Confirm)
+
+ÉTAT ACTUEL:
+  AUCUNE détection d'aéroport existante → from scratch
+
+================================================================================
+                        GLOSSAIRE
+================================================================================
+
+CustomTripType: Enum avec 10 états distincts du flux de réservation
+pickLocation: Map contenant lat/lng/address du départ
+dropLocation: Map contenant lat/lng/address de l'arrivée
+booking: Map sauvegardé en Firestore (50+ champs)
+createRequest(): Méthode qui prépare et appelle createBooking()
+createBooking(): Méthode qui sauvegarde en Firestore
+TripProvider: Provider gérant tout l'état de la réservation
+BottomSheet: Widget UI pour les différentes étapes
+Firestore: Base de données (collection: bookingRequest)
+
+================================================================================
+                        STATISTICS
+================================================================================
+
+Total Documents: 6
+Total Lines: ~1,300
+Total Size: ~59 KB
+Code Snippets: 10
+ASCII Diagrams: 2
+Source Files Referenced: 10+
+Sections: 50+
+Code Lines Cited: 100+
+
+Reading Time: 30-60 minutes (depending on profile)
+Implementation Time: 4-6 hours (estimated)
+Difficulty Level: Medium
+
+================================================================================
+                        CREATED: 2025-11-05
+================================================================================

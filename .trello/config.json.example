@@ -1,0 +1,12 @@
+{
+  "api_key": "YOUR_TRELLO_API_KEY",
+  "token": "YOUR_TRELLO_TOKEN",
+  "board_id": "YOUR_BOARD_ID_OR_NAME",
+  "lists": {
+    "backlog": "Backlog",
+    "todo": "À faire",
+    "in_progress": "En cours",
+    "testing": "À valider",
+    "done": "Terminé"
+  }
+}
