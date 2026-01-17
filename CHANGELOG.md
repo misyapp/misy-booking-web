@@ -1,6 +1,50 @@
 # Historique des modifications - MISY Booking Web
 
-## 2026-01-17 - Création du projet GitHub misy-booking-web
+## 2026-01-17 (15:45) - Ajout du guide de déploiement et scripts SSH
+
+### Nouveaux fichiers ajoutés
+
+- **`deploy.sh`** - Script automatisé de déploiement vers le serveur Bluehost
+- **`DEPLOYMENT.md`** - Guide complet avec toutes les commandes SSH et workflows
+- **`README.md`** - Mise à jour avec références au guide de déploiement
+
+### Commandes SSH disponibles
+
+#### Déploiement rapide
+```bash
+./deploy.sh
+```
+
+#### Commandes utiles pour les prochaines sessions
+```bash
+# Se connecter au serveur
+ssh -i ~/.ssh/id_rsa_misy root@162.240.145.160
+
+# Vérifier les fichiers déployés
+ssh -i ~/.ssh/id_rsa_misy root@162.240.145.160 "ls -lh /home/misyapp/booking_web/"
+
+# Voir les logs
+ssh -i ~/.ssh/id_rsa_misy root@162.240.145.160 "tail -f /var/log/apache2/error.log"
+
+# Redémarrer Apache
+ssh -i ~/.ssh/id_rsa_misy root@162.240.145.160 "systemctl restart apache2"
+```
+
+### Workflow de mise à jour complet
+```bash
+# 1. Récupérer les modifications
+git pull origin main
+
+# 2. Builder
+flutter build web --release
+
+# 3. Déployer
+./deploy.sh
+```
+
+---
+
+## 2026-01-17 (12:36-13:30) - Création du projet GitHub misy-booking-web
 
 ### Actions réalisées
 

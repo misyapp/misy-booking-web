@@ -28,10 +28,19 @@ flutter build web --release
 ```
 
 ### Déploiement sur Bluehost
+
+**Méthode rapide** (recommandé):
+```bash
+./deploy.sh
+```
+
+**Méthode manuelle**:
 ```bash
 rsync -avz --delete -e "ssh -i ~/.ssh/id_rsa_misy" \
   build/web/ root@162.240.145.160:/home/misyapp/booking_web/
 ```
+
+📖 **Guide complet**: Voir [DEPLOYMENT.md](DEPLOYMENT.md) pour toutes les commandes SSH et le workflow de déploiement.
 
 ## 🔧 Configuration
 
