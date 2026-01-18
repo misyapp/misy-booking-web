@@ -44,37 +44,38 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBZ-2VSmvUZxkm4eIL6Vbm41RPPbJUS2zo',
-    appId: '1:12345678901:web:abcdef1234567890',
-    messagingSenderId: '12345678901',
-    projectId: 'misy-app-2fb01',
-    authDomain: 'misy-app-2fb01.firebaseapp.com',
-    storageBucket: 'misy-app-2fb01.appspot.com',
+    apiKey: 'AIzaSyCNUQs8toDM2r8ph0WujvpyNkj_qVIKnSY',
+    appId: '1:1062917624003:web:c3608b3692e7c225bd9276',
+    messagingSenderId: '1062917624003',
+    projectId: 'misy-95336',
+    authDomain: 'misy-95336.firebaseapp.com',
+    storageBucket: 'misy-95336.appspot.com',
+    measurementId: 'G-ZP0RPLRRBE',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBZ-2VSmvUZxkm4eIL6Vbm41RPPbJUS2zo',
-    appId: '1:12345678901:android:abcdef1234567890',
-    messagingSenderId: '12345678901',
-    projectId: 'misy-app-2fb01',
-    storageBucket: 'misy-app-2fb01.appspot.com',
+    apiKey: 'AIzaSyCNUQs8toDM2r8ph0WujvpyNkj_qVIKnSY',
+    appId: '1:1062917624003:android:536998923c207f30bd9276',
+    messagingSenderId: '1062917624003',
+    projectId: 'misy-95336',
+    storageBucket: 'misy-95336.appspot.com',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyBZ-2VSmvUZxkm4eIL6Vbm41RPPbJUS2zo',
-    appId: '1:12345678901:ios:abcdef1234567890',
-    messagingSenderId: '12345678901',
-    projectId: 'misy-app-2fb01',
-    storageBucket: 'misy-app-2fb01.appspot.com',
+    apiKey: 'AIzaSyCNUQs8toDM2r8ph0WujvpyNkj_qVIKnSY',
+    appId: '1:1062917624003:ios:bd9276c3608b3692',
+    messagingSenderId: '1062917624003',
+    projectId: 'misy-95336',
+    storageBucket: 'misy-95336.appspot.com',
     iosBundleId: 'com.misy.rider',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyBZ-2VSmvUZxkm4eIL6Vbm41RPPbJUS2zo',
-    appId: '1:12345678901:macos:abcdef1234567890',
-    messagingSenderId: '12345678901',
-    projectId: 'misy-app-2fb01',
-    storageBucket: 'misy-app-2fb01.appspot.com',
+    apiKey: 'AIzaSyCNUQs8toDM2r8ph0WujvpyNkj_qVIKnSY',
+    appId: '1:1062917624003:macos:bd9276c3608b3692',
+    messagingSenderId: '1062917624003',
+    projectId: 'misy-95336',
+    storageBucket: 'misy-95336.appspot.com',
     iosBundleId: 'com.misy.rider',
   );
 }

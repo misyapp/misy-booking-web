@@ -15,7 +15,7 @@ Map<String, String> globalHeaders = {
   'Content-Type': 'text/json'
 };
 // String googleMapApiKey = "AIzaSyBbcjTBakwdPpLeuQvb_5Fk6jY9oqXwOko";
-String googleMapApiKey = "AIzaSyBCV_9MoubJ8OG3DNtmfUAtFC9EPGRbPyQ1122";
+String googleMapApiKey = "AIzaSyALcvZZmiEonxqzce2fYyZvqc9wiByYO3g";
 ValueNotifier<String> selectedLanguage = ValueNotifier('English');
 ValueNotifier<Locale> selectedLocale = ValueNotifier(const Locale('en'));
 PaymentGatewaySecretKeyModal? paymentGateWaySecretKeys;

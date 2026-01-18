@@ -218,13 +218,16 @@ class MainNavigationScreenState extends State<MainNavigationScreen>
             ],
           ),
           // Bottom Navigation Bar
+          // Web: Nav bar cachée (navigation dans le header de HomeScreenWeb)
           // iOS: Nav bar cachée sur Home (expandable via Liquid Glass), visible sur autres onglets
           // Android: Nav bar Material standard
-          bottomNavigationBar: shouldShowNavigationBar
-              ? (Platform.isIOS
-                  ? (_currentIndex == 0 ? null : _buildIOSNavBarWithSearch(darkThemeProvider, tripProvider))
-                  : _buildAndroidNavBar(darkThemeProvider))
-              : null,
+          bottomNavigationBar: kIsWeb
+              ? null // Pas de bottom nav sur le web - navigation dans le header
+              : (shouldShowNavigationBar
+                  ? (Platform.isIOS
+                      ? (_currentIndex == 0 ? null : _buildIOSNavBarWithSearch(darkThemeProvider, tripProvider))
+                      : _buildAndroidNavBar(darkThemeProvider))
+                  : null),
         );
       },
     );

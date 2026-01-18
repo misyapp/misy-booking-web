@@ -82,4 +82,27 @@ lib/
 ## Commandes et Outils
 
 ### Flutter Development Commands
-- Use fvm for flutter command
+- Use `flutter` command (fvm si disponible)
+
+### Build & Deployment
+
+#### Build Web Release
+```bash
+flutter build web --release
+```
+
+#### Déploiement sur book.misy.app
+```bash
+rsync -avz --delete -e "ssh -i ~/.ssh/id_rsa_misy" /Users/stephane/StudioProjects/misy-booking-web/build/web/ root@162.240.145.160:/home/misyapps/public_html/book/
+```
+
+#### Connexion SSH au serveur
+```bash
+ssh -i ~/.ssh/id_rsa_misy root@162.240.145.160
+```
+
+### Informations Serveur
+- **Serveur**: Bluehost (162.240.145.160)
+- **URL Production**: https://book.misy.app
+- **Répertoire Web**: `/home/misyapps/public_html/book/`
+- **Clé SSH**: `~/.ssh/id_rsa_misy`
