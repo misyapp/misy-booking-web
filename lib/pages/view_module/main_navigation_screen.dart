@@ -1,5 +1,6 @@
 import 'package:rider_ride_hailing_app/utils/platform.dart';
 import 'dart:ui';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/global_data.dart';
@@ -7,6 +8,7 @@ import 'package:rider_ride_hailing_app/contants/my_colors.dart';
 import 'package:rider_ride_hailing_app/widget/adaptive/liquid_glass_colors.dart';
 import 'package:rider_ride_hailing_app/functions/loading_functions.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/home_screen.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/home_screen_web.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/my_booking_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/inbox_screen.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/edit_profile_screen.dart';
@@ -77,8 +79,9 @@ class MainNavigationScreenState extends State<MainNavigationScreen>
     // préserve déjà l'état des widgets enfants. L'utilisation de GlobalKey
     // causait des erreurs "Duplicate GlobalKey" lors de la navigation.
     // HomeScreen utilise AutomaticKeepAliveClientMixin pour préserver son état.
+    // 🌐 WEB: Utiliser HomeScreenWeb sur le web pour une interface style Uber
     _screens = [
-      widget.initialPage ?? const HomeScreen(),
+      widget.initialPage ?? (kIsWeb ? const HomeScreenWeb() : const HomeScreen()),
       const MyBookingScreen(),
       const InboxScreen(),
       const EditProfileScreen(),

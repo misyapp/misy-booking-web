@@ -78,6 +78,8 @@ class MyImagesUrl {
   static const String send = "${baseIconsUrl}send.png";
   static const String settingIcon = "${baseIconsUrl}setting_icon.png";
   static const String splashLogo = "${baseIconsUrl}splash_logo.png";
+  static const String misyLogoRose = "${baseIconsUrl}misy_logo_rose.png";
+  static const String misyLogoCouleur = "${baseIconsUrl}misy_logo_couleur.png";
   static const String calendarIcon = "${baseIconsUrl}calendar.png";
   static const String star = "${baseIconsUrl}star.png";
   static const String ticket = "${baseIconsUrl}ticket.png";
