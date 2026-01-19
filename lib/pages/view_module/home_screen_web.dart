@@ -340,6 +340,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
         // Unfocus pour masquer le clavier
         FocusScope.of(context).unfocus();
+
+        // Passer automatiquement au flow suivant si pickup est aussi renseigné
+        if (_pickupLocation['lat'] != null) {
+          _isSearching.value = false;
+          _onSearch();
+          return;
+        }
       }
     } catch (e) {
       debugPrint('Error getting place details: $e');
