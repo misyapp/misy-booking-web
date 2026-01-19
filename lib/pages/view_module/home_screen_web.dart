@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:js_util' as js_util;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -8,9 +9,11 @@ import 'package:rider_ride_hailing_app/contants/my_colors.dart';
 import 'package:rider_ride_hailing_app/contants/my_image_url.dart';
 import 'package:rider_ride_hailing_app/contants/language_strings.dart';
 import 'package:rider_ride_hailing_app/contants/global_data.dart';
+import 'package:rider_ride_hailing_app/modal/driver_modal.dart';
 import 'package:rider_ride_hailing_app/provider/google_map_provider.dart';
 import 'package:rider_ride_hailing_app/provider/trip_provider.dart';
 import 'package:rider_ride_hailing_app/provider/auth_provider.dart';
+import 'package:rider_ride_hailing_app/services/firestore_services.dart';
 import 'package:rider_ride_hailing_app/services/location.dart';
 import 'package:rider_ride_hailing_app/services/places_autocomplete_web.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/login_screen.dart' show LoginPage;
@@ -37,10 +40,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   final FocusNode _pickupFocusNode = FocusNode();
   final FocusNode _destinationFocusNode = FocusNode();
 
-  // Position par défaut: Antananarivo, Madagascar
+  // Position par défaut: Antananarivo, Madagascar (centre ville)
   static const LatLng _defaultPosition = LatLng(-18.8792, 47.5079);
-  LatLng _currentPosition = _defaultPosition;
-  bool _isLoadingLocation = true;
+
+  // Subscription pour les chauffeurs en ligne
+  StreamSubscription<QuerySnapshot>? _driversSubscription;
+
+  // Markers pour la carte (chauffeurs)
+  Set<Marker> _driverMarkers = {};
 
   // Style de carte personnalisé - JSON minifié pour compatibilité web
   // Fond gris clair, routes bleu lavande, eau bleue
@@ -76,8 +83,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   @override
   void initState() {
     super.initState();
-    _initLocation();
     _setupFocusListeners();
+    _subscribeToOnlineDrivers();
   }
 
   void _setupFocusListeners() {
@@ -105,45 +112,88 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     });
   }
 
-  Future<void> _initLocation() async {
-    try {
-      await getCurrentLocation();
-      if (currentPosition != null) {
-        setState(() {
-          _currentPosition = LatLng(
-            currentPosition!.latitude,
-            currentPosition!.longitude,
+  /// S'abonne aux chauffeurs en ligne et affiche les 8 plus proches
+  void _subscribeToOnlineDrivers() {
+    _driversSubscription = FirestoreServices.users
+        .where('isCustomer', isEqualTo: false)
+        .where('isOnline', isEqualTo: true)
+        .snapshots()
+        .listen((event) async {
+      if (!mounted) return;
+
+      List<Map<String, dynamic>> driversWithDistance = [];
+
+      // Calculer la distance de chaque chauffeur par rapport au centre (Tana)
+      for (int i = 0; i < event.docs.length; i++) {
+        DriverModal driver = DriverModal.fromJson(event.docs[i].data() as Map);
+
+        if (driver.currentLat != null && driver.currentLng != null) {
+          var distance = getDistance(
+            driver.currentLat!,
+            driver.currentLng!,
+            _defaultPosition.latitude,
+            _defaultPosition.longitude,
           );
-          _isLoadingLocation = false;
-        });
 
-        // Obtenir l'adresse par géocodage inverse si pas disponible
-        if (currentFullAddress == null || currentFullAddress!.isEmpty) {
-          await getcurrentAddress();
+          // Limiter aux chauffeurs dans un rayon de 20km
+          if (distance <= 20) {
+            driversWithDistance.add({
+              'distance': distance,
+              'driverData': driver,
+            });
+          }
         }
-
-        // Mettre à jour l'adresse pickup
-        if (currentFullAddress != null && currentFullAddress!.isNotEmpty) {
-          _pickupController.text = currentFullAddress!;
-          _pickupLocation = {
-            'lat': currentPosition!.latitude,
-            'lng': currentPosition!.longitude,
-            'address': currentFullAddress,
-          };
-        }
-
-        // Animer vers la position actuelle
-        if (_mapController != null) {
-          _mapController!.animateCamera(
-            CameraUpdate.newLatLngZoom(_currentPosition, 14),
-          );
-        }
-      } else {
-        setState(() => _isLoadingLocation = false);
       }
-    } catch (e) {
-      debugPrint('Error initializing location: $e');
-      setState(() => _isLoadingLocation = false);
+
+      // Trier par distance et prendre les 8 plus proches
+      driversWithDistance.sort((a, b) => a['distance'].compareTo(b['distance']));
+      final nearest8 = driversWithDistance.take(8).toList();
+
+      // Créer les markers
+      await _updateDriverMarkers(nearest8);
+    });
+  }
+
+  /// Met à jour les markers des chauffeurs sur la carte
+  Future<void> _updateDriverMarkers(List<Map<String, dynamic>> drivers) async {
+    Set<Marker> newMarkers = {};
+
+    for (var driverInfo in drivers) {
+      final DriverModal driver = driverInfo['driverData'];
+      final String markerId = driver.id ?? 'driver_${drivers.indexOf(driverInfo)}';
+
+      // Utiliser le marker du type de véhicule si disponible
+      BitmapDescriptor icon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
+
+      // Essayer de charger l'icône personnalisée du véhicule
+      if (driver.vehicleType != null && vehicleMap.containsKey(driver.vehicleType)) {
+        try {
+          final vehicleInfo = vehicleMap[driver.vehicleType];
+          if (vehicleInfo?.marker != null) {
+            final mapProvider = Provider.of<GoogleMapProvider>(context, listen: false);
+            icon = await mapProvider.createMarkerImageFromNetwork(vehicleInfo!.marker);
+          }
+        } catch (e) {
+          debugPrint('Error loading vehicle marker: $e');
+        }
+      }
+
+      newMarkers.add(
+        Marker(
+          markerId: MarkerId(markerId),
+          position: LatLng(driver.currentLat!, driver.currentLng!),
+          icon: icon,
+          infoWindow: InfoWindow(
+            title: driver.vehicleType ?? 'Chauffeur',
+          ),
+        ),
+      );
+    }
+
+    if (mounted) {
+      setState(() {
+        _driverMarkers = newMarkers;
+      });
     }
   }
 
@@ -246,6 +296,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   @override
   void dispose() {
+    _driversSubscription?.cancel();
     _pickupController.dispose();
     _destinationController.dispose();
     _pickupFocusNode.dispose();
@@ -282,25 +333,20 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   Widget _buildMap() {
     return GoogleMap(
       initialCameraPosition: CameraPosition(
-        target: _currentPosition,
+        target: _defaultPosition,
         zoom: 13,
       ),
       // Utiliser le paramètre style au lieu de setMapStyle (obsolète sur web)
       style: _mapStyle,
+      markers: _driverMarkers,
       onMapCreated: (controller) {
         _mapController = controller;
-        // Si on a déjà la position, animer vers elle
-        if (!_isLoadingLocation && _currentPosition != _defaultPosition) {
-          controller.animateCamera(
-            CameraUpdate.newLatLngZoom(_currentPosition, 14),
-          );
-        }
         // Appliquer le style via JS pour compatibilité web
         if (kIsWeb) {
           _applyMapStyleViaJS();
         }
       },
-      myLocationEnabled: true,
+      myLocationEnabled: false,
       myLocationButtonEnabled: false,
       zoomControlsEnabled: true,
       mapToolbarEnabled: false,
@@ -356,8 +402,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
               // Onglets de navigation principaux
               _buildNavTab('Accueil', Icons.home_outlined, true),
-              _buildNavTab('Mes trajets', Icons.history, false),
-              _buildNavTab('Courrier', Icons.mail_outline, false),
+              _buildNavTab('Carte des transports', Icons.directions_bus_outlined, false),
 
               const Spacer(),
 
@@ -444,6 +489,26 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                           const Icon(Icons.person_outline),
                           const SizedBox(width: 8),
                           Text('${user?.fullName ?? 'Mon profil'}'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'trips',
+                      child: Row(
+                        children: [
+                          Icon(Icons.history),
+                          SizedBox(width: 8),
+                          Text('Mes trajets'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'mail',
+                      child: Row(
+                        children: [
+                          Icon(Icons.mail_outline),
+                          SizedBox(width: 8),
+                          Text('Courrier'),
                         ],
                       ),
                     ),
