@@ -49,6 +49,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // Markers pour la carte (chauffeurs)
   Set<Marker> _driverMarkers = {};
 
+  // État pour afficher le panneau de sélection de véhicule
+  final ValueNotifier<bool> _showVehicleSelection = ValueNotifier(false);
+  final ValueNotifier<int> _selectedVehicleIndex = ValueNotifier(-1);
+
   // Style de carte personnalisé - JSON minifié pour compatibilité web
   // Fond gris clair, routes bleu lavande, eau bleue
   static const String _mapStyle = '[{"elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#A6B5DE"}]},{"featureType":"road.highway","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":3}]},{"featureType":"road.highway","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#BCC5E8"}]},{"featureType":"road.arterial","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.arterial","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"road.local","elementType":"geometry","stylers":[{"color":"#FFFFFF"}]},{"featureType":"road.local","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.local","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"road","elementType":"labels","stylers":[{"visibility":"on"}]},{"featureType":"road.highway","elementType":"labels.icon","stylers":[{"visibility":"on"}]},{"featureType":"water","elementType":"geometry","stylers":[{"color":"#ADD4F5"}]},{"featureType":"poi","elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"poi","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"poi","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"poi","elementType":"labels.icon","stylers":[{"visibility":"on"},{"color":"#B0B0B0"}]},{"featureType":"poi.business","elementType":"labels.text","stylers":[{"visibility":"off"}]},{"featureType":"transit","elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"transit.station.bus","elementType":"labels.text","stylers":[{"visibility":"on"},{"color":"#000000"}]},{"featureType":"transit.station.bus","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"transit.station.bus","elementType":"labels.icon","stylers":[{"visibility":"on"},{"color":"#4A4A4A"}]}]';
@@ -327,6 +331,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _isPickupFocused.dispose();
     _isDestinationFocused.dispose();
     _isSearching.dispose();
+    _showVehicleSelection.dispose();
+    _selectedVehicleIndex.dispose();
     super.dispose();
   }
 
@@ -341,8 +347,15 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           // Header avec logo et navigation
           _buildHeader(),
 
-          // Formulaire de recherche flottant
-          _buildSearchCard(),
+          // Formulaire de recherche ou sélection de véhicule
+          ValueListenableBuilder<bool>(
+            valueListenable: _showVehicleSelection,
+            builder: (context, showVehicles, _) {
+              return showVehicles
+                  ? _buildVehicleSelectionPanel()
+                  : _buildSearchCard();
+            },
+          ),
         ],
       ),
     );
@@ -923,8 +936,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       );
       totalWilltake.value = totalTime;
 
-      // Passer à l'écran de confirmation
-      tripProvider.setScreen(CustomTripType.confirmDestination);
+      // Afficher le panneau de sélection de véhicule
+      _showVehicleSelection.value = true;
+      _selectedVehicleIndex.value = -1;
     } catch (e) {
       debugPrint('Error during search: $e');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -933,6 +947,246 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
 
     _isSearching.value = false;
+  }
+
+  /// Panneau de sélection de véhicule avec les prix
+  Widget _buildVehicleSelectionPanel() {
+    final tripProvider = Provider.of<TripProvider>(context, listen: false);
+
+    return Positioned(
+      top: 100,
+      left: 24,
+      child: Container(
+        width: 420,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 20,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header avec bouton retour
+            Row(
+              children: [
+                IconButton(
+                  onPressed: () {
+                    _showVehicleSelection.value = false;
+                  },
+                  icon: const Icon(Icons.arrow_back),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Choisissez votre course',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 8),
+
+            // Résumé du trajet
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.route, color: MyColors.primaryColor, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${totalWilltake.value.distance.toStringAsFixed(1)} km • ${totalWilltake.value.time.toStringAsFixed(0)} min',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Liste des véhicules
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 350),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: vehicleListModal.where((v) => v.active).length,
+                itemBuilder: (context, index) {
+                  final activeVehicles = vehicleListModal.where((v) => v.active).toList();
+                  final vehicle = activeVehicles[index];
+                  final price = tripProvider.calculatePriceForVehicle(vehicle);
+
+                  return ValueListenableBuilder<int>(
+                    valueListenable: _selectedVehicleIndex,
+                    builder: (context, selectedIndex, _) {
+                      final isSelected = selectedIndex == index;
+
+                      return InkWell(
+                        onTap: () {
+                          _selectedVehicleIndex.value = index;
+                          tripProvider.selectedVehicle = vehicle;
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? MyColors.primaryColor.withOpacity(0.1)
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected
+                                  ? MyColors.primaryColor
+                                  : Colors.grey.shade200,
+                              width: isSelected ? 2 : 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              // Image du véhicule
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.network(
+                                  vehicle.image,
+                                  width: 60,
+                                  height: 40,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    width: 60,
+                                    height: 40,
+                                    color: Colors.grey.shade200,
+                                    child: const Icon(Icons.directions_car),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+
+                              // Nom et capacité
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      vehicle.name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${vehicle.persons} places',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // Prix
+                              Text(
+                                '${price.toStringAsFixed(0)} Ar',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: isSelected
+                                      ? MyColors.primaryColor
+                                      : Colors.black87,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Bouton Commander
+            ValueListenableBuilder<int>(
+              valueListenable: _selectedVehicleIndex,
+              builder: (context, selectedIndex, _) {
+                return SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: selectedIndex >= 0 ? _onConfirmRide : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: MyColors.primaryColor,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: Colors.grey.shade300,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text(
+                      'Commander',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Confirme la course et passe à l'étape suivante
+  void _onConfirmRide() {
+    final tripProvider = Provider.of<TripProvider>(context, listen: false);
+
+    // Vérifier si l'utilisateur est connecté
+    if (userData.value == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Veuillez vous connecter pour commander une course'),
+        ),
+      );
+      _navigateToLogin();
+      return;
+    }
+
+    // Passer à l'écran de demande de course
+    tripProvider.setScreen(CustomTripType.requestForRide);
+
+    // TODO: Implémenter la logique de demande de course
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Course ${tripProvider.selectedVehicle?.name} - ${tripProvider.calculatePrice(tripProvider.selectedVehicle!).toStringAsFixed(0)} Ar',
+        ),
+        backgroundColor: MyColors.primaryColor,
+      ),
+    );
   }
 
   void _navigateToLogin() {
