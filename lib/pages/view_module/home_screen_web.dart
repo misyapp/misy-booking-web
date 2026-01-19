@@ -185,7 +185,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   Future<void> _updateDriverMarkers(List<Map<String, dynamic>> drivers) async {
     if (!mounted) return;
 
-    final mapProvider = Provider.of<GoogleMapProvider>(context, listen: false);
+    debugPrint('🚗 Mise à jour des markers: ${drivers.length} chauffeurs, vehicleMap: ${vehicleMap.length} entrées');
+
     Set<Marker> newMarkers = {};
 
     for (var driverInfo in drivers) {
@@ -193,7 +194,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       final String markerId = driver.id ?? 'driver_${drivers.indexOf(driverInfo)}';
 
       // Récupérer l'icône du véhicule (avec cache)
-      BitmapDescriptor icon = await _getVehicleIcon(driver.vehicleType, mapProvider);
+      BitmapDescriptor icon = await _getVehicleIcon(driver.vehicleType);
 
       newMarkers.add(
         Marker(
@@ -202,9 +203,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           icon: icon,
           flat: true,
           anchor: const Offset(0.5, 0.5),
+          infoWindow: InfoWindow(title: driver.vehicleType ?? 'Chauffeur'),
         ),
       );
     }
+
+    debugPrint('🚗 ${newMarkers.length} markers créés');
 
     if (mounted) {
       setState(() {
@@ -214,10 +218,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   /// Récupère l'icône du véhicule depuis le cache ou la charge
-  Future<BitmapDescriptor> _getVehicleIcon(String? vehicleType, GoogleMapProvider mapProvider) async {
-    // Icône par défaut
-    if (vehicleType == null || !vehicleMap.containsKey(vehicleType)) {
-      return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
+  Future<BitmapDescriptor> _getVehicleIcon(String? vehicleType) async {
+    // Si vehicleMap est vide ou vehicleType inconnu, utiliser un marker cyan par défaut
+    if (vehicleType == null || vehicleMap.isEmpty || !vehicleMap.containsKey(vehicleType)) {
+      return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan);
     }
 
     // Vérifier le cache
@@ -229,15 +233,17 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     try {
       final vehicleInfo = vehicleMap[vehicleType];
       if (vehicleInfo?.marker != null && vehicleInfo!.marker.isNotEmpty) {
+        final mapProvider = Provider.of<GoogleMapProvider>(context, listen: false);
         final icon = await mapProvider.createMarkerImageFromNetwork(vehicleInfo.marker);
         _vehicleIconCache[vehicleType] = icon;
+        debugPrint('🚗 Icône chargée pour $vehicleType');
         return icon;
       }
     } catch (e) {
-      debugPrint('Error loading vehicle marker for $vehicleType: $e');
+      debugPrint('🚗 Erreur chargement icône $vehicleType: $e');
     }
 
-    return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
+    return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan);
   }
 
   /// Recherche d'adresse avec debouncing pour le pickup
@@ -487,7 +493,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
               // Onglets de navigation principaux
               _buildNavTab('Accueil', Icons.home_outlined, true),
-              _buildNavTab('Carte des transports', Icons.directions_bus_outlined, false),
+              _buildNavTab(
+                'Carte des transports',
+                Icons.directions_bus_outlined,
+                false,
+                onTap: () => _navigateToTransportMap(),
+              ),
 
               const Spacer(),
 
@@ -629,11 +640,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   /// Onglet de navigation dans le header
-  Widget _buildNavTab(String label, IconData icon, bool isActive) {
+  Widget _buildNavTab(String label, IconData icon, bool isActive, {VoidCallback? onTap}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: TextButton.icon(
-        onPressed: () {},
+        onPressed: onTap,
         icon: Icon(
           icon,
           size: 18,
@@ -1327,6 +1338,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const SignUpScreen()),
+    );
+  }
+
+  void _navigateToTransportMap() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const TransportMapScreen()),
     );
   }
 }
