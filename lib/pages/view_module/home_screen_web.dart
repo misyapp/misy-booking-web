@@ -1026,18 +1026,26 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// Dessine l'itinéraire entre le pickup et la destination
   Future<void> _drawRoute() async {
     if (_pickupLocation['lat'] == null || _destinationLocation['lat'] == null) {
+      debugPrint('🛣️ _drawRoute: pickup ou destination manquant');
       return;
     }
+
+    debugPrint('🛣️ _drawRoute: Calcul itinéraire OSRM2...');
 
     try {
       final origin = LatLng(_pickupLocation['lat'], _pickupLocation['lng']);
       final destination = LatLng(_destinationLocation['lat'], _destinationLocation['lng']);
 
-      // Récupérer l'itinéraire via RouteService
+      debugPrint('🛣️ Origin: ${origin.latitude}, ${origin.longitude}');
+      debugPrint('🛣️ Destination: ${destination.latitude}, ${destination.longitude}');
+
+      // Récupérer l'itinéraire via RouteService (OSRM2)
       final routeInfo = await RouteService.fetchRoute(
         origin: origin,
         destination: destination,
       );
+
+      debugPrint('🛣️ Route reçue: ${routeInfo.coordinates.length} points');
 
       if (routeInfo.coordinates.isNotEmpty) {
         setState(() {
@@ -1051,11 +1059,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           };
         });
 
+        debugPrint('🛣️ Polyline créée avec ${routeInfo.coordinates.length} points');
+
         // Ajuster la caméra pour voir tout l'itinéraire
-        _fitMapToRoute(origin, destination);
+        _fitMapToRoute(routeInfo.coordinates);
       }
     } catch (e) {
-      debugPrint('Error drawing route: $e');
+      debugPrint('🛣️ Erreur OSRM2: $e');
       // En cas d'erreur, tracer une ligne directe
       setState(() {
         _routePolylines = {
@@ -1075,20 +1085,28 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   /// Ajuste la caméra pour afficher tout l'itinéraire
-  void _fitMapToRoute(LatLng origin, LatLng destination) {
-    if (_mapController == null) return;
+  void _fitMapToRoute(List<LatLng> routePoints) {
+    if (_mapController == null || routePoints.isEmpty) return;
+
+    // Calculer les bounds à partir de tous les points de l'itinéraire
+    double minLat = routePoints.first.latitude;
+    double maxLat = routePoints.first.latitude;
+    double minLng = routePoints.first.longitude;
+    double maxLng = routePoints.first.longitude;
+
+    for (final point in routePoints) {
+      if (point.latitude < minLat) minLat = point.latitude;
+      if (point.latitude > maxLat) maxLat = point.latitude;
+      if (point.longitude < minLng) minLng = point.longitude;
+      if (point.longitude > maxLng) maxLng = point.longitude;
+    }
 
     final bounds = LatLngBounds(
-      southwest: LatLng(
-        origin.latitude < destination.latitude ? origin.latitude : destination.latitude,
-        origin.longitude < destination.longitude ? origin.longitude : destination.longitude,
-      ),
-      northeast: LatLng(
-        origin.latitude > destination.latitude ? origin.latitude : destination.latitude,
-        origin.longitude > destination.longitude ? origin.longitude : destination.longitude,
-      ),
+      southwest: LatLng(minLat, minLng),
+      northeast: LatLng(maxLat, maxLng),
     );
 
+    // Padding de 100 pixels pour laisser de l'espace autour de l'itinéraire
     _mapController!.animateCamera(
       CameraUpdate.newLatLngBounds(bounds, 100),
     );

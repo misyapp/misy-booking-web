@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:js_util' as js_util;
 import 'dart:math' as math;
 import 'dart:ui' as ui;
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -515,9 +513,6 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
         markers: _stopMarkers,
         onMapCreated: (controller) {
           _mapController = controller;
-          if (kIsWeb) {
-            _applyMapStyleViaJS();
-          }
         },
         onTap: (_) {
           // Fermer le panneau de détails
@@ -534,19 +529,6 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
         mapType: MapType.normal,
       ),
     );
-  }
-
-  /// Applique le style de carte via JavaScript
-  void _applyMapStyleViaJS() {
-    try {
-      final window = js_util.globalThis;
-      final fn = js_util.getProperty(window, 'applyMisyMapStyle');
-      if (fn != null) {
-        js_util.callMethod(window, 'applyMisyMapStyle', []);
-      }
-    } catch (e) {
-      debugPrint('Error applying map style via JS: $e');
-    }
   }
 
   /// Header avec logo, navigation et recherche
