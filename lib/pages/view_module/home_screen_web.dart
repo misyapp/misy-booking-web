@@ -1,7 +1,7 @@
 import 'dart:async';
+import 'dart:js_util' as js_util;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/my_colors.dart';
@@ -41,7 +41,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   static const LatLng _defaultPosition = LatLng(-18.8792, 47.5079);
   LatLng _currentPosition = _defaultPosition;
   bool _isLoadingLocation = true;
-  String? _mapStyle;
+
+  // Style de carte personnalisé - JSON minifié pour compatibilité web
+  // Fond gris clair, routes bleu lavande, eau bleue
+  static const String _mapStyle = '[{"elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#A6B5DE"}]},{"featureType":"road.highway","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":3}]},{"featureType":"road.highway","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#BCC5E8"}]},{"featureType":"road.arterial","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.arterial","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"road.local","elementType":"geometry","stylers":[{"color":"#FFFFFF"}]},{"featureType":"road.local","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.local","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"road","elementType":"labels","stylers":[{"visibility":"on"}]},{"featureType":"road.highway","elementType":"labels.icon","stylers":[{"visibility":"on"}]},{"featureType":"water","elementType":"geometry","stylers":[{"color":"#ADD4F5"}]},{"featureType":"poi","elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"poi","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"poi","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"poi","elementType":"labels.icon","stylers":[{"visibility":"on"},{"color":"#B0B0B0"}]},{"featureType":"poi.business","elementType":"labels.text","stylers":[{"visibility":"off"}]},{"featureType":"transit","elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"transit.station.bus","elementType":"labels.text","stylers":[{"visibility":"on"},{"color":"#000000"}]},{"featureType":"transit.station.bus","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"transit.station.bus","elementType":"labels.icon","stylers":[{"visibility":"on"},{"color":"#4A4A4A"}]}]';
 
   // Données de localisation
   Map<String, dynamic> _pickupLocation = {
@@ -73,7 +76,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   @override
   void initState() {
     super.initState();
-    _loadMapStyle();
     _initLocation();
     _setupFocusListeners();
   }
@@ -103,14 +105,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     });
   }
 
-  Future<void> _loadMapStyle() async {
-    try {
-      _mapStyle = await rootBundle.loadString('assets/map_styles/light_mode.json');
-    } catch (e) {
-      debugPrint('Error loading map style: $e');
-    }
-  }
-
   Future<void> _initLocation() async {
     try {
       await getCurrentLocation();
@@ -123,8 +117,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           _isLoadingLocation = false;
         });
 
-        // Mettre à jour l'adresse pickup si disponible
-        if (currentFullAddress != null) {
+        // Obtenir l'adresse par géocodage inverse si pas disponible
+        if (currentFullAddress == null || currentFullAddress!.isEmpty) {
+          await getcurrentAddress();
+        }
+
+        // Mettre à jour l'adresse pickup
+        if (currentFullAddress != null && currentFullAddress!.isNotEmpty) {
           _pickupController.text = currentFullAddress!;
           _pickupLocation = {
             'lat': currentPosition!.latitude,
@@ -134,13 +133,16 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         }
 
         // Animer vers la position actuelle
-        _mapController?.animateCamera(
-          CameraUpdate.newLatLngZoom(_currentPosition, 14),
-        );
+        if (_mapController != null) {
+          _mapController!.animateCamera(
+            CameraUpdate.newLatLngZoom(_currentPosition, 14),
+          );
+        }
       } else {
         setState(() => _isLoadingLocation = false);
       }
     } catch (e) {
+      debugPrint('Error initializing location: $e');
       setState(() => _isLoadingLocation = false);
     }
   }
@@ -283,17 +285,19 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         target: _currentPosition,
         zoom: 13,
       ),
+      // Utiliser le paramètre style au lieu de setMapStyle (obsolète sur web)
+      style: _mapStyle,
       onMapCreated: (controller) {
         _mapController = controller;
-        // Appliquer le style de carte personnalisé
-        if (_mapStyle != null) {
-          controller.setMapStyle(_mapStyle);
-        }
         // Si on a déjà la position, animer vers elle
         if (!_isLoadingLocation && _currentPosition != _defaultPosition) {
           controller.animateCamera(
             CameraUpdate.newLatLngZoom(_currentPosition, 14),
           );
+        }
+        // Appliquer le style via JS pour compatibilité web
+        if (kIsWeb) {
+          _applyMapStyleViaJS();
         }
       },
       myLocationEnabled: true,
@@ -304,6 +308,20 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       mapType: MapType.normal,
       gestureRecognizers: const {},
     );
+  }
+
+  /// Applique le style de carte via JavaScript pour contourner les limitations de Flutter Web
+  void _applyMapStyleViaJS() {
+    try {
+      // Appeler la fonction JS définie dans index.html via js_util
+      final window = js_util.globalThis;
+      final fn = js_util.getProperty(window, 'applyMisyMapStyle');
+      if (fn != null) {
+        js_util.callMethod(window, 'applyMisyMapStyle', []);
+      }
+    } catch (e) {
+      debugPrint('Error applying map style via JS: $e');
+    }
   }
 
   /// Header avec logo Misy + onglets navigation + bouton Mon compte
