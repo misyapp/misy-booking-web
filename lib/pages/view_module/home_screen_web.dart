@@ -16,8 +16,10 @@ import 'package:rider_ride_hailing_app/provider/auth_provider.dart';
 import 'package:rider_ride_hailing_app/services/firestore_services.dart';
 import 'package:rider_ride_hailing_app/services/location.dart';
 import 'package:rider_ride_hailing_app/services/places_autocomplete_web.dart';
+import 'package:rider_ride_hailing_app/services/route_service.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/login_screen.dart' show LoginPage;
 import 'package:rider_ride_hailing_app/pages/auth_module/signup_screen.dart' show SignUpScreen;
+import 'package:rider_ride_hailing_app/pages/view_module/transport_map_screen.dart';
 
 /// Page d'accueil Web style Uber - version allégée
 /// Affiche une carte pleine page avec:
@@ -48,6 +50,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   // Markers pour la carte (chauffeurs)
   Set<Marker> _driverMarkers = {};
+
+  // Polylines pour l'itinéraire
+  Set<Polyline> _routePolylines = {};
+
+  // Position du pickup pour charger les chauffeurs proches
+  LatLng? _pickupLatLng;
 
   // État pour afficher le panneau de sélection de véhicule
   final ValueNotifier<bool> _showVehicleSelection = ValueNotifier(false);
@@ -118,6 +126,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   /// S'abonne aux chauffeurs en ligne et affiche les 8 plus proches
   void _subscribeToOnlineDrivers() {
+    _driversSubscription?.cancel();
+
     _driversSubscription = FirestoreServices.users
         .where('isCustomer', isEqualTo: false)
         .where('isOnline', isEqualTo: true)
@@ -125,9 +135,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         .listen((event) async {
       if (!mounted) return;
 
+      // Utiliser la position du pickup si disponible, sinon le centre de Tana
+      final centerLat = _pickupLatLng?.latitude ?? _defaultPosition.latitude;
+      final centerLng = _pickupLatLng?.longitude ?? _defaultPosition.longitude;
+
       List<Map<String, dynamic>> driversWithDistance = [];
 
-      // Calculer la distance de chaque chauffeur par rapport au centre (Tana)
+      // Calculer la distance de chaque chauffeur par rapport au centre
       for (int i = 0; i < event.docs.length; i++) {
         DriverModal driver = DriverModal.fromJson(event.docs[i].data() as Map);
 
@@ -135,8 +149,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           var distance = getDistance(
             driver.currentLat!,
             driver.currentLng!,
-            _defaultPosition.latitude,
-            _defaultPosition.longitude,
+            centerLat,
+            centerLng,
           );
 
           // Limiter aux chauffeurs dans un rayon de 20km
@@ -156,6 +170,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // Créer les markers
       await _updateDriverMarkers(nearest8);
     });
+  }
+
+  /// Recharge les chauffeurs autour d'une nouvelle position
+  void _reloadDriversNearPosition(LatLng position) {
+    _pickupLatLng = position;
+    _subscribeToOnlineDrivers();
   }
 
   // Cache des icônes de véhicules pour éviter de les recharger
@@ -275,10 +295,15 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           'address': suggestion['description'],
         };
 
+        final pickupPosition = LatLng(location['lat'], location['lng']);
+
         // Animer la carte vers la position sélectionnée
         _mapController?.animateCamera(
-          CameraUpdate.newLatLng(LatLng(location['lat'], location['lng'])),
+          CameraUpdate.newLatLngZoom(pickupPosition, 14),
         );
+
+        // Recharger les chauffeurs autour du lieu de prise en charge
+        _reloadDriversNearPosition(pickupPosition);
 
         // Passer au champ destination
         _destinationFocusNode.requestFocus();
@@ -363,6 +388,33 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   /// Carte Google Maps pleine page
   Widget _buildMap() {
+    // Combiner les markers des chauffeurs avec les markers de pickup/destination
+    Set<Marker> allMarkers = {..._driverMarkers};
+
+    // Ajouter le marker de pickup si disponible
+    if (_pickupLocation['lat'] != null) {
+      allMarkers.add(
+        Marker(
+          markerId: const MarkerId('pickup'),
+          position: LatLng(_pickupLocation['lat'], _pickupLocation['lng']),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+          infoWindow: const InfoWindow(title: 'Départ'),
+        ),
+      );
+    }
+
+    // Ajouter le marker de destination si disponible
+    if (_destinationLocation['lat'] != null) {
+      allMarkers.add(
+        Marker(
+          markerId: const MarkerId('destination'),
+          position: LatLng(_destinationLocation['lat'], _destinationLocation['lng']),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+          infoWindow: const InfoWindow(title: 'Arrivée'),
+        ),
+      );
+    }
+
     return GoogleMap(
       initialCameraPosition: CameraPosition(
         target: _defaultPosition,
@@ -370,7 +422,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       ),
       // Utiliser le paramètre style au lieu de setMapStyle (obsolète sur web)
       style: _mapStyle,
-      markers: _driverMarkers,
+      markers: allMarkers,
+      polylines: _routePolylines,
       onMapCreated: (controller) {
         _mapController = controller;
         // Appliquer le style via JS pour compatibilité web
@@ -936,6 +989,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       );
       totalWilltake.value = totalTime;
 
+      // Dessiner l'itinéraire sur la carte
+      await _drawRoute();
+
       // Afficher le panneau de sélection de véhicule
       _showVehicleSelection.value = true;
       _selectedVehicleIndex.value = -1;
@@ -947,6 +1003,77 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
 
     _isSearching.value = false;
+  }
+
+  /// Dessine l'itinéraire entre le pickup et la destination
+  Future<void> _drawRoute() async {
+    if (_pickupLocation['lat'] == null || _destinationLocation['lat'] == null) {
+      return;
+    }
+
+    try {
+      final origin = LatLng(_pickupLocation['lat'], _pickupLocation['lng']);
+      final destination = LatLng(_destinationLocation['lat'], _destinationLocation['lng']);
+
+      // Récupérer l'itinéraire via RouteService
+      final routeInfo = await RouteService.fetchRoute(
+        origin: origin,
+        destination: destination,
+      );
+
+      if (routeInfo.coordinates.isNotEmpty) {
+        setState(() {
+          _routePolylines = {
+            Polyline(
+              polylineId: const PolylineId('route'),
+              points: routeInfo.coordinates,
+              color: MyColors.primaryColor,
+              width: 5,
+            ),
+          };
+        });
+
+        // Ajuster la caméra pour voir tout l'itinéraire
+        _fitMapToRoute(origin, destination);
+      }
+    } catch (e) {
+      debugPrint('Error drawing route: $e');
+      // En cas d'erreur, tracer une ligne directe
+      setState(() {
+        _routePolylines = {
+          Polyline(
+            polylineId: const PolylineId('route_fallback'),
+            points: [
+              LatLng(_pickupLocation['lat'], _pickupLocation['lng']),
+              LatLng(_destinationLocation['lat'], _destinationLocation['lng']),
+            ],
+            color: MyColors.primaryColor,
+            width: 4,
+            patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+          ),
+        };
+      });
+    }
+  }
+
+  /// Ajuste la caméra pour afficher tout l'itinéraire
+  void _fitMapToRoute(LatLng origin, LatLng destination) {
+    if (_mapController == null) return;
+
+    final bounds = LatLngBounds(
+      southwest: LatLng(
+        origin.latitude < destination.latitude ? origin.latitude : destination.latitude,
+        origin.longitude < destination.longitude ? origin.longitude : destination.longitude,
+      ),
+      northeast: LatLng(
+        origin.latitude > destination.latitude ? origin.latitude : destination.latitude,
+        origin.longitude > destination.longitude ? origin.longitude : destination.longitude,
+      ),
+    );
+
+    _mapController!.animateCamera(
+      CameraUpdate.newLatLngBounds(bounds, 100),
+    );
   }
 
   /// Panneau de sélection de véhicule avec les prix
