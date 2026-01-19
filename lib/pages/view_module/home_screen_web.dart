@@ -154,38 +154,30 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     });
   }
 
+  // Cache des icônes de véhicules pour éviter de les recharger
+  final Map<String, BitmapDescriptor> _vehicleIconCache = {};
+
   /// Met à jour les markers des chauffeurs sur la carte
   Future<void> _updateDriverMarkers(List<Map<String, dynamic>> drivers) async {
+    if (!mounted) return;
+
+    final mapProvider = Provider.of<GoogleMapProvider>(context, listen: false);
     Set<Marker> newMarkers = {};
 
     for (var driverInfo in drivers) {
       final DriverModal driver = driverInfo['driverData'];
       final String markerId = driver.id ?? 'driver_${drivers.indexOf(driverInfo)}';
 
-      // Utiliser le marker du type de véhicule si disponible
-      BitmapDescriptor icon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
-
-      // Essayer de charger l'icône personnalisée du véhicule
-      if (driver.vehicleType != null && vehicleMap.containsKey(driver.vehicleType)) {
-        try {
-          final vehicleInfo = vehicleMap[driver.vehicleType];
-          if (vehicleInfo?.marker != null) {
-            final mapProvider = Provider.of<GoogleMapProvider>(context, listen: false);
-            icon = await mapProvider.createMarkerImageFromNetwork(vehicleInfo!.marker);
-          }
-        } catch (e) {
-          debugPrint('Error loading vehicle marker: $e');
-        }
-      }
+      // Récupérer l'icône du véhicule (avec cache)
+      BitmapDescriptor icon = await _getVehicleIcon(driver.vehicleType, mapProvider);
 
       newMarkers.add(
         Marker(
           markerId: MarkerId(markerId),
           position: LatLng(driver.currentLat!, driver.currentLng!),
           icon: icon,
-          infoWindow: InfoWindow(
-            title: driver.vehicleType ?? 'Chauffeur',
-          ),
+          flat: true,
+          anchor: const Offset(0.5, 0.5),
         ),
       );
     }
@@ -195,6 +187,33 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         _driverMarkers = newMarkers;
       });
     }
+  }
+
+  /// Récupère l'icône du véhicule depuis le cache ou la charge
+  Future<BitmapDescriptor> _getVehicleIcon(String? vehicleType, GoogleMapProvider mapProvider) async {
+    // Icône par défaut
+    if (vehicleType == null || !vehicleMap.containsKey(vehicleType)) {
+      return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
+    }
+
+    // Vérifier le cache
+    if (_vehicleIconCache.containsKey(vehicleType)) {
+      return _vehicleIconCache[vehicleType]!;
+    }
+
+    // Charger l'icône depuis l'URL
+    try {
+      final vehicleInfo = vehicleMap[vehicleType];
+      if (vehicleInfo?.marker != null && vehicleInfo!.marker.isNotEmpty) {
+        final icon = await mapProvider.createMarkerImageFromNetwork(vehicleInfo.marker);
+        _vehicleIconCache[vehicleType] = icon;
+        return icon;
+      }
+    } catch (e) {
+      debugPrint('Error loading vehicle marker for $vehicleType: $e');
+    }
+
+    return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
   }
 
   /// Recherche d'adresse avec debouncing pour le pickup
