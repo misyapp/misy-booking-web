@@ -1064,9 +1064,22 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         // Ajuster la caméra pour voir tout l'itinéraire
         _fitMapToRoute(routeInfo.coordinates);
       }
-    } catch (e) {
-      debugPrint('🛣️ Erreur OSRM2: $e');
-      // En cas d'erreur, tracer une ligne directe
+    } catch (e, stackTrace) {
+      debugPrint('🛣️ ❌ Erreur OSRM: $e');
+      debugPrint('🛣️ Stack: $stackTrace');
+
+      // Afficher l'erreur dans un snackbar pour debug
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Route OSRM error: $e'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+
+      // En cas d'erreur, tracer une ligne directe (pointillés)
       setState(() {
         _routePolylines = {
           Polyline(
@@ -1075,7 +1088,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               LatLng(_pickupLocation['lat'], _pickupLocation['lng']),
               LatLng(_destinationLocation['lat'], _destinationLocation['lng']),
             ],
-            color: MyColors.primaryColor,
+            color: Colors.red,
             width: 4,
             patterns: [PatternItem.dash(20), PatternItem.gap(10)],
           ),
