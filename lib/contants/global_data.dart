@@ -41,6 +41,10 @@ PricingConfigV2? pricingConfigV2;
 // Configuration du système de fidélité
 LoyaltyConfigModal? loyaltyConfig;
 const double globalHorizontalPadding = 18;
+
+// Distance minimale pour proposer un trajet (1h de marche ≈ 5 km à 5 km/h)
+// En dessous de cette distance, afficher "aucun trajet disponible"
+const double minDistanceForTrip = 5.0; // en kilomètres
 ValueNotifier<UserModal?> userData = ValueNotifier(null);
 String dummyUserImage =
     "https://firebasestorage.googleapis.com/v0/b/misy-95336.appspot.com/o/dummy_user_image.png?alt=media&token=1be6b364-ddb3-4723-89e7-6b656f064f05";

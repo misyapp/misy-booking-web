@@ -93,7 +93,7 @@ flutter build web --release
 
 #### Déploiement sur book.misy.app
 ```bash
-rsync -avz --delete -e "ssh -i ~/.ssh/id_rsa_misy" /Users/stephane/StudioProjects/misy-booking-web/build/web/ root@162.240.145.160:/home/misyapps/public_html/book/
+rsync -avz --delete --exclude='osrm-proxy.php' -e "ssh -i ~/.ssh/id_rsa_misy" /Users/stephane/StudioProjects/misy-booking-web/build/web/ root@162.240.145.160:/home/misyapp/booking_web/
 ```
 
 #### Connexion SSH au serveur
@@ -104,5 +104,5 @@ ssh -i ~/.ssh/id_rsa_misy root@162.240.145.160
 ### Informations Serveur
 - **Serveur**: Bluehost (162.240.145.160)
 - **URL Production**: https://book.misy.app
-- **Répertoire Web**: `/home/misyapps/public_html/book/`
+- **Répertoire Web**: `/home/misyapp/booking_web/`
 - **Clé SSH**: `~/.ssh/id_rsa_misy`

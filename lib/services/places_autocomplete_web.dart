@@ -60,43 +60,61 @@ class PlacesAutocompleteWeb {
   static Future<Map<String, dynamic>?> getPlaceDetails(String placeId) async {
     final completer = Completer<Map<String, dynamic>?>();
 
-    // Créer un élément div temporaire pour PlacesService
-    final div = web.document.createElement('div') as web.HTMLDivElement;
-    final service = PlacesService(div);
+    try {
+      // Créer un élément div temporaire pour PlacesService
+      final div = web.document.createElement('div') as web.HTMLDivElement;
+      final service = PlacesService(div);
 
-    final request = PlaceDetailsRequest(
-      placeId: placeId,
-      fields: ['geometry', 'formatted_address', 'name'].toJS,
-    );
+      final request = PlaceDetailsRequest(
+        placeId: placeId,
+        fields: ['geometry', 'formatted_address', 'name'].toJS,
+      );
 
-    service.getDetails(
-      request,
-      (PlaceResult? place, String status) {
-        if (status == 'OK' && place != null) {
-          final location = place.geometry?.location;
-          if (location != null) {
-            completer.complete({
-              'result': {
-                'geometry': {
-                  'location': {
-                    'lat': location.lat(),
-                    'lng': location.lng(),
-                  }
-                },
-                'formatted_address': place.formattedAddress,
-                'name': place.name,
-              }
-            });
+      service.getDetails(
+        request,
+        (PlaceResult? place, String status) {
+          print('PlacesService.getDetails status: $status');
+          if (status == 'OK' && place != null) {
+            final location = place.geometry?.location;
+            if (location != null) {
+              final lat = location.lat();
+              final lng = location.lng();
+              print('Place location: $lat, $lng');
+              completer.complete({
+                'result': {
+                  'geometry': {
+                    'location': {
+                      'lat': lat,
+                      'lng': lng,
+                    }
+                  },
+                  'formatted_address': place.formattedAddress,
+                  'name': place.name,
+                }
+              });
+            } else {
+              print('Place geometry.location is null');
+              completer.complete(null);
+            }
           } else {
+            print('PlacesService error status: $status');
             completer.complete(null);
           }
-        } else {
-          completer.complete(null);
-        }
-      }.toJS,
-    );
+        }.toJS,
+      );
 
-    return completer.future;
+      // Timeout after 10 seconds
+      return completer.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          print('PlacesService.getDetails timeout');
+          return null;
+        },
+      );
+    } catch (e) {
+      print('PlacesService exception: $e');
+      return null;
+    }
   }
 }
 

@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:rider_ride_hailing_app/functions/print_function.dart';
 import 'package:rider_ride_hailing_app/models/transport_line.dart';
+import 'package:rider_ride_hailing_app/models/route_planner.dart';
 
 /// Service pour charger et gérer les lignes de transport depuis les fichiers GeoJSON
 class TransportLinesService {
@@ -15,6 +17,9 @@ class TransportLinesService {
 
   /// Cache des lignes groupées
   Map<String, TransportLineGroup>? _cachedLineGroups;
+
+  /// Graphe du réseau pour le calcul d'itinéraire
+  TransportGraph? _transportGraph;
 
   /// Liste des fichiers GeoJSON à charger
   static const List<String> _geojsonFiles = [
@@ -137,5 +142,52 @@ class TransportLinesService {
       types.add(group.transportType);
     }
     return types.toList()..sort((a, b) => a.index.compareTo(b.index));
+  }
+
+  /// Initialise le graphe du réseau de transport
+  Future<void> initializeGraph() async {
+    if (_transportGraph != null) return;
+
+    final lines = await loadAllLines();
+    _transportGraph = TransportGraph();
+    _transportGraph!.buildFromLines(lines);
+
+    myCustomPrintStatement(
+      'Graphe initialisé: ${_transportGraph!.nodes.length} arrêts, '
+      '${_transportGraph!.edges.length} connexions',
+    );
+  }
+
+  /// Calcule un itinéraire entre deux positions
+  Future<TransportRoute?> findRoute(LatLng origin, LatLng destination) async {
+    await initializeGraph();
+
+    if (_transportGraph == null) return null;
+
+    final route = _transportGraph!.findRoute(origin, destination);
+
+    if (route != null) {
+      myCustomPrintStatement(
+        'Itinéraire trouvé: ${route.steps.length} étapes, '
+        '${route.totalDurationMinutes} min, '
+        '${route.numberOfTransfers} correspondance(s)',
+      );
+    } else {
+      myCustomPrintStatement('Aucun itinéraire trouvé');
+    }
+
+    return route;
+  }
+
+  /// Trouve l'arrêt le plus proche d'une position
+  Future<TransportNode?> findNearestStop(LatLng position) async {
+    await initializeGraph();
+    return _transportGraph?.findNearestStop(position);
+  }
+
+  /// Obtient tous les arrêts du réseau
+  Future<List<TransportNode>> getAllStops() async {
+    await initializeGraph();
+    return _transportGraph?.nodes.values.toList() ?? [];
   }
 }

@@ -23,7 +23,7 @@ extension TransportTypeExtension on TransportType {
   int get colorValue {
     switch (this) {
       case TransportType.bus:
-        return 0xFF2196F3; // Bleu
+        return 0xFF2196F3; // Bleu (couleur par défaut, utilisez getLineColor pour les bus)
       case TransportType.urbanTrain:
         return 0xFF4CAF50; // Vert
       case TransportType.telepherique:
@@ -32,10 +32,30 @@ extension TransportTypeExtension on TransportType {
   }
 }
 
+/// Couleurs spécifiques pour chaque ligne de bus
+class TransportLineColors {
+  static const Map<String, int> _busColors = {
+    '015': 0xFF2196F3, // Bleu
+    '017': 0xFF9C27B0, // Violet
+    '17': 0xFF9C27B0,  // Violet (alias)
+    '129': 0xFFE91E63, // Rose/Magenta
+  };
+
+  /// Obtient la couleur pour une ligne donnée
+  static int getLineColor(String lineNumber, TransportType type) {
+    // Pour le train et téléphérique, utiliser la couleur du type
+    if (type == TransportType.urbanTrain) return 0xFF4CAF50;
+    if (type == TransportType.telepherique) return 0xFFFF9800;
+
+    // Pour les bus, utiliser la couleur spécifique ou la couleur par défaut
+    return _busColors[lineNumber] ?? 0xFF2196F3;
+  }
+}
+
 /// Représente un arrêt sur une ligne de transport
 class TransportStop {
   final String name;
-  final int stopId;
+  final String stopId;
   final LatLng position;
 
   const TransportStop({
@@ -49,9 +69,13 @@ class TransportStop {
     final properties = feature['properties'] as Map<String, dynamic>;
     final coordinates = geometry['coordinates'] as List<dynamic>;
 
+    // stop_id peut être un int ou une string selon les fichiers
+    final rawStopId = properties['stop_id'];
+    final stopId = rawStopId?.toString() ?? '0';
+
     return TransportStop(
       name: properties['name'] ?? 'Arrêt',
-      stopId: properties['stop_id'] ?? 0,
+      stopId: stopId,
       position: LatLng(
         (coordinates[1] as num).toDouble(),
         (coordinates[0] as num).toDouble(),

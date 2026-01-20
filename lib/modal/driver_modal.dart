@@ -28,6 +28,7 @@ class DriverModal {
   double? currentLng;
   double? oldLat;
   double? oldLng;
+  double? heading; // Direction du chauffeur en degrés (0-360)
   double averageRating;
   double cashCommission;
   int totalReveiwCount;
@@ -65,6 +66,7 @@ class DriverModal {
     this.currentLng,
     this.oldLat,
     this.oldLng,
+    this.heading,
     required this.batchStatus,
     required this.deviceIdList,
     required this.dob,
@@ -104,6 +106,7 @@ class DriverModal {
       currentLat: json['currentLat'] != null ? double.parse(json['currentLat'].toString()) : null,
       oldLng: json['oldLng'] != null && json['oldLng'] != 0 ? double.parse(json['oldLng'].toString()) : null,
       oldLat: json['oldLat'] != null && json['oldLat'] != 0 ? double.parse(json['oldLat'].toString()) : null,
+      heading: json['heading'] != null ? double.parse(json['heading'].toString()) : null,
       statisticNumber: json['statisticNumber'] ?? '',
       taxiLicenceNumber: json['taxiLicenceNumber'] ?? '',
       verified: json['verified'],

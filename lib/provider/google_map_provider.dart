@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/scheduler.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -899,6 +900,51 @@ class GoogleMapProvider with ChangeNotifier {
     return getCachedMarkerDescriptor(url, isAsset: false);
   }
 
+  /// Crée un marker redimensionné depuis une URL réseau
+  /// [url] URL de l'image
+  /// [targetWidth] Largeur cible en pixels (défaut: 40)
+  Future<BitmapDescriptor> createResizedMarkerFromNetwork(String url, {int targetWidth = 40}) async {
+    final cacheKey = 'resized_${targetWidth}_$url';
+
+    // Cache mémoire
+    if (_markerDescriptorCache.containsKey(cacheKey)) {
+      return _markerDescriptorCache[cacheKey]!;
+    }
+
+    final completer = Completer<BitmapDescriptor>();
+    _markerDescriptorCache[cacheKey] = completer.future;
+
+    try {
+      final Uint8List imageData = await getBytesFromNetwork(url);
+
+      // Décoder l'image
+      final ui.Codec codec = await ui.instantiateImageCodec(
+        imageData,
+        targetWidth: targetWidth,
+      );
+      final ui.FrameInfo frameInfo = await codec.getNextFrame();
+      final ui.Image image = frameInfo.image;
+
+      // Convertir en bytes
+      final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        throw Exception('Failed to convert image to bytes');
+      }
+
+      final Uint8List resizedBytes = byteData.buffer.asUint8List();
+      final descriptor = BitmapDescriptor.fromBytes(resizedBytes);
+
+      myCustomPrintStatement('🚗 Marker redimensionné (${targetWidth}px): $url');
+      completer.complete(descriptor);
+      return descriptor;
+    } catch (e) {
+      _markerDescriptorCache.remove(cacheKey);
+      myCustomPrintStatement('❌ Erreur redimensionnement marker: $e');
+      completer.completeError(e);
+      rethrow;
+    }
+  }
+
   double bearingBetween(LatLng latLng1, LatLng latLng2) {
     double startLat = degreesToRadians(latLng1.latitude);
     double startLng = degreesToRadians(latLng1.longitude);
@@ -1051,31 +1097,38 @@ class GoogleMapProvider with ChangeNotifier {
 
   /// 🚀 Charge l'image depuis le cache local ou le réseau
   /// Sauvegarde automatiquement sur disque pour les prochains lancements
+  /// Note: Sur Web, pas de cache disque (path_provider non supporté)
   Future<BitmapDescriptor> _loadMarkerDescriptorFromNetwork(String url) async {
     try {
-      // Générer un nom de fichier unique basé sur l'URL
-      final cacheFileName = _generateCacheFileName(url);
-      final cacheDir = await getTemporaryDirectory();
-      final cacheFile = File('${cacheDir.path}/marker_cache/$cacheFileName');
-
       Uint8List markerIconData;
 
-      // Vérifier si l'image est en cache local
-      if (await cacheFile.exists()) {
-        // 🚀 Charger depuis le cache local (instantané)
-        markerIconData = await cacheFile.readAsBytes();
-        myCustomPrintStatement('📁 Marker chargé depuis cache local: $cacheFileName');
-      } else {
-        // Télécharger depuis le réseau
+      // Sur Web, pas de cache disque disponible - télécharger directement
+      if (kIsWeb) {
         markerIconData = await getBytesFromNetwork(url);
+        myCustomPrintStatement('🌐 Marker chargé depuis réseau (Web): $url');
+      } else {
+        // Sur mobile/desktop: utiliser le cache disque
+        final cacheFileName = _generateCacheFileName(url);
+        final cacheDir = await getTemporaryDirectory();
+        final cacheFile = File('${cacheDir.path}/marker_cache/$cacheFileName');
 
-        // Sauvegarder dans le cache local pour les prochains lancements
-        try {
-          await cacheFile.parent.create(recursive: true);
-          await cacheFile.writeAsBytes(markerIconData);
-          myCustomPrintStatement('💾 Marker sauvegardé en cache local: $cacheFileName');
-        } catch (e) {
-          myCustomPrintStatement('⚠️ Erreur sauvegarde cache marker: $e');
+        // Vérifier si l'image est en cache local
+        if (await cacheFile.exists()) {
+          // 🚀 Charger depuis le cache local (instantané)
+          markerIconData = await cacheFile.readAsBytes();
+          myCustomPrintStatement('📁 Marker chargé depuis cache local: $cacheFileName');
+        } else {
+          // Télécharger depuis le réseau
+          markerIconData = await getBytesFromNetwork(url);
+
+          // Sauvegarder dans le cache local pour les prochains lancements
+          try {
+            await cacheFile.parent.create(recursive: true);
+            await cacheFile.writeAsBytes(markerIconData);
+            myCustomPrintStatement('💾 Marker sauvegardé en cache local: $cacheFileName');
+          } catch (e) {
+            myCustomPrintStatement('⚠️ Erreur sauvegarde cache marker: $e');
+          }
         }
       }
 

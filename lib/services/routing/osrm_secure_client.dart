@@ -7,13 +7,17 @@ import '../../functions/print_function.dart';
 /// Service sécurisé pour les appels OSRM2 avec authentification HMAC
 ///
 /// Architecture:
-/// - OSRM2 (osrm2.misy.app) avec HMAC en priorité
+/// - Web: Proxy via book.misy.app pour éviter CORS
+/// - Mobile: OSRM2 (osrm2.misy.app) avec HMAC en priorité
 /// - Fallback OSRM1 (osrm1.misy-app.com) sans HMAC
 /// - Logs uniquement en mode debug
 class OsrmSecureClient {
   // URLs
   static const String _osrm2BaseUrl = 'https://osrm2.misy.app';
   static const String _osrm1BaseUrl = 'https://osrm1.misy-app.com';
+
+  // Proxy URL pour le web (évite les problèmes CORS)
+  static const String _webProxyBaseUrl = 'https://book.misy.app/osrm-proxy.php';
 
   // Secret HMAC encodé en base64 pour ne pas l'exposer en clair dans le code
   // Secret original (hex): b4f3cbd812e3a12a63dbf21d1a8e7a9d3c5aab74f6e941b3e93e76d5a71f8ad1
@@ -66,6 +70,80 @@ class OsrmSecureClient {
     String? queryParams,
     int timeoutSeconds = 3,
   }) async {
+    // Sur le web, utiliser le proxy pour éviter les problèmes CORS
+    if (kIsWeb) {
+      return _secureGetViaProxy(
+        path: path,
+        queryParams: queryParams,
+        timeoutSeconds: timeoutSeconds,
+      );
+    }
+
+    // Sur mobile, appel direct à OSRM2/OSRM1
+    return _secureGetDirect(
+      path: path,
+      queryParams: queryParams,
+      timeoutSeconds: timeoutSeconds,
+    );
+  }
+
+  /// Requête via proxy (pour le web)
+  static Future<http.Response> _secureGetViaProxy({
+    required String path,
+    String? queryParams,
+    int timeoutSeconds = 3,
+  }) async {
+    // Générer timestamp et signature HMAC
+    final timestamp = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000;
+    final signature = _generateHmacSignature(path, timestamp);
+
+    // Construire l'URL du proxy avec les paramètres
+    final encodedPath = Uri.encodeComponent(path);
+    final encodedParams = queryParams != null ? Uri.encodeComponent(queryParams) : '';
+    final proxyUrl = '$_webProxyBaseUrl?path=$encodedPath&params=$encodedParams';
+
+    if (kDebugMode) {
+      myCustomPrintStatement('🌐 OSRM Web Proxy Request:');
+      myCustomPrintStatement('   URL: $proxyUrl');
+    }
+
+    try {
+      final response = await http
+          .get(
+            Uri.parse(proxyUrl),
+            headers: {
+              'X-OSRM-Timestamp': timestamp.toString(),
+              'X-OSRM-Signature': signature,
+            },
+          )
+          .timeout(Duration(seconds: timeoutSeconds));
+
+      if (response.statusCode == 200) {
+        if (kDebugMode) {
+          myCustomPrintStatement('✅ OSRM Proxy SUCCESS (${response.statusCode})');
+        }
+        return response;
+      } else {
+        if (kDebugMode) {
+          myCustomPrintStatement('⚠️ OSRM Proxy returned status ${response.statusCode}');
+          myCustomPrintStatement('   Body: ${response.body}');
+        }
+        throw Exception('OSRM Proxy returned status ${response.statusCode}');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        myCustomPrintStatement('❌ OSRM Proxy failed: $e');
+      }
+      throw Exception('OSRM Proxy failed: $e');
+    }
+  }
+
+  /// Requête directe à OSRM2/OSRM1 (pour mobile)
+  static Future<http.Response> _secureGetDirect({
+    required String path,
+    String? queryParams,
+    int timeoutSeconds = 3,
+  }) async {
     // Construire l'URL complète pour OSRM2
     final osrm2Url = queryParams != null && queryParams.isNotEmpty
         ? '$_osrm2BaseUrl$path?$queryParams'
@@ -77,7 +155,7 @@ class OsrmSecureClient {
         : '$_osrm1BaseUrl$path';
 
     if (kDebugMode) {
-      myCustomPrintStatement('🌐 OSRM Secure Request:');
+      myCustomPrintStatement('🌐 OSRM Direct Request:');
       myCustomPrintStatement('   Primary: $osrm2Url');
       myCustomPrintStatement('   Fallback: $osrm1Url');
     }

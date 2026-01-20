@@ -316,7 +316,7 @@ Future<TotalTimeDistanceModal> getTotalTimeCalculate(
     }
   }
 
-  // Après tous les retries échoués, utiliser le calcul à vol d'oiseau comme fallback
+  // Après tous les retries OSRM échoués, utiliser Haversine comme fallback
   myCustomPrintStatement('⚠️ OSRM ÉCHEC après $maxRetries tentatives, utilisation fallback Haversine');
   myCustomPrintStatement('📍 Origin: $origin, Destination: $destination');
 
@@ -340,40 +340,6 @@ Future<TotalTimeDistanceModal> getTotalTimeCalculate(
     time: estimatedTimeMinutes,
     distance: (estimatedRoadDistance * 10).roundToDouble() / 10, // Arrondi 1 décimale
   );
-
-  // [DEPRECATED] Google Directions API - remplacé par OSRM2.misy.app
-  // final response = await http.get(Uri.parse(
-  //     'https://maps.googleapis.com/maps/api/directions/json?origin=$origin&destination=$destination&key=$googleMapApiKey'));
-  //
-  // myCustomPrintStatement('📡 Statut réponse API Google: ${response.statusCode}');
-  //
-  // final data = json.decode(response.body);
-  // myCustomPrintStatement('📊 Statut API Google Directions: ${data['status']}');
-  //
-  // if (data['status'] == 'OK') {
-  //   final route = data['routes'][0];
-  //   int totalDurationInSeconds = 0;
-  //   for (var leg in route['legs']) {
-  //     int legDuration = int.parse(leg['duration']['value'].toString());
-  //     myCustomPrintStatement('⏱️ Durée segment: ${legDuration}s (${(legDuration/60).round()}min)');
-  //     totalDurationInSeconds += legDuration;
-  //   }
-  //   final totalDurationInMinutes = (totalDurationInSeconds / 60).ceil();
-  //   myCustomPrintStatement('✅ Temps total calculé: ${totalDurationInSeconds}s = $totalDurationInMinutes minutes');
-  //
-  //   return TotalTimeDistanceModal(
-  //       distance: ((route['legs'][0]['distance']['value'] / 1000) * 10)
-  //               .roundToDouble() /
-  //           10,
-  //       time: totalDurationInMinutes);
-  // } else {
-  //   myCustomPrintStatement('❌ Erreur API Google Directions: ${data['status']}');
-  //   myCustomPrintStatement('📍 Origin: $origin, Destination: $destination');
-  //   if (data['error_message'] != null) {
-  //     myCustomPrintStatement('💬 Message erreur: ${data['error_message']}');
-  //   }
-  //   return TotalTimeDistanceModal(time: 0, distance: 0);
-  // }
 }
 
 TotalTimeDistanceModal _createTotalTimeDistance(String body) {
