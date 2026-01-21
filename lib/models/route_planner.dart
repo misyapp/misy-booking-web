@@ -482,6 +482,159 @@ class TransportGraph {
     if (lineNumber.contains('TELEPHERIQUE')) return 'Téléphérique Orange';
     return 'Ligne $lineNumber';
   }
+
+  /// Trouve plusieurs itinéraires entre deux positions avec différents critères
+  /// Retourne une liste triée: le plus rapide en premier, puis par nombre de correspondances
+  List<TransportRoute> findMultipleRoutes(LatLng origin, LatLng destination, {int maxRoutes = 5}) {
+    final startNode = findNearestStop(origin, maxDistanceKm: 3.0);
+    final endNode = findNearestStop(destination, maxDistanceKm: 3.0);
+
+    if (startNode == null || endNode == null) {
+      return [];
+    }
+
+    final routes = <TransportRoute>[];
+    final seenRouteSignatures = <String>{};
+
+    // Stratégie 1: Route la plus rapide (Dijkstra standard)
+    final fastestRoute = _findRouteWithCriteria(
+      origin, destination, startNode, endNode,
+      transferPenalty: 3, // Faible pénalité pour les correspondances
+    );
+    if (fastestRoute != null) {
+      final sig = _getRouteSignature(fastestRoute);
+      if (!seenRouteSignatures.contains(sig)) {
+        seenRouteSignatures.add(sig);
+        routes.add(fastestRoute);
+      }
+    }
+
+    // Stratégie 2: Route avec le moins de correspondances (forte pénalité)
+    final fewestTransfersRoute = _findRouteWithCriteria(
+      origin, destination, startNode, endNode,
+      transferPenalty: 30, // Forte pénalité pour éviter les correspondances
+    );
+    if (fewestTransfersRoute != null) {
+      final sig = _getRouteSignature(fewestTransfersRoute);
+      if (!seenRouteSignatures.contains(sig)) {
+        seenRouteSignatures.add(sig);
+        routes.add(fewestTransfersRoute);
+      }
+    }
+
+    // Stratégie 3: Route équilibrée
+    final balancedRoute = _findRouteWithCriteria(
+      origin, destination, startNode, endNode,
+      transferPenalty: 10,
+    );
+    if (balancedRoute != null) {
+      final sig = _getRouteSignature(balancedRoute);
+      if (!seenRouteSignatures.contains(sig)) {
+        seenRouteSignatures.add(sig);
+        routes.add(balancedRoute);
+      }
+    }
+
+    // Stratégie 4: Route favorisant la marche (moins de transports)
+    final walkingRoute = _findRouteWithCriteria(
+      origin, destination, startNode, endNode,
+      transferPenalty: 15,
+      walkingBonus: 0.5, // Réduire le coût de la marche
+    );
+    if (walkingRoute != null) {
+      final sig = _getRouteSignature(walkingRoute);
+      if (!seenRouteSignatures.contains(sig)) {
+        seenRouteSignatures.add(sig);
+        routes.add(walkingRoute);
+      }
+    }
+
+    // Trier: d'abord par temps, puis par nombre de correspondances
+    routes.sort((a, b) {
+      // Priorité au temps
+      final timeDiff = a.totalDurationMinutes.compareTo(b.totalDurationMinutes);
+      if (timeDiff != 0) return timeDiff;
+      // En cas d'égalité, moins de correspondances
+      return a.numberOfTransfers.compareTo(b.numberOfTransfers);
+    });
+
+    return routes.take(maxRoutes).toList();
+  }
+
+  /// Signature unique d'un itinéraire pour détecter les doublons
+  String _getRouteSignature(TransportRoute route) {
+    return route.steps.map((s) => '${s.lineNumber}:${s.startStop.id}-${s.endStop.id}').join('|');
+  }
+
+  /// Trouve une route avec des critères spécifiques
+  TransportRoute? _findRouteWithCriteria(
+    LatLng origin,
+    LatLng destination,
+    TransportNode startNode,
+    TransportNode endNode, {
+    required double transferPenalty,
+    double walkingBonus = 1.0,
+  }) {
+    final distances = <String, double>{};
+    final previous = <String, _PathInfo?>{};
+    final visited = <String>{};
+    final queue = <String>[];
+
+    for (final nodeId in nodes.keys) {
+      distances[nodeId] = double.infinity;
+      previous[nodeId] = null;
+    }
+    distances[startNode.id] = 0;
+    queue.add(startNode.id);
+
+    while (queue.isNotEmpty) {
+      queue.sort((a, b) => distances[a]!.compareTo(distances[b]!));
+      final currentId = queue.removeAt(0);
+
+      if (visited.contains(currentId)) continue;
+      visited.add(currentId);
+
+      if (currentId == endNode.id) break;
+
+      final edgesList = adjacencyList[currentId] ?? [];
+      for (final edge in edgesList) {
+        final neighborId = edge.to.id;
+        if (visited.contains(neighborId)) continue;
+
+        double cost = edge.travelTimeMinutes.toDouble();
+
+        // Appliquer le bonus de marche
+        if (edge.isWalking) {
+          cost *= walkingBonus;
+        }
+
+        // Pénalité de correspondance
+        final prevInfo = previous[currentId];
+        if (prevInfo != null && prevInfo.lineNumber != edge.lineNumber && !edge.isWalking) {
+          cost += transferPenalty;
+        }
+
+        final newDist = distances[currentId]! + cost;
+        if (newDist < distances[neighborId]!) {
+          distances[neighborId] = newDist;
+          previous[neighborId] = _PathInfo(
+            previousNodeId: currentId,
+            edge: edge,
+            lineNumber: edge.lineNumber,
+          );
+          if (!queue.contains(neighborId)) {
+            queue.add(neighborId);
+          }
+        }
+      }
+    }
+
+    if (previous[endNode.id] == null) {
+      return null;
+    }
+
+    return _buildRoute(origin, destination, startNode, endNode, previous);
+  }
 }
 
 /// Information sur le chemin pour Dijkstra

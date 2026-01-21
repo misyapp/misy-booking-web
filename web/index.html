@@ -40,43 +40,60 @@
     const serviceWorkerVersion = null;
 
     // Custom map style - applied via JS for web compatibility
-    // Fond gris clair, routes gris bitume (foncé→clair), eau bleue
-    window.applyMisyMapStyle = function() {
-      const mapStyle = [
-        {"elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},
-        {"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#A6B5DE"}]},
-        {"featureType":"road.highway","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":3}]},
-        {"featureType":"road.highway","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},
-        {"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#BCC5E8"}]},
-        {"featureType":"road.arterial","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},
-        {"featureType":"road.arterial","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},
-        {"featureType":"road.local","elementType":"geometry","stylers":[{"color":"#FFFFFF"}]},
-        {"featureType":"road.local","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},
-        {"featureType":"road.local","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},
-        {"featureType":"road","elementType":"labels","stylers":[{"visibility":"on"}]},
-        {"featureType":"road.highway","elementType":"labels.icon","stylers":[{"visibility":"on"}]},
-        {"featureType":"water","elementType":"geometry","stylers":[{"color":"#ADD4F5"}]},
-        {"featureType":"poi","elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},
-        {"featureType":"poi","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},
-        {"featureType":"poi","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},
-        {"featureType":"poi","elementType":"labels.icon","stylers":[{"visibility":"on"},{"color":"#B0B0B0"}]},
-        {"featureType":"poi.business","elementType":"labels.text","stylers":[{"visibility":"off"}]},
-        {"featureType":"transit","elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},
-        {"featureType":"transit.station.bus","elementType":"labels.text","stylers":[{"visibility":"on"},{"color":"#000000"}]},
-        {"featureType":"transit.station.bus","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},
-        {"featureType":"transit.station.bus","elementType":"labels.icon","stylers":[{"visibility":"on"},{"color":"#4A4A4A"}]}
-      ];
+    // Fond gris clair, routes gris bitume (foncé→clair), eau bleue, POIs masqués
+    window.misyMapStyle = [
+      {"elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},
+      {"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#A6B5DE"}]},
+      {"featureType":"road.highway","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":3}]},
+      {"featureType":"road.highway","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},
+      {"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#BCC5E8"}]},
+      {"featureType":"road.arterial","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},
+      {"featureType":"road.arterial","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},
+      {"featureType":"road.local","elementType":"geometry","stylers":[{"color":"#FFFFFF"}]},
+      {"featureType":"road.local","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},
+      {"featureType":"road.local","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},
+      {"featureType":"road","elementType":"labels","stylers":[{"visibility":"on"}]},
+      {"featureType":"road.highway","elementType":"labels.icon","stylers":[{"visibility":"on"}]},
+      {"featureType":"water","elementType":"geometry","stylers":[{"color":"#ADD4F5"}]},
+      {"featureType":"poi","stylers":[{"visibility":"off"}]},
+      {"featureType":"transit","elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},
+      {"featureType":"transit.station","stylers":[{"visibility":"off"}]}
+    ];
 
-      // Find and style all Google Maps instances
-      setTimeout(function() {
+    // Apply style to a single map instance
+    window.applyStyleToMap = function(map) {
+      if (map) {
+        map.setOptions({
+          styles: window.misyMapStyle,
+          clickableIcons: false,
+          disableDefaultUI: false,
+          zoomControl: true,
+          mapTypeControl: false,
+          scaleControl: false,
+          streetViewControl: false,
+          rotateControl: false,
+          fullscreenControl: false
+        });
+      }
+    };
+
+    // Find and style all Google Maps instances
+    window.applyMisyMapStyle = function() {
+      const applyToAllMaps = function() {
         const mapDivs = document.querySelectorAll('[id^="map-"]');
         mapDivs.forEach(function(mapDiv) {
           if (mapDiv.__gm && mapDiv.__gm.map) {
-            mapDiv.__gm.map.setOptions({styles: mapStyle});
+            window.applyStyleToMap(mapDiv.__gm.map);
             console.log('Misy map style applied to', mapDiv.id);
           }
         });
-      }, 1000);
+      };
+
+      // Apply multiple times to catch late-initialized maps
+      applyToAllMaps();
+      setTimeout(applyToAllMaps, 500);
+      setTimeout(applyToAllMaps, 1000);
+      setTimeout(applyToAllMaps, 2000);
     };
   </script>
   <!-- This script adds the flutter initialization JS code -->

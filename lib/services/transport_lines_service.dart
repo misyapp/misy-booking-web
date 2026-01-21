@@ -179,6 +179,30 @@ class TransportLinesService {
     return route;
   }
 
+  /// Calcule plusieurs itinéraires entre deux positions
+  /// Retourne une liste triée du plus rapide au moins de correspondances
+  Future<List<TransportRoute>> findMultipleRoutes(LatLng origin, LatLng destination, {int maxRoutes = 5}) async {
+    await initializeGraph();
+
+    if (_transportGraph == null) return [];
+
+    final routes = _transportGraph!.findMultipleRoutes(origin, destination, maxRoutes: maxRoutes);
+
+    myCustomPrintStatement(
+      '${routes.length} itinéraires trouvés entre $origin et $destination',
+    );
+
+    for (int i = 0; i < routes.length; i++) {
+      final route = routes[i];
+      myCustomPrintStatement(
+        '  Option ${i + 1}: ${route.totalDurationMinutes} min, '
+        '${route.numberOfTransfers} correspondance(s)',
+      );
+    }
+
+    return routes;
+  }
+
   /// Trouve l'arrêt le plus proche d'une position
   Future<TransportNode?> findNearestStop(LatLng position) async {
     await initializeGraph();
