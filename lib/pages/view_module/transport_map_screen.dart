@@ -47,8 +47,8 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
   // Position par défaut: Antananarivo, Madagascar (centre ville)
   static const LatLng _defaultPosition = LatLng(-18.8792, 47.5079);
 
-  // Style de carte personnalisé
-  static const String _mapStyle = '[{"elementType":"geometry","stylers":[{"color":"#f5f5f5"}]},{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#dadada"}]},{"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#ffffff"}]},{"featureType":"road.local","elementType":"geometry","stylers":[{"color":"#ffffff"}]},{"featureType":"water","elementType":"geometry","stylers":[{"color":"#c9e4f4"}]},{"featureType":"poi","elementType":"labels","stylers":[{"visibility":"off"}]},{"featureType":"transit","stylers":[{"visibility":"off"}]}]';
+  // Style de carte personnalisé (même que home_screen_web)
+  static const String _mapStyle = '[{"elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#A6B5DE"}]},{"featureType":"road.highway","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":3}]},{"featureType":"road.highway","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#BCC5E8"}]},{"featureType":"road.arterial","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.arterial","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"road.local","elementType":"geometry","stylers":[{"color":"#FFFFFF"}]},{"featureType":"road.local","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.local","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"road","elementType":"labels","stylers":[{"visibility":"on"}]},{"featureType":"road.highway","elementType":"labels.icon","stylers":[{"visibility":"on"}]},{"featureType":"water","elementType":"geometry","stylers":[{"color":"#ADD4F5"}]},{"featureType":"poi","elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"poi","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"poi","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"poi","elementType":"labels.icon","stylers":[{"visibility":"on"},{"color":"#B0B0B0"}]},{"featureType":"poi.business","elementType":"labels.text","stylers":[{"visibility":"off"}]},{"featureType":"transit","elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"transit.station.bus","elementType":"labels.text","stylers":[{"visibility":"on"},{"color":"#000000"}]},{"featureType":"transit.station.bus","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"transit.station.bus","elementType":"labels.icon","stylers":[{"visibility":"on"},{"color":"#4A4A4A"}]}]';
 
   // Données de lignes
   List<TransportLineGroup> _lineGroups = [];
@@ -81,7 +81,13 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
 
   // Éléments de carte
   Set<Polyline> _polylines = {};
-  Set<Marker> _stopMarkers = {};
+  Set<Marker> _busStopMarkers = {};
+  Set<Marker> _railStopMarkers = {}; // Train et Téléphérique
+
+  // Niveau de zoom actuel (pour masquer les arrêts quand dézoomé)
+  double _currentZoom = 13.0;
+  static const double _minZoomForBusStops = 14.5; // Bus: arrêts visibles seulement très zoomé
+  static const double _minZoomForRailStops = 13.0; // Train/Téléphérique: arrêts visibles plus tôt
 
   // Cache des icônes personnalisées
   final Map<String, BitmapDescriptor> _markerIconCache = {};
@@ -382,11 +388,12 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
   /// Met à jour l'affichage de la carte
   Future<void> _updateMapDisplay() async {
     final Set<Polyline> newPolylines = {};
-    final Set<Marker> newMarkers = {};
+    final Set<Marker> newBusMarkers = {};
+    final Set<Marker> newRailMarkers = {};
 
-    // Ajouter le marker de position utilisateur
+    // Ajouter le marker de position utilisateur (dans rail pour qu'il soit toujours visible)
     if (_userPosition != null) {
-      newMarkers.add(
+      newRailMarkers.add(
         Marker(
           markerId: const MarkerId('user_position'),
           position: _userPosition!,
@@ -407,44 +414,48 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
       // Largeur selon le type de transport (train et téléphérique plus gros)
       final bool isRailType = group.transportType == TransportType.urbanTrain ||
           group.transportType == TransportType.telepherique;
-      final int allerWidth = isRailType ? 6 : 3;
-      final int retourWidth = isRailType ? 4 : 2;
+      final int lineWidth = isRailType ? 6 : 5;
 
-      // Ajouter les polylines aller et retour (style IDFM - plus fines pour bus)
+      // Style IDFM: ligne colorée simple
       if (group.aller != null) {
         newPolylines.add(
           Polyline(
             polylineId: PolylineId('${group.lineNumber}_aller'),
             points: group.aller!.coordinates,
             color: color,
-            width: allerWidth,
+            width: lineWidth,
             patterns: [],
           ),
         );
 
-        // Ajouter les markers des arrêts
+        // Ajouter les markers des arrêts (cercles avec numéro)
         for (final stop in group.aller!.stops) {
           final markerId = '${group.lineNumber}_${stop.stopId}';
-          final icon = await _getStopMarkerIcon(group.lineNumber, color);
+          final icon = await _getCircleMarkerIcon(group.lineNumber, color);
 
-          newMarkers.add(
-            Marker(
-              markerId: MarkerId(markerId),
-              position: stop.position,
-              icon: icon,
-              anchor: const Offset(0.5, 0.5),
-              infoWindow: InfoWindow(
-                title: stop.name,
-                snippet: 'Ligne ${group.displayName}',
-              ),
-              onTap: () {
-                setState(() {
-                  _selectedStop = stop;
-                  _selectedStopLine = group.aller;
-                });
-              },
+          final marker = Marker(
+            markerId: MarkerId(markerId),
+            position: stop.position,
+            icon: icon,
+            anchor: const Offset(0.5, 0.5),
+            infoWindow: InfoWindow(
+              title: stop.name,
+              snippet: 'Ligne ${group.displayName}',
             ),
+            onTap: () {
+              setState(() {
+                _selectedStop = stop;
+                _selectedStopLine = group.aller;
+              });
+            },
           );
+
+          // Séparer bus et rail
+          if (isRailType) {
+            newRailMarkers.add(marker);
+          } else {
+            newBusMarkers.add(marker);
+          }
         }
       }
 
@@ -453,9 +464,9 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
           Polyline(
             polylineId: PolylineId('${group.lineNumber}_retour'),
             points: group.retour!.coordinates,
-            color: color.withValues(alpha: 0.5),
-            width: retourWidth,
-            patterns: [PatternItem.dash(10), PatternItem.gap(5)],
+            color: color.withValues(alpha: 0.6),
+            width: lineWidth - 1,
+            patterns: [],
           ),
         );
       }
@@ -464,7 +475,8 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
     if (mounted) {
       setState(() {
         _polylines = newPolylines;
-        _stopMarkers = newMarkers;
+        _busStopMarkers = newBusMarkers;
+        _railStopMarkers = newRailMarkers;
       });
     }
   }
@@ -592,6 +604,112 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
       return icon;
     } catch (e) {
       return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
+    }
+  }
+
+  /// Crée un cercle coloré avec numéro de ligne (style IDFM)
+  Future<BitmapDescriptor> _getCircleMarkerIcon(String lineNumber, Color color) async {
+    final cacheKey = 'circle_${lineNumber}_${color.value}';
+
+    if (_markerIconCache.containsKey(cacheKey)) {
+      return _markerIconCache[cacheKey]!;
+    }
+
+    try {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      const size = 22.0;
+      const center = Offset(size / 2, size / 2);
+
+      // Contour blanc
+      final whiteBorderPaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(center, size / 2, whiteBorderPaint);
+
+      // Cercle coloré principal
+      final colorPaint = Paint()
+        ..color = color
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(center, size / 2 - 1.5, colorPaint);
+
+      // Dessiner le numéro ou icône
+      final isTrain = lineNumber.contains('TRAIN') || lineNumber.contains('TCE');
+      final isCable = lineNumber.contains('TELEPHERIQUE');
+
+      if (isTrain) {
+        // Icône train simplifiée
+        final iconPaint = Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.fill;
+        // Rectangle pour le train
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(center: center, width: 8, height: 6),
+            const Radius.circular(1),
+          ),
+          iconPaint,
+        );
+      } else if (isCable) {
+        // Icône téléphérique simplifiée
+        final iconPaint = Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5;
+        // Ligne horizontale
+        canvas.drawLine(
+          Offset(center.dx - 5, center.dy - 2),
+          Offset(center.dx + 5, center.dy - 2),
+          iconPaint,
+        );
+        // Cabine
+        final cabinPaint = Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.fill;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(center: Offset(center.dx, center.dy + 2), width: 6, height: 5),
+            const Radius.circular(1),
+          ),
+          cabinPaint,
+        );
+      } else {
+        // Bus: afficher le numéro
+        final shortNumber = lineNumber.replaceAll(RegExp(r'^0+'), ''); // Enlever les zéros initiaux
+        final displayNumber = shortNumber.isEmpty ? lineNumber : shortNumber;
+        final textPainter = TextPainter(
+          text: TextSpan(
+            text: displayNumber,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: displayNumber.length > 2 ? 7 : 9,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        );
+        textPainter.layout();
+        textPainter.paint(
+          canvas,
+          Offset(
+            (size - textPainter.width) / 2,
+            (size - textPainter.height) / 2,
+          ),
+        );
+      }
+
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(size.toInt(), size.toInt());
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      final bytes = byteData!.buffer.asUint8List();
+
+      final icon = BitmapDescriptor.bytes(bytes);
+      _markerIconCache[cacheKey] = icon;
+
+      return icon;
+    } catch (e) {
+      debugPrint('Error creating circle marker icon: $e');
+      return BitmapDescriptor.defaultMarkerWithHue(_getHueFromColor(color));
     }
   }
 
@@ -871,16 +989,28 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
     // Si un itinéraire est affiché, ne montrer que l'itinéraire
     // Sinon, montrer les lignes de transport
     final Set<Polyline> allPolylines;
-    final Set<Marker> allMarkers;
+    Set<Marker> allMarkers;
 
     if (_currentRoute != null || _routePolylines.isNotEmpty) {
-      // Mode itinéraire: seulement les segments de route
+      // Mode itinéraire: seulement les segments de route (toujours affichés)
       allPolylines = _routePolylines;
       allMarkers = _routeMarkers;
     } else {
-      // Mode exploration: toutes les lignes de transport
+      // Mode exploration: combiner les markers selon le niveau de zoom
       allPolylines = _polylines;
-      allMarkers = _stopMarkers;
+
+      // Rail (train/téléphérique): visible à partir de zoom 12
+      // Bus: visible à partir de zoom 14.5
+      final showRailStops = _currentZoom >= _minZoomForRailStops;
+      final showBusStops = _currentZoom >= _minZoomForBusStops;
+
+      allMarkers = <Marker>{};
+      if (showRailStops) {
+        allMarkers.addAll(_railStopMarkers);
+      }
+      if (showBusStops) {
+        allMarkers.addAll(_busStopMarkers);
+      }
     }
 
     return Positioned.fill(
@@ -894,6 +1024,19 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
         markers: allMarkers,
         onMapCreated: (controller) {
           _mapController = controller;
+        },
+        onCameraMove: (position) {
+          // Mettre à jour le niveau de zoom et reconstruire si on passe un seuil
+          final oldShowRail = _currentZoom >= _minZoomForRailStops;
+          final oldShowBus = _currentZoom >= _minZoomForBusStops;
+          final newShowRail = position.zoom >= _minZoomForRailStops;
+          final newShowBus = position.zoom >= _minZoomForBusStops;
+
+          _currentZoom = position.zoom;
+
+          if (oldShowRail != newShowRail || oldShowBus != newShowBus) {
+            setState(() {});
+          }
         },
         onTap: (_) {
           // Fermer le panneau de détails et les suggestions
@@ -2715,7 +2858,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
                   polylineId: const PolylineId('walk_to_start'),
                   points: walkToStart.points,
                   color: Colors.grey.shade600,
-                  width: 4,
+                  width: 6,
                   patterns: [PatternItem.dot, PatternItem.gap(8)],
                   zIndex: 10,
                 ),
@@ -2757,7 +2900,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
                 polylineId: PolylineId('route_step_$i'),
                 points: points,
                 color: color,
-                width: 4,
+                width: 6,
                 patterns: [PatternItem.dot, PatternItem.gap(8)],
                 zIndex: 10,
               ),
@@ -2783,7 +2926,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
                 polylineId: PolylineId('route_step_${i}_border'),
                 points: points,
                 color: borderColor,
-                width: 10,
+                width: 14,
                 patterns: [],
                 zIndex: 9,
               ),
@@ -2795,7 +2938,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
                 polylineId: PolylineId('route_step_$i'),
                 points: points,
                 color: color,
-                width: 6,
+                width: 8,
                 patterns: [],
                 zIndex: 10,
               ),
@@ -2892,7 +3035,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
                   polylineId: const PolylineId('walk_to_end'),
                   points: walkToEnd.points,
                   color: Colors.grey.shade600,
-                  width: 4,
+                  width: 6,
                   patterns: [PatternItem.dot, PatternItem.gap(8)],
                   zIndex: 10,
                 ),

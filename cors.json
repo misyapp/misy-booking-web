@@ -1,13 +1,8 @@
 [
   {
-    "origin": [
-      "http://localhost:52774",
-      "http://localhost:8080",
-      "http://localhost:3000",
-      "https://book.misy.app"
-    ],
+    "origin": ["*"],
     "method": ["GET", "HEAD"],
     "maxAgeSeconds": 3600,
-    "responseHeader": ["Content-Type"]
+    "responseHeader": ["Content-Type", "Content-Length", "Accept-Ranges"]
   }
 ]

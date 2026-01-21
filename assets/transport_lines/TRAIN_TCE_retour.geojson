@@ -9,10 +9,20 @@
     "num_coordinates": 163,
     "operator": "Madarail",
     "osm_way_ids": "1193569254, 29078308, 29078469, 691965430",
-    "osm_name": "Tananarive C\u00f4te Est",
+    "osm_name": "Tananarive Côte Est",
     "osm_ref": "TCE",
     "inaugurated": "2025-12-15",
-    "capacity": "300 pax/train"
+    "capacity": "300 pax/train",
+    "schedule": {
+      "operating_hours": "06:00-20:00",
+      "frequency_peak": "15-20 min",
+      "frequency_offpeak": "30-45 min",
+      "peak_hours": "07:00-09:00, 17:00-19:00",
+      "days": "Lundi-Samedi"
+    },
+    "ticket_price": "500 Ar",
+    "trip_duration": "45 min",
+    "route_length_km": 15
   },
   "features": [
     {

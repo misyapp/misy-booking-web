@@ -8,7 +8,17 @@
     "osm_matched": 20,
     "num_coordinates": 356,
     "waypoints_used": 8,
-    "waypoints_skipped": 0
+    "waypoints_skipped": 0,
+    "transport_type": "bus",
+    "schedule": {
+      "operating_hours": "05:00-20:00",
+      "frequency": "Variable (départ quand plein)",
+      "frequency_peak_estimate": "5-10 min",
+      "frequency_offpeak_estimate": "15-30 min",
+      "days": "Lundi-Dimanche"
+    },
+    "ticket_price": "500-800 Ar",
+    "route_name": "Ambohipo - Analakely"
   },
   "features": [
     {

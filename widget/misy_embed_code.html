@@ -4,7 +4,7 @@
 <!-- ============================================== -->
 
 <!-- GOOGLE MAPS API (nécessaire pour l'autocomplete) -->
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyALcvZZmiEonxqzce2fYyZvqc9wiByYO3g&libraries=places"></script>
+<script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyALcvZZmiEonxqzce2fYyZvqc9wiByYO3g&libraries=places&loading=async&callback=initMisyWidget"></script>
 
 <!-- POLICE POPPINS -->
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -14,326 +14,223 @@
 .misy-widget {
   font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
   max-width: 400px;
-  padding: 32px;
+  padding: 24px;
   background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 }
 .misy-widget * { box-sizing: border-box; }
 .misy-widget-title {
-  font-size: 36px;
+  font-size: 22px;
   font-weight: 700;
-  line-height: 1.2;
-  margin: 0 0 24px 0;
+  line-height: 1.3;
+  margin: 0 0 20px 0;
   color: #000;
 }
 .misy-widget-title span { color: #E91E63; }
-.misy-schedule-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: #f3f3f3;
-  border: none;
-  border-radius: 24px;
-  padding: 10px 16px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #000;
-  cursor: pointer;
-  margin-bottom: 20px;
-  font-family: inherit;
+
+/* Container des inputs */
+.misy-inputs-wrapper {
+  position: relative;
+  margin-bottom: 16px;
 }
-.misy-schedule-btn:hover { background: #e8e8e8; }
-.misy-schedule-btn svg { width: 18px; height: 18px; }
-.misy-inputs-container { position: relative; margin-bottom: 20px; }
+
+/* Ligne verticale entre les inputs */
 .misy-inputs-line {
   position: absolute;
-  left: 19px;
-  top: 20px;
-  bottom: 20px;
+  left: 14px;
+  top: 24px;
+  bottom: 24px;
   width: 2px;
-  background: #000;
+  background: #E91E63;
+  z-index: 1;
 }
+
+/* Groupe input */
 .misy-input-group {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 12px 0;
   border-bottom: 1px solid #e8e8e8;
+  position: relative;
 }
 .misy-input-group:last-child { border-bottom: none; }
+
+/* Icône input */
 .misy-input-icon {
-  width: 40px;
-  height: 40px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  z-index: 2;
 }
 .misy-input-icon-circle {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #000;
+  background: #E91E63;
 }
 .misy-input-icon-square {
   width: 10px;
   height: 10px;
-  background: #000;
+  background: #E91E63;
 }
-.misy-input {
+
+/* Input */
+.misy-input-field {
   flex: 1;
   border: none;
   outline: none;
-  font-size: 16px;
+  font-size: 15px;
   font-family: inherit;
   color: #000;
   background: transparent;
   min-width: 0;
   width: 100%;
+  padding: 8px 0;
 }
-.misy-input::placeholder {
+.misy-input-field::placeholder {
   color: #757575;
   opacity: 1;
 }
+
+/* Bouton localisation */
 .misy-location-btn {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   border: none;
   cursor: pointer;
-  color: #000;
+  color: #666;
+  border-radius: 8px;
+  transition: all 0.2s;
 }
-.misy-location-btn:hover { background: #f3f3f3; border-radius: 8px; }
+.misy-location-btn:hover {
+  background: #f3f3f3;
+  color: #E91E63;
+}
+
+/* Bouton clear */
+.misy-clear-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #999;
+  border-radius: 50%;
+  transition: all 0.2s;
+  padding: 0;
+}
+.misy-clear-btn:hover {
+  background: #f0f0f0;
+  color: #666;
+}
+
+/* Options de prise en charge */
+.misy-schedule-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f5f5f5;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  cursor: pointer;
+  margin-bottom: 16px;
+  font-family: inherit;
+  width: 100%;
+  transition: background 0.2s;
+}
+.misy-schedule-option:hover { background: #ebebeb; }
+.misy-schedule-option svg { flex-shrink: 0; }
+
+/* Bouton submit */
 .misy-submit-btn {
   width: 100%;
-  background: #E91E63;
+  background: #FF5357;
   color: #fff;
   border: none;
   border-radius: 8px;
   padding: 14px 24px;
   font-size: 16px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   font-family: inherit;
   transition: background 0.2s;
 }
-.misy-submit-btn:hover { background: #C2185B; }
+.misy-submit-btn:hover { background: #E84347; }
+.misy-submit-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+/* Lien connexion */
 .misy-login-link {
   display: block;
   text-align: center;
   margin-top: 16px;
-  color: #000;
-  font-size: 14px;
+  color: #666;
+  font-size: 13px;
+  text-decoration: none;
+}
+.misy-login-link:hover {
+  color: #E91E63;
   text-decoration: underline;
-  cursor: pointer;
 }
-.misy-login-link:hover { color: #E91E63; }
 
-/* Style pour l'autocomplete Google */
-.pac-container {
-  font-family: 'Poppins', sans-serif;
+/* Liste de suggestions */
+.misy-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #e0e0e0;
   border-radius: 8px;
-  margin-top: 4px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+  margin-top: 4px;
 }
-.pac-item {
-  padding: 10px 12px;
+.misy-suggestion-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
   cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background 0.15s;
 }
-.pac-item:hover {
-  background: #f5f5f5;
+.misy-suggestion-item:last-child { border-bottom: none; }
+.misy-suggestion-item:hover { background: #f8f8f8; }
+.misy-suggestion-icon {
+  color: #999;
+  flex-shrink: 0;
 }
-.pac-item-query {
+.misy-suggestion-text {
   font-size: 14px;
-  color: #000;
-}
-</style>
-
-<!-- WIDGET HTML -->
-<div class="misy-widget">
-  <h2 class="misy-widget-title">Allez où vous voulez avec <span>Misy</span></h2>
-
-  <button class="misy-schedule-btn" onclick="toggleMisySchedule()">
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.2 3.2.8-1.3-4.5-2.7V7z"/>
-    </svg>
-    <span>Prendre en charge maintenant</span>
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M7 10l5 5 5-5z"/>
-    </svg>
-  </button>
-
-  <form id="misyBookingForm" onsubmit="submitMisyBooking(event)">
-    <div class="misy-inputs-container">
-      <div class="misy-inputs-line"></div>
-
-      <div class="misy-input-group">
-        <div class="misy-input-icon">
-          <div class="misy-input-icon-circle"></div>
-        </div>
-        <input type="text" class="misy-input" id="misyPickup" placeholder="Lieu de prise en charge" required autocomplete="off">
-        <button type="button" class="misy-location-btn" onclick="getMisyLocation()" title="Utiliser ma position">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0013 3.06V1h-2v2.06A8.994 8.994 0 003.06 11H1v2h2.06A8.994 8.994 0 0011 20.94V23h2v-2.06A8.994 8.994 0 0020.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
-          </svg>
-        </button>
-      </div>
-
-      <div class="misy-input-group">
-        <div class="misy-input-icon">
-          <div class="misy-input-icon-square"></div>
-        </div>
-        <input type="text" class="misy-input" id="misyDestination" placeholder="Destination" required autocomplete="off">
-      </div>
-    </div>
-
-    <button type="submit" class="misy-submit-btn">Voir les prix</button>
-  </form>
-
-  <a class="misy-login-link" href="https://book.misy.app/#/login" target="_blank">Connectez-vous pour consulter votre activité récente</a>
-</div>
-
-<!-- JAVASCRIPT -->
-<script>
-// Variables pour stocker les données de lieu
-var misyPickupData = null;
-var misyDestinationData = null;
-
-// Initialisation de l'autocomplete Google Places
-function initMisyAutocomplete() {
-  // Options pour Madagascar
-  var options = {
-    componentRestrictions: { country: 'mg' },
-    fields: ['formatted_address', 'geometry', 'name', 'place_id']
-  };
-
-  // Autocomplete pour le pickup
-  var pickupInput = document.getElementById('misyPickup');
-  var pickupAutocomplete = new google.maps.places.Autocomplete(pickupInput, options);
-
-  pickupAutocomplete.addListener('place_changed', function() {
-    var place = pickupAutocomplete.getPlace();
-    if (place.geometry) {
-      misyPickupData = {
-        address: place.formatted_address || place.name,
-        lat: place.geometry.location.lat(),
-        lng: place.geometry.location.lng(),
-        placeId: place.place_id
-      };
-    }
-  });
-
-  // Autocomplete pour la destination
-  var destInput = document.getElementById('misyDestination');
-  var destAutocomplete = new google.maps.places.Autocomplete(destInput, options);
-
-  destAutocomplete.addListener('place_changed', function() {
-    var place = destAutocomplete.getPlace();
-    if (place.geometry) {
-      misyDestinationData = {
-        address: place.formatted_address || place.name,
-        lat: place.geometry.location.lat(),
-        lng: place.geometry.location.lng(),
-        placeId: place.place_id
-      };
-    }
-  });
+  color: #333;
+  line-height: 1.3;
 }
 
-// Soumettre la réservation
-function submitMisyBooking(event) {
-  event.preventDefault();
+/* Masquer les suggestions Google par défaut */
+.pac-container { display: none !important; }
 
-  if (misyPickupData && misyDestinationData) {
-    // Envoyer avec les coordonnées exactes
-    var params = new URLSearchParams({
-      pickup: misyPickupData.address,
-      pickupLat: misyPickupData.lat,
-      pickupLng: misyPickupData.lng,
-      destination: misyDestinationData.address,
-      destLat: misyDestinationData.lat,
-      destLng: misyDestinationData.lng
-    });
-
-    var url = 'https://book.misy.app/#/search?' + params.toString();
-    window.open(url, '_blank');
-  } else {
-    // Fallback si l'autocomplete n'a pas été utilisé
-    var pickup = document.getElementById('misyPickup').value.trim();
-    var destination = document.getElementById('misyDestination').value.trim();
-
-    if (pickup && destination) {
-      var url = 'https://book.misy.app/#/search?pickup=' + encodeURIComponent(pickup) + '&destination=' + encodeURIComponent(destination);
-      window.open(url, '_blank');
-    } else {
-      alert('Veuillez sélectionner un lieu de prise en charge et une destination');
-    }
-  }
-}
-
-// Obtenir la position actuelle
-function getMisyLocation() {
-  if (navigator.geolocation) {
-    var btn = document.querySelector('.misy-location-btn');
-    btn.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="misy-spin"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>';
-
-    navigator.geolocation.getCurrentPosition(
-      function(position) {
-        var lat = position.coords.latitude;
-        var lng = position.coords.longitude;
-
-        // Géocodage inverse
-        var geocoder = new google.maps.Geocoder();
-        geocoder.geocode({ location: { lat: lat, lng: lng } }, function(results, status) {
-          btn.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0013 3.06V1h-2v2.06A8.994 8.994 0 003.06 11H1v2h2.06A8.994 8.994 0 0011 20.94V23h2v-2.06A8.994 8.994 0 0020.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>';
-
-          if (status === 'OK' && results[0]) {
-            document.getElementById('misyPickup').value = results[0].formatted_address;
-            misyPickupData = {
-              address: results[0].formatted_address,
-              lat: lat,
-              lng: lng,
-              placeId: results[0].place_id
-            };
-          } else {
-            document.getElementById('misyPickup').value = lat + ', ' + lng;
-            misyPickupData = {
-              address: lat + ', ' + lng,
-              lat: lat,
-              lng: lng,
-              placeId: null
-            };
-          }
-        });
-      },
-      function(error) {
-        btn.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0013 3.06V1h-2v2.06A8.994 8.994 0 003.06 11H1v2h2.06A8.994 8.994 0 0011 20.94V23h2v-2.06A8.994 8.994 0 0020.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>';
-        alert('Impossible d\'obtenir votre position. Vérifiez les permissions de localisation.');
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  } else {
-    alert('La géolocalisation n\'est pas supportée par votre navigateur.');
-  }
-}
-
-function toggleMisySchedule() {
-  alert('Réservation planifiée bientôt disponible !');
-}
-
-// Initialiser l'autocomplete au chargement
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initMisyAutocomplete);
-} else {
-  initMisyAutocomplete();
-}
-</script>
-
-<style>
+/* Animation spin */
 @keyframes misy-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -341,4 +238,387 @@ if (document.readyState === 'loading') {
 .misy-spin {
   animation: misy-spin 1s linear infinite;
 }
+
+/* Loader */
+.misy-loader {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: misy-spin 0.8s linear infinite;
+}
 </style>
+
+<!-- WIDGET HTML -->
+<div class="misy-widget">
+  <h2 class="misy-widget-title">Commandez votre trajet.<br><span style="font-size: 16px; font-weight: 500; color: #666;">Un chauffeur arrive dans quelques minutes.</span></h2>
+
+  <div class="misy-inputs-wrapper">
+    <div class="misy-inputs-line"></div>
+
+    <!-- Pickup -->
+    <div class="misy-input-group" style="position: relative;">
+      <div class="misy-input-icon">
+        <div class="misy-input-icon-circle"></div>
+      </div>
+      <input
+        type="text"
+        class="misy-input-field"
+        id="misyPickup"
+        placeholder="Lieu de prise en charge"
+        autocomplete="off"
+      >
+      <button type="button" class="misy-location-btn" id="misyLocationBtn" title="Utiliser ma position">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0013 3.06V1h-2v2.06A8.994 8.994 0 003.06 11H1v2h2.06A8.994 8.994 0 0011 20.94V23h2v-2.06A8.994 8.994 0 0020.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
+        </svg>
+      </button>
+      <div class="misy-suggestions" id="misyPickupSuggestions" style="display: none;"></div>
+    </div>
+
+    <!-- Destination -->
+    <div class="misy-input-group" style="position: relative;">
+      <div class="misy-input-icon">
+        <div class="misy-input-icon-square"></div>
+      </div>
+      <input
+        type="text"
+        class="misy-input-field"
+        id="misyDestination"
+        placeholder="Destination"
+        autocomplete="off"
+      >
+      <div class="misy-suggestions" id="misyDestinationSuggestions" style="display: none;"></div>
+    </div>
+  </div>
+
+  <!-- Option de prise en charge -->
+  <button class="misy-schedule-option" type="button">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.2 3.2.8-1.3-4.5-2.7V7z"/>
+    </svg>
+    <span>Prise en charge immédiate</span>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-left: auto;">
+      <path d="M7 10l5 5 5-5z"/>
+    </svg>
+  </button>
+
+  <!-- Bouton Rechercher -->
+  <button type="button" class="misy-submit-btn" id="misySubmitBtn">
+    Commander
+  </button>
+
+  <a class="misy-login-link" href="https://book.misy.app" target="_blank">
+    Connectez-vous sur book.misy.app
+  </a>
+</div>
+
+<!-- JAVASCRIPT -->
+<script>
+// Configuration globale
+var MISY_CONFIG = {
+  baseUrl: 'https://book.misy.app',
+  minChars: 3,
+  debounceDelay: 300,
+  country: 'mg'
+};
+
+// État global
+var misyState = {
+  pickup: { address: null, lat: null, lng: null, placeId: null },
+  destination: { address: null, lat: null, lng: null, placeId: null }
+};
+
+// Services Google
+var misyAutocomplete = null;
+var misyPlacesService = null;
+var misyGeocoder = null;
+
+// Timers
+var misyPickupTimer = null;
+var misyDestTimer = null;
+
+// Éléments DOM
+var misyElements = {};
+
+// Callback appelé par Google Maps API quand elle est prête
+function initMisyWidget() {
+  console.log('Google Maps API chargée, initialisation du widget Misy...');
+
+  // Récupérer les éléments DOM
+  misyElements.pickupInput = document.getElementById('misyPickup');
+  misyElements.destInput = document.getElementById('misyDestination');
+  misyElements.pickupSuggestions = document.getElementById('misyPickupSuggestions');
+  misyElements.destSuggestions = document.getElementById('misyDestinationSuggestions');
+  misyElements.locationBtn = document.getElementById('misyLocationBtn');
+  misyElements.submitBtn = document.getElementById('misySubmitBtn');
+
+  // Vérifier que les éléments existent
+  if (!misyElements.pickupInput || !misyElements.destInput) {
+    console.error('Éléments du widget Misy non trouvés');
+    return;
+  }
+
+  // Initialiser les services Google Places
+  try {
+    misyAutocomplete = new google.maps.places.AutocompleteService();
+    var tempDiv = document.createElement('div');
+    misyPlacesService = new google.maps.places.PlacesService(tempDiv);
+    misyGeocoder = new google.maps.Geocoder();
+    console.log('Services Google Places initialisés');
+  } catch (e) {
+    console.error('Erreur initialisation Google Places:', e);
+    return;
+  }
+
+  // Event listeners pour les inputs
+  misyElements.pickupInput.addEventListener('input', function(e) {
+    misyHandleInput(e.target.value, 'pickup');
+  });
+
+  misyElements.destInput.addEventListener('input', function(e) {
+    misyHandleInput(e.target.value, 'destination');
+  });
+
+  // Bouton localisation
+  if (misyElements.locationBtn) {
+    misyElements.locationBtn.addEventListener('click', misyGetLocation);
+  }
+
+  // Bouton submit
+  if (misyElements.submitBtn) {
+    misyElements.submitBtn.addEventListener('click', misySubmit);
+  }
+
+  // Fermer suggestions quand clic ailleurs
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('#misyPickup') && !e.target.closest('#misyPickupSuggestions')) {
+      misyHideSuggestions('pickup');
+    }
+    if (!e.target.closest('#misyDestination') && !e.target.closest('#misyDestinationSuggestions')) {
+      misyHideSuggestions('destination');
+    }
+  });
+
+  console.log('Widget Misy initialisé avec succès');
+}
+
+// Gestion de l'input avec debounce
+function misyHandleInput(value, type) {
+  // Annuler le timer précédent
+  if (type === 'pickup' && misyPickupTimer) {
+    clearTimeout(misyPickupTimer);
+  } else if (type === 'destination' && misyDestTimer) {
+    clearTimeout(misyDestTimer);
+  }
+
+  // Réinitialiser l'état
+  misyState[type] = { address: null, lat: null, lng: null, placeId: null };
+
+  // Pas assez de caractères
+  if (value.length < MISY_CONFIG.minChars) {
+    misyHideSuggestions(type);
+    return;
+  }
+
+  // Débounce la recherche
+  var timer = setTimeout(function() {
+    misySearchPlaces(value, type);
+  }, MISY_CONFIG.debounceDelay);
+
+  if (type === 'pickup') {
+    misyPickupTimer = timer;
+  } else {
+    misyDestTimer = timer;
+  }
+}
+
+// Recherche Google Places
+function misySearchPlaces(query, type) {
+  if (!misyAutocomplete) {
+    console.error('AutocompleteService non disponible');
+    return;
+  }
+
+  console.log('Recherche:', query, 'pour', type);
+
+  var request = {
+    input: query,
+    componentRestrictions: { country: MISY_CONFIG.country }
+  };
+
+  misyAutocomplete.getPlacePredictions(request, function(predictions, status) {
+    console.log('Réponse Places:', status, predictions ? predictions.length + ' résultats' : 'aucun');
+
+    if (status === google.maps.places.PlacesServiceStatus.OK && predictions && predictions.length > 0) {
+      misyShowSuggestions(predictions, type);
+    } else {
+      misyHideSuggestions(type);
+    }
+  });
+}
+
+// Afficher les suggestions
+function misyShowSuggestions(predictions, type) {
+  var container = type === 'pickup' ? misyElements.pickupSuggestions : misyElements.destSuggestions;
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  predictions.slice(0, 5).forEach(function(prediction) {
+    var item = document.createElement('div');
+    item.className = 'misy-suggestion-item';
+    item.innerHTML =
+      '<svg class="misy-suggestion-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">' +
+      '<path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>' +
+      '</svg>' +
+      '<span class="misy-suggestion-text">' + misyEscapeHtml(prediction.description) + '</span>';
+
+    item.addEventListener('click', function(e) {
+      e.stopPropagation();
+      misySelectSuggestion(prediction, type);
+    });
+
+    container.appendChild(item);
+  });
+
+  container.style.display = 'block';
+}
+
+// Cacher les suggestions
+function misyHideSuggestions(type) {
+  var container = type === 'pickup' ? misyElements.pickupSuggestions : misyElements.destSuggestions;
+  if (container) {
+    container.style.display = 'none';
+  }
+}
+
+// Sélectionner une suggestion
+function misySelectSuggestion(prediction, type) {
+  var input = type === 'pickup' ? misyElements.pickupInput : misyElements.destInput;
+  input.value = prediction.description;
+  misyHideSuggestions(type);
+
+  // Récupérer les coordonnées
+  if (!misyPlacesService) return;
+
+  misyPlacesService.getDetails(
+    { placeId: prediction.place_id, fields: ['geometry', 'formatted_address', 'name'] },
+    function(place, status) {
+      if (status === google.maps.places.PlacesServiceStatus.OK && place && place.geometry) {
+        misyState[type] = {
+          address: prediction.description,
+          lat: place.geometry.location.lat(),
+          lng: place.geometry.location.lng(),
+          placeId: prediction.place_id
+        };
+        console.log('Lieu sélectionné:', type, misyState[type]);
+
+        // Focus sur destination si pickup sélectionné
+        if (type === 'pickup' && misyElements.destInput) {
+          misyElements.destInput.focus();
+        }
+      }
+    }
+  );
+}
+
+// Géolocalisation
+function misyGetLocation() {
+  if (!navigator.geolocation) {
+    alert('La géolocalisation n\'est pas supportée par votre navigateur.');
+    return;
+  }
+
+  // Afficher loader
+  misyElements.locationBtn.innerHTML =
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" class="misy-spin">' +
+    '<path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>' +
+    '</svg>';
+
+  navigator.geolocation.getCurrentPosition(
+    function(position) {
+      var lat = position.coords.latitude;
+      var lng = position.coords.longitude;
+
+      if (misyGeocoder) {
+        misyGeocoder.geocode({ location: { lat: lat, lng: lng } }, function(results, status) {
+          misyResetLocationBtn();
+
+          if (status === 'OK' && results[0]) {
+            misyElements.pickupInput.value = results[0].formatted_address;
+            misyState.pickup = {
+              address: results[0].formatted_address,
+              lat: lat,
+              lng: lng,
+              placeId: results[0].place_id
+            };
+            misyElements.destInput.focus();
+          } else {
+            var coords = lat.toFixed(6) + ', ' + lng.toFixed(6);
+            misyElements.pickupInput.value = coords;
+            misyState.pickup = { address: coords, lat: lat, lng: lng, placeId: null };
+          }
+        });
+      }
+    },
+    function(error) {
+      misyResetLocationBtn();
+      alert('Impossible d\'obtenir votre position.');
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+function misyResetLocationBtn() {
+  if (misyElements.locationBtn) {
+    misyElements.locationBtn.innerHTML =
+      '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">' +
+      '<path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0013 3.06V1h-2v2.06A8.994 8.994 0 003.06 11H1v2h2.06A8.994 8.994 0 0011 20.94V23h2v-2.06A8.994 8.994 0 0020.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>' +
+      '</svg>';
+  }
+}
+
+// Soumettre et rediriger
+function misySubmit() {
+  var pickupText = misyElements.pickupInput.value.trim();
+  var destText = misyElements.destInput.value.trim();
+
+  if (!pickupText || !destText) {
+    alert('Veuillez renseigner le lieu de prise en charge et la destination.');
+    return;
+  }
+
+  // Construire l'URL
+  var params = new URLSearchParams();
+
+  if (misyState.pickup.lat && misyState.pickup.lng) {
+    params.set('pickup', misyState.pickup.address || pickupText);
+    params.set('pickupLat', misyState.pickup.lat);
+    params.set('pickupLng', misyState.pickup.lng);
+  } else {
+    params.set('pickup', pickupText);
+  }
+
+  if (misyState.destination.lat && misyState.destination.lng) {
+    params.set('destination', misyState.destination.address || destText);
+    params.set('destLat', misyState.destination.lat);
+    params.set('destLng', misyState.destination.lng);
+  } else {
+    params.set('destination', destText);
+  }
+
+  var url = MISY_CONFIG.baseUrl + '/#/home?' + params.toString();
+  console.log('Redirection vers:', url);
+  window.open(url, '_blank');
+}
+
+// Utilitaire: échapper HTML
+function misyEscapeHtml(text) {
+  var div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+</script>

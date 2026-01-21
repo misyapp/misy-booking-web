@@ -11,7 +11,16 @@
     "length_km": 8.6,
     "inaugurated": "2025-08-15",
     "ticket_price": "3000 Ar",
-    "capacity": "75000 pax/jour"
+    "capacity": "75000 pax/jour",
+    "schedule": {
+      "operating_hours_current": "07:00-09:00, 16:00-18:00",
+      "operating_hours_full": "06:00-20:00",
+      "full_service_date": "2026-01-15",
+      "frequency": "3-5 min",
+      "days": "Lundi-Dimanche",
+      "note": "Phase transitoire - heures de pointe uniquement jusqu'en janvier 2026"
+    },
+    "trip_duration": "30 min"
   },
   "features": [
     {

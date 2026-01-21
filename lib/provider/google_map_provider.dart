@@ -945,6 +945,104 @@ class GoogleMapProvider with ChangeNotifier {
     }
   }
 
+  /// Cache pour les images de base (non rotées)
+  final Map<String, ui.Image> _baseImageCache = {};
+
+  /// Crée un marker redimensionné et pivoté depuis une URL réseau
+  /// [url] URL de l'image
+  /// [targetSize] Taille cible en pixels (défaut: 40)
+  /// [rotation] Rotation en degrés (0-360, sens horaire)
+  Future<BitmapDescriptor> createRotatedMarkerFromNetwork(
+    String url, {
+    int targetSize = 40,
+    double rotation = 0,
+  }) async {
+    // Arrondir la rotation à 15° pour limiter le nombre d'entrées cache (24 directions)
+    final roundedRotation = ((rotation / 15).round() * 15) % 360;
+    final cacheKey = 'rotated_${targetSize}_${roundedRotation}_$url';
+
+    // Cache mémoire pour le descriptor final
+    if (_markerDescriptorCache.containsKey(cacheKey)) {
+      return _markerDescriptorCache[cacheKey]!;
+    }
+
+    try {
+      // Charger ou récupérer l'image de base depuis le cache
+      ui.Image baseImage;
+      final baseImageKey = 'base_$url';
+
+      if (_baseImageCache.containsKey(baseImageKey)) {
+        baseImage = _baseImageCache[baseImageKey]!;
+      } else {
+        final Uint8List imageData = await getBytesFromNetwork(url);
+        final ui.Codec codec = await ui.instantiateImageCodec(imageData);
+        final ui.FrameInfo frameInfo = await codec.getNextFrame();
+        baseImage = frameInfo.image;
+        _baseImageCache[baseImageKey] = baseImage;
+      }
+
+      // Calculer les dimensions en préservant le ratio
+      final double srcWidth = baseImage.width.toDouble();
+      final double srcHeight = baseImage.height.toDouble();
+      final double aspectRatio = srcWidth / srcHeight;
+
+      double dstWidth, dstHeight;
+      if (aspectRatio >= 1) {
+        // Image plus large que haute
+        dstWidth = targetSize.toDouble();
+        dstHeight = targetSize / aspectRatio;
+      } else {
+        // Image plus haute que large
+        dstHeight = targetSize.toDouble();
+        dstWidth = targetSize * aspectRatio;
+      }
+
+      // Canvas assez grand pour contenir l'image pivotée
+      // La diagonale est sqrt(w² + h²)
+      final double diagonal = sqrt(dstWidth * dstWidth + dstHeight * dstHeight);
+      final int canvasSize = diagonal.ceil();
+
+      final ui.PictureRecorder recorder = ui.PictureRecorder();
+      final Canvas canvas = Canvas(recorder);
+
+      // Sauvegarder l'état, translater au centre, pivoter
+      canvas.save();
+      canvas.translate(canvasSize / 2, canvasSize / 2);
+      canvas.rotate(roundedRotation * pi / 180);
+
+      // Dessiner l'image centrée
+      final srcRect = Rect.fromLTWH(0, 0, srcWidth, srcHeight);
+      final dstRect = Rect.fromLTWH(-dstWidth / 2, -dstHeight / 2, dstWidth, dstHeight);
+      canvas.drawImageRect(baseImage, srcRect, dstRect, Paint()..filterQuality = FilterQuality.high);
+
+      canvas.restore();
+
+      // Convertir en image
+      final ui.Picture picture = recorder.endRecording();
+      final ui.Image rotatedImage = await picture.toImage(canvasSize, canvasSize);
+
+      // Convertir en bytes
+      final ByteData? byteData = await rotatedImage.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        throw Exception('Failed to convert rotated image to bytes');
+      }
+
+      final Uint8List rotatedBytes = byteData.buffer.asUint8List();
+      final descriptor = BitmapDescriptor.fromBytes(rotatedBytes);
+
+      // Mettre en cache le résultat
+      final completer = Completer<BitmapDescriptor>();
+      completer.complete(descriptor);
+      _markerDescriptorCache[cacheKey] = completer.future;
+
+      return descriptor;
+    } catch (e) {
+      myCustomPrintStatement('❌ Erreur création marker pivoté: $e');
+      // Fallback: retourner le marker sans rotation
+      return createResizedMarkerFromNetwork(url, targetWidth: targetSize);
+    }
+  }
+
   double bearingBetween(LatLng latLng1, LatLng latLng2) {
     double startLat = degreesToRadians(latLng1.latitude);
     double startLng = degreesToRadians(latLng1.longitude);

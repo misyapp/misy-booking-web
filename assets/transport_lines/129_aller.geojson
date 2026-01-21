@@ -8,7 +8,17 @@
     "osm_matched": 15,
     "num_coordinates": 245,
     "waypoints_used": 5,
-    "waypoints_skipped": 1
+    "waypoints_skipped": 1,
+    "transport_type": "bus",
+    "schedule": {
+      "operating_hours": "05:00-20:00",
+      "frequency": "Variable (départ quand plein)",
+      "frequency_peak_estimate": "5-10 min",
+      "frequency_offpeak_estimate": "15-30 min",
+      "days": "Lundi-Dimanche"
+    },
+    "ticket_price": "500-800 Ar",
+    "route_name": "Ambohimanarina - Ambohipo"
   },
   "features": [
     {

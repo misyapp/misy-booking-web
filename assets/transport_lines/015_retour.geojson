@@ -8,7 +8,17 @@
     "osm_matched": 30,
     "num_coordinates": 494,
     "waypoints_used": 11,
-    "waypoints_skipped": 0
+    "waypoints_skipped": 0,
+    "transport_type": "bus",
+    "schedule": {
+      "operating_hours": "05:00-20:00",
+      "frequency": "Variable (départ quand plein)",
+      "frequency_peak_estimate": "5-10 min",
+      "frequency_offpeak_estimate": "15-30 min",
+      "days": "Lundi-Dimanche"
+    },
+    "ticket_price": "500-800 Ar",
+    "route_name": "Mandroseza - 67ha"
   },
   "features": [
     {
