@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 
 import 'package:provider/provider.dart';
@@ -28,6 +29,15 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Sur le web, fond blanc simple sans logo
+    if (kIsWeb) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: SizedBox.shrink(),
+      );
+    }
+
+    // Sur mobile, afficher le logo
     return Scaffold(
       backgroundColor: MyColors.primaryColor,
       body: Center(

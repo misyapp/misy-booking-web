@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:ui';
 import 'dart:js_util' as js_util;
 import 'dart:html' as html;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/gestures.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/my_colors.dart';
@@ -20,7 +22,8 @@ import 'package:rider_ride_hailing_app/services/places_autocomplete_web.dart';
 import 'package:rider_ride_hailing_app/services/route_service.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/login_screen.dart' show LoginPage;
 import 'package:rider_ride_hailing_app/pages/auth_module/signup_screen.dart' show SignUpScreen;
-import 'package:rider_ride_hailing_app/pages/view_module/transport_map_screen.dart';
+import 'package:rider_ride_hailing_app/models/transport_line.dart';
+import 'package:rider_ride_hailing_app/services/transport_lines_service.dart';
 
 /// Page d'accueil Web style Uber - version allégée
 /// Affiche une carte pleine page avec:
@@ -39,6 +42,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   final TextEditingController _pickupController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
 
+  // Mode principal: 0 = Course, 1 = Transports
+  final ValueNotifier<int> _mainMode = ValueNotifier(0);
+
   // Focus nodes pour gérer le focus des champs
   final FocusNode _pickupFocusNode = FocusNode();
   final FocusNode _destinationFocusNode = FocusNode();
@@ -55,12 +61,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // Animation des markers - stockage des positions actuelles et cibles
   final Map<String, LatLng> _currentDriverPositions = {};
   final Map<String, LatLng> _targetDriverPositions = {};
+  final Map<String, LatLng> _startDriverPositions = {}; // Positions au début de l'animation
   final Map<String, double> _currentDriverHeadings = {};
   final Map<String, double> _targetDriverHeadings = {};
+  final Map<String, double> _startDriverHeadings = {}; // Headings au début de l'animation
   final Map<String, DriverModal> _driversData = {};
   Timer? _animationTimer;
-  static const Duration _animationDuration = Duration(milliseconds: 1000);
-  static const int _animationSteps = 30;
+  static const Duration _animationDuration = Duration(milliseconds: 800); // Plus rapide
+  static const int _animationSteps = 24; // Moins de steps mais plus fluide
 
   // Polylines pour l'itinéraire
   Set<Polyline> _routePolylines = {};
@@ -72,8 +80,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   final ValueNotifier<bool> _showVehicleSelection = ValueNotifier(false);
   final ValueNotifier<int> _selectedVehicleIndex = ValueNotifier(-1);
 
-  // Style de carte personnalisé
-  static const String _mapStyle = '[{"elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#A6B5DE"}]},{"featureType":"road.highway","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":3}]},{"featureType":"road.highway","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#BCC5E8"}]},{"featureType":"road.arterial","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.arterial","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"road.local","elementType":"geometry","stylers":[{"color":"#FFFFFF"}]},{"featureType":"road.local","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.local","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"road","elementType":"labels","stylers":[{"visibility":"on"}]},{"featureType":"road.highway","elementType":"labels.icon","stylers":[{"visibility":"on"}]},{"featureType":"water","elementType":"geometry","stylers":[{"color":"#ADD4F5"}]},{"featureType":"poi","elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"poi","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"poi","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"poi","elementType":"labels.icon","stylers":[{"visibility":"on"},{"color":"#B0B0B0"}]},{"featureType":"poi.business","elementType":"labels.text","stylers":[{"visibility":"off"}]},{"featureType":"transit","elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"transit.station.bus","elementType":"labels.text","stylers":[{"visibility":"on"},{"color":"#000000"}]},{"featureType":"transit.station.bus","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"transit.station.bus","elementType":"labels.icon","stylers":[{"visibility":"on"},{"color":"#4A4A4A"}]}]';
+  // Style de carte personnalisé - POIs masqués pour éviter les clics
+  static const String _mapStyle = '[{"elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#A6B5DE"}]},{"featureType":"road.highway","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":3}]},{"featureType":"road.highway","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#BCC5E8"}]},{"featureType":"road.arterial","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.arterial","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"road.local","elementType":"geometry","stylers":[{"color":"#FFFFFF"}]},{"featureType":"road.local","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.local","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"road","elementType":"labels","stylers":[{"visibility":"on"}]},{"featureType":"road.highway","elementType":"labels.icon","stylers":[{"visibility":"on"}]},{"featureType":"water","elementType":"geometry","stylers":[{"color":"#ADD4F5"}]},{"featureType":"poi","stylers":[{"visibility":"off"}]},{"featureType":"transit","elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"transit.station","stylers":[{"visibility":"off"}]}]';
+
+  // === Transport mode data ===
+  List<TransportLineGroup> _transportLines = [];
+  Set<Polyline> _transportPolylines = {};
+  Set<Marker> _transportMarkers = {};
+  bool _transportLinesLoaded = false;
 
   // Données de localisation
   Map<String, dynamic> _pickupLocation = {
@@ -329,21 +343,25 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       newDriverIds.add(driverId);
 
       final newPosition = LatLng(driver.currentLat!, driver.currentLng!);
-      final newHeading = _calculateDriverHeading(driver);
 
       // Stocker les données du driver
       _driversData[driverId] = driver;
 
       // Si le driver n'existe pas encore, initialiser sa position
       if (!_currentDriverPositions.containsKey(driverId)) {
+        // Nouveau driver - utiliser le heading de Firestore ou un angle aléatoire basé sur l'ID
+        final initialHeading = driver.heading ?? (driverId.hashCode % 360).toDouble();
         _currentDriverPositions[driverId] = newPosition;
-        _currentDriverHeadings[driverId] = newHeading;
+        _currentDriverHeadings[driverId] = initialHeading;
         _targetDriverPositions[driverId] = newPosition;
-        _targetDriverHeadings[driverId] = newHeading;
+        _targetDriverHeadings[driverId] = initialHeading;
         hasNewDrivers = true;
-        debugPrint('🚗 Nouveau chauffeur: $driverId à ${newPosition.latitude}, ${newPosition.longitude}, heading: ${newHeading.toStringAsFixed(0)}°');
+        debugPrint('🚗 Nouveau chauffeur: $driverId heading initial: ${initialHeading.toStringAsFixed(0)}°');
       } else {
-        // Définir la position cible pour l'animation
+        // Driver existant - calculer le heading à partir du mouvement
+        final oldPosition = _targetDriverPositions[driverId] ?? _currentDriverPositions[driverId]!;
+        final newHeading = _calculateHeadingFromMovement(oldPosition, newPosition, driverId);
+
         _targetDriverPositions[driverId] = newPosition;
         _targetDriverHeadings[driverId] = newHeading;
       }
@@ -352,8 +370,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // Supprimer les drivers qui ne sont plus dans la liste
     _currentDriverPositions.removeWhere((id, _) => !newDriverIds.contains(id));
     _targetDriverPositions.removeWhere((id, _) => !newDriverIds.contains(id));
+    _startDriverPositions.removeWhere((id, _) => !newDriverIds.contains(id));
     _currentDriverHeadings.removeWhere((id, _) => !newDriverIds.contains(id));
     _targetDriverHeadings.removeWhere((id, _) => !newDriverIds.contains(id));
+    _startDriverHeadings.removeWhere((id, _) => !newDriverIds.contains(id));
     _driversData.removeWhere((id, _) => !newDriverIds.contains(id));
 
     // Si nouveaux chauffeurs, afficher immédiatement
@@ -369,6 +389,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   void _startMarkerAnimation() {
     _animationTimer?.cancel();
 
+    // Sauvegarder les positions et headings de départ pour interpolation linéaire
+    _startDriverPositions.clear();
+    _startDriverHeadings.clear();
+    for (final driverId in _currentDriverPositions.keys) {
+      _startDriverPositions[driverId] = _currentDriverPositions[driverId]!;
+      _startDriverHeadings[driverId] = _currentDriverHeadings[driverId] ?? 0.0;
+    }
+
     int currentStep = 0;
     final stepDuration = Duration(milliseconds: _animationDuration.inMilliseconds ~/ _animationSteps);
 
@@ -382,16 +410,21 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       final progress = currentStep / _animationSteps;
       final isLastStep = currentStep >= _animationSteps;
 
-      // Interpoler les positions
+      // Interpoler les positions et les headings depuis les valeurs de départ
       for (final driverId in _currentDriverPositions.keys.toList()) {
-        final current = _currentDriverPositions[driverId]!;
+        final start = _startDriverPositions[driverId];
         final target = _targetDriverPositions[driverId];
 
-        if (target != null) {
-          // Interpolation linéaire de la position
-          final newLat = current.latitude + (target.latitude - current.latitude) * progress;
-          final newLng = current.longitude + (target.longitude - current.longitude) * progress;
+        if (start != null && target != null) {
+          // Interpolation linéaire de la position (start → target)
+          final newLat = start.latitude + (target.latitude - start.latitude) * progress;
+          final newLng = start.longitude + (target.longitude - start.longitude) * progress;
           _currentDriverPositions[driverId] = LatLng(newLat, newLng);
+
+          // Interpolation de l'angle (heading) pour rotation fluide
+          final startHeading = _startDriverHeadings[driverId] ?? 0.0;
+          final targetHeading = _targetDriverHeadings[driverId] ?? startHeading;
+          _currentDriverHeadings[driverId] = _interpolateAngle(startHeading, targetHeading, progress);
         }
       }
 
@@ -423,7 +456,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   Future<void> _rebuildDriverMarkers() async {
     if (!mounted) return;
 
-    debugPrint('🔄 _rebuildDriverMarkers: ${_currentDriverPositions.length} chauffeurs');
+    print('🔄 _rebuildDriverMarkers: ${_currentDriverPositions.length} positions, ${_driversData.length} drivers');
 
     Set<Marker> newMarkers = {};
 
@@ -433,12 +466,23 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       final driver = _driversData[driverId];
 
       if (driver == null) {
-        debugPrint('⚠️ Driver $driverId non trouvé dans _driversData');
+        print('⚠️ Driver $driverId non trouvé dans _driversData');
         continue;
       }
 
-      // Charger l'icône (avec cache interne dans _getVehicleIcon)
-      BitmapDescriptor icon = await _getVehicleIcon(driver.vehicleType);
+      // Récupérer le heading actuel
+      final heading = _currentDriverHeadings[driverId] ?? 0.0;
+
+      // Charger l'icône (avec fallback)
+      BitmapDescriptor icon;
+      try {
+        icon = await _getVehicleIcon(driver.vehicleType);
+      } catch (e) {
+        print('❌ Erreur chargement icône: $e');
+        icon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
+      }
+
+      print('🚗 Marker $driverId: pos=${position.latitude.toStringAsFixed(4)},${position.longitude.toStringAsFixed(4)} rot=${heading.toStringAsFixed(0)}°');
 
       newMarkers.add(
         Marker(
@@ -447,12 +491,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           icon: icon,
           flat: true,
           anchor: const Offset(0.5, 0.5),
-          infoWindow: InfoWindow(title: driver.vehicleType ?? 'Chauffeur'),
+          rotation: heading,
+          consumeTapEvents: true, // Désactive le clic
         ),
       );
     }
 
-    debugPrint('🔄 ${newMarkers.length} markers créés');
+    print('🔄 ${newMarkers.length} markers créés');
 
     if (mounted) {
       setState(() {
@@ -461,30 +506,26 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
   }
 
-  double _calculateDriverHeading(DriverModal driver) {
-    if (driver.heading != null && driver.heading != 0) {
-      debugPrint('🧭 ${driver.firstName}: heading Firestore = ${driver.heading}°');
-      return driver.heading!;
+  /// Calcule le heading à partir du mouvement entre deux positions
+  double _calculateHeadingFromMovement(LatLng oldPosition, LatLng newPosition, String driverId) {
+    final latDiff = (newPosition.latitude - oldPosition.latitude).abs();
+    final lngDiff = (newPosition.longitude - oldPosition.longitude).abs();
+
+    // Seuil minimum de mouvement pour calculer un heading (environ 1 mètre)
+    const minMovement = 0.00001;
+
+    if (latDiff > minMovement || lngDiff > minMovement) {
+      final bearing = _bearingBetween(
+        oldPosition.latitude, oldPosition.longitude,
+        newPosition.latitude, newPosition.longitude,
+      );
+      debugPrint('🧭 $driverId: heading calculé = ${bearing.toStringAsFixed(0)}° (mouvement détecté)');
+      return bearing;
     }
 
-    if (driver.oldLat != null && driver.oldLng != null &&
-        driver.currentLat != null && driver.currentLng != null) {
-      final latDiff = (driver.currentLat! - driver.oldLat!).abs();
-      final lngDiff = (driver.currentLng! - driver.oldLng!).abs();
-
-      if (latDiff > 0.00001 || lngDiff > 0.00001) {
-        final bearing = _bearingBetween(
-          driver.oldLat!, driver.oldLng!,
-          driver.currentLat!, driver.currentLng!,
-        );
-        debugPrint('🧭 ${driver.firstName}: bearing calculé = ${bearing.toStringAsFixed(1)}°');
-        return bearing;
-      }
-    }
-
-    final randomRotation = (driver.id.hashCode % 360).toDouble();
-    debugPrint('🧭 ${driver.firstName}: rotation par défaut (hashCode) = ${randomRotation.toStringAsFixed(1)}°');
-    return randomRotation;
+    // Pas de mouvement significatif - garder le heading actuel
+    final currentHeading = _currentDriverHeadings[driverId] ?? _targetDriverHeadings[driverId] ?? 0.0;
+    return currentHeading;
   }
 
   double _bearingBetween(double lat1, double lng1, double lat2, double lng2) {
@@ -503,7 +544,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   double _degreesToRadians(double degrees) => degrees * pi / 180;
   double _radiansToDegrees(double radians) => radians * 180 / pi;
 
-  static const int _markerSize = 40;
+  static const int _markerSize = 28; // Taille réduite style Uber
 
   Future<BitmapDescriptor> _getVehicleIcon(String? vehicleType) async {
     debugPrint('🚗 _getVehicleIcon appelé avec vehicleType: $vehicleType');
@@ -653,6 +694,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _isSearching.dispose();
     _showVehicleSelection.dispose();
     _selectedVehicleIndex.dispose();
+    _mainMode.dispose();
     super.dispose();
   }
 
@@ -664,9 +706,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           // Carte Google Maps pleine page
           _buildMap(),
 
-          // Header avec logo et navigation
-          _buildHeader(),
-
           // Formulaire de recherche ou sélection de véhicule
           ValueListenableBuilder<bool>(
             valueListenable: _showVehicleSelection,
@@ -676,37 +715,163 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                   : _buildSearchCard();
             },
           ),
+
+          // Bouton profil en haut à droite
+          _buildProfileButton(),
         ],
       ),
     );
   }
 
+  Widget _buildProfileButton() {
+    return Positioned(
+      top: 16,
+      right: 16,
+      child: ValueListenableBuilder(
+        valueListenable: userData,
+        builder: (context, user, _) {
+          final isLoggedIn = user != null;
+
+          if (!isLoggedIn) {
+            return Row(
+              children: [
+                TextButton(
+                  onPressed: () => _navigateToLogin(),
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.white.withOpacity(0.9),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  child: const Text(
+                    'Connexion',
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () => _navigateToSignUp(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: MyColors.primaryColor,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                  child: const Text("S'inscrire"),
+                ),
+              ],
+            );
+          }
+
+          return PopupMenuButton<String>(
+            offset: const Offset(0, 45),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.9),
+                shape: BoxShape.circle,
+              ),
+              child: CircleAvatar(
+                radius: 18,
+                backgroundColor: Colors.grey.shade200,
+                backgroundImage: user?.profileImage != null && user!.profileImage.isNotEmpty
+                    ? NetworkImage(user.profileImage)
+                    : null,
+                child: user?.profileImage == null || user!.profileImage.isEmpty
+                    ? Icon(Icons.person, color: Colors.grey.shade600, size: 20)
+                    : null,
+              ),
+            ),
+            onSelected: (value) {
+              if (value == 'logout') {
+                final authProvider = Provider.of<CustomAuthProvider>(context, listen: false);
+                authProvider.logout(context);
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'profile',
+                child: Row(
+                  children: [
+                    const Icon(Icons.person_outline),
+                    const SizedBox(width: 8),
+                    Text('${user?.fullName ?? 'Mon profil'}'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'trips',
+                child: Row(
+                  children: [
+                    Icon(Icons.history),
+                    SizedBox(width: 8),
+                    Text('Mes trajets'),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Déconnexion', style: TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildMap() {
-    Set<Marker> allMarkers = {..._driverMarkers};
-    Set<Polyline> allPolylines = {..._routePolylines};
+    Set<Marker> allMarkers;
+    Set<Polyline> allPolylines;
 
-    // Ajouter le marker de pickup si disponible
-    if (_pickupLocation['lat'] != null) {
-      allMarkers.add(
-        Marker(
-          markerId: const MarkerId('pickup'),
-          position: LatLng(_pickupLocation['lat'], _pickupLocation['lng']),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-          infoWindow: const InfoWindow(title: 'Départ'),
-        ),
-      );
-    }
+    if (_mainMode.value == 0) {
+      // Mode Course: chauffeurs + itinéraire
+      allMarkers = {..._driverMarkers};
+      allPolylines = {..._routePolylines};
 
-    // Ajouter le marker de destination si disponible
-    if (_destinationLocation['lat'] != null) {
-      allMarkers.add(
-        Marker(
-          markerId: const MarkerId('destination'),
-          position: LatLng(_destinationLocation['lat'], _destinationLocation['lng']),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-          infoWindow: const InfoWindow(title: 'Arrivée'),
-        ),
-      );
+      // Ajouter le marker de pickup si disponible
+      if (_pickupLocation['lat'] != null) {
+        allMarkers.add(
+          Marker(
+            markerId: const MarkerId('pickup'),
+            position: LatLng(_pickupLocation['lat'], _pickupLocation['lng']),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+            consumeTapEvents: true,
+          ),
+        );
+      }
+
+      // Ajouter le marker de destination si disponible
+      if (_destinationLocation['lat'] != null) {
+        allMarkers.add(
+          Marker(
+            markerId: const MarkerId('destination'),
+            position: LatLng(_destinationLocation['lat'], _destinationLocation['lng']),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+            consumeTapEvents: true,
+          ),
+        );
+      }
+    } else {
+      // Mode Transport: lignes de transport
+      allMarkers = {..._transportMarkers};
+      allPolylines = {..._transportPolylines};
     }
 
     return GoogleMap(
@@ -730,6 +895,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       compassEnabled: false,
       mapType: MapType.normal,
       gestureRecognizers: const {},
+      padding: const EdgeInsets.only(top: 70, bottom: 400),
+      onTap: (_) {}, // Désactive les clics sur POI
     );
   }
 
@@ -745,178 +912,194 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
   }
 
-  Widget _buildHeader() {
-    return ValueListenableBuilder(
-      valueListenable: userData,
-      builder: (context, user, _) {
-        final isLoggedIn = user != null;
+  Widget _buildSearchCard() {
+    return Positioned(
+      top: 16,
+      left: 16,
+      bottom: 16,
+      child: Listener(
+        onPointerSignal: (pointerSignal) {
+          // Stoppe la propagation des événements de scroll vers la carte
+          if (pointerSignal is PointerScrollEvent) {
+            // L'événement est consommé ici
+          }
+        },
+        behavior: HitTestBehavior.opaque,
+        child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          child: Container(
+            width: 300,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.93),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.5),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Logo Misy
+                Image.asset(
+                  MyImagesUrl.misyLogoRose,
+                  height: 28,
+                  fit: BoxFit.contain,
+                ),
+
+                const SizedBox(height: 16),
+
+                // Onglets navigation - utilise ValueListenableBuilder pour mise à jour locale
+                ValueListenableBuilder<int>(
+                  valueListenable: _mainMode,
+                  builder: (context, mode, _) {
+                    return Row(
+                      children: [
+                        _buildNavTab(
+                          label: 'Course',
+                          isSelected: mode == 0,
+                          onTap: () => _switchToMode(0),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildNavTab(
+                          label: 'Transports',
+                          isSelected: mode == 1,
+                          onTap: () => _switchToMode(1),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 20),
+
+                // Contenu selon le mode - Expanded pour prendre tout l'espace restant
+                Expanded(
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _mainMode,
+                    builder: (context, mode, _) {
+                      if (mode == 0) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Mode Course
+                            _buildLocationInputs(),
+
+                            const SizedBox(height: 16),
+
+                            _buildScheduleOptions(),
+
+                            const SizedBox(height: 16),
+
+                            // Bouton Rechercher
+                            ValueListenableBuilder<bool>(
+                              valueListenable: _isSearching,
+                              builder: (context, isSearching, _) {
+                                return SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    onPressed: isSearching ? null : _onSearch,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: MyColors.primaryColor,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(vertical: 14),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    child: isSearching
+                                        ? const SizedBox(
+                                            height: 20,
+                                            width: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Text(
+                                            'Commander',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        );
+                      } else {
+                        // Mode Transport
+                        return _transportLinesLoaded
+                            ? _buildTransportLinesList()
+                            : const Center(child: CircularProgressIndicator());
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      ),
+    );
+  }
+
+  Widget _buildTransportLinesList() {
+    return ListView.builder(
+      padding: EdgeInsets.zero,
+      itemCount: _transportLines.length,
+      itemBuilder: (context, index) {
+        final group = _transportLines[index];
+        final color = Color(TransportLineColors.getLineColor(group.lineNumber, group.transportType));
 
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ],
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade200),
           ),
           child: Row(
             children: [
-              // Logo Misy
-              Image.asset(
-                MyImagesUrl.misyLogoRose,
-                height: 32,
-                fit: BoxFit.contain,
-              ),
-
-              const SizedBox(width: 32),
-
-              // Onglets de navigation
-              _buildNavTab(
-                label: 'Course',
-                isSelected: true,
-                onTap: () {},
-              ),
-              const SizedBox(width: 8),
-              _buildNavTab(
-                label: 'Carte des transports',
-                isSelected: false,
-                onTap: () => _navigateToTransportMap(),
-              ),
-
-              const Spacer(),
-
-              // Mon compte - change selon l'état de connexion
-              if (!isLoggedIn) ...[
-                TextButton(
-                  onPressed: () => _navigateToLogin(),
-                  child: const Text(
-                    'Connexion',
-                    style: TextStyle(
-                      color: Colors.black87,
-                      fontWeight: FontWeight.w500,
+              Container(
+                width: 40,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Center(
+                  child: Text(
+                    group.lineNumber,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: () => _navigateToSignUp(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: MyColors.primaryColor,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                  ),
-                  child: const Text("S'inscrire"),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  group.displayName,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
-              ] else ...[
-                PopupMenuButton<String>(
-                  offset: const Offset(0, 45),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: MyColors.primaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 14,
-                          backgroundColor: MyColors.primaryColor,
-                          child: Text(
-                            (user?.firstName ?? 'U')[0].toUpperCase(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Mon compte',
-                          style: TextStyle(
-                            color: MyColors.primaryColor,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Icon(Icons.arrow_drop_down, color: MyColors.primaryColor),
-                      ],
-                    ),
-                  ),
-                  onSelected: (value) {
-                    if (value == 'logout') {
-                      final authProvider = Provider.of<CustomAuthProvider>(context, listen: false);
-                      authProvider.logout(context);
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    PopupMenuItem(
-                      value: 'profile',
-                      child: Row(
-                        children: [
-                          const Icon(Icons.person_outline),
-                          const SizedBox(width: 8),
-                          Text('${user?.fullName ?? 'Mon profil'}'),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'trips',
-                      child: Row(
-                        children: [
-                          Icon(Icons.history),
-                          SizedBox(width: 8),
-                          Text('Mes trajets'),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'mail',
-                      child: Row(
-                        children: [
-                          Icon(Icons.mail_outline),
-                          SizedBox(width: 8),
-                          Text('Courrier'),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'settings',
-                      child: Row(
-                        children: [
-                          Icon(Icons.settings_outlined),
-                          SizedBox(width: 8),
-                          Text('Paramètres'),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuDivider(),
-                    const PopupMenuItem(
-                      value: 'logout',
-                      child: Row(
-                        children: [
-                          Icon(Icons.logout, color: Colors.red),
-                          SizedBox(width: 8),
-                          Text('Déconnexion', style: TextStyle(color: Colors.red)),
-                        ],
-                      ),
-                    ),
-                  ],
+              ),
+              Text(
+                group.transportType.displayName,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
                 ),
-              ],
+              ),
             ],
           ),
         );
@@ -924,89 +1107,73 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     );
   }
 
-  Widget _buildSearchCard() {
-    return Positioned(
-      top: 100,
-      left: 24,
-      child: Container(
-        width: 400,
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 20,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Titre
-            const Text(
-              'Commander une course',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+  void _switchToMode(int mode) {
+    if (_mainMode.value == mode) return;
 
-            const SizedBox(height: 20),
+    _mainMode.value = mode;
 
-            // Champs de saisie avec autocomplete
-            _buildLocationInputs(),
+    // Forcer la mise à jour de la carte pour afficher les bons markers/polylines
+    setState(() {});
 
-            const SizedBox(height: 16),
+    if (mode == 1 && !_transportLinesLoaded) {
+      _loadTransportLines();
+    }
+  }
 
-            // Options de prise en charge
-            _buildScheduleOptions(),
+  Future<void> _loadTransportLines() async {
+    try {
+      final lines = await TransportLinesService.instance.loadAllLines();
+      if (mounted) {
+        setState(() {
+          _transportLines = lines;
+          _transportLinesLoaded = true;
+        });
+        _updateTransportMapDisplay();
+      }
+    } catch (e) {
+      debugPrint('Error loading transport lines: $e');
+      if (mounted) {
+        setState(() {
+          _transportLinesLoaded = true;
+        });
+      }
+    }
+  }
 
-            const SizedBox(height: 16),
+  void _updateTransportMapDisplay() {
+    final Set<Polyline> newPolylines = {};
+    final Set<Marker> newMarkers = {};
 
-            // Bouton Rechercher
-            ValueListenableBuilder<bool>(
-              valueListenable: _isSearching,
-              builder: (context, isSearching, _) {
-                return SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: isSearching ? null : _onSearch,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: MyColors.primaryColor,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: isSearching
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text(
-                            'Voir les prix',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
+    for (final group in _transportLines) {
+      final color = Color(TransportLineColors.getLineColor(group.lineNumber, group.transportType));
+
+      if (group.aller != null) {
+        newPolylines.add(
+          Polyline(
+            polylineId: PolylineId('${group.lineNumber}_aller'),
+            points: group.aller!.coordinates,
+            color: color,
+            width: 4,
+          ),
+        );
+      }
+
+      if (group.retour != null) {
+        newPolylines.add(
+          Polyline(
+            polylineId: PolylineId('${group.lineNumber}_retour'),
+            points: group.retour!.coordinates,
+            color: color.withOpacity(0.5),
+            width: 3,
+          ),
+        );
+      }
+    }
+
+    setState(() {
+      _transportPolylines = newPolylines;
+      _transportMarkers = newMarkers;
+    });
   }
 
   Widget _buildLocationInputs() {
@@ -1347,26 +1514,44 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   Widget _buildVehicleSelectionPanel() {
     return Positioned(
-      top: 100,
-      left: 24,
-      child: Container(
-        width: 400,
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 20,
-              offset: const Offset(0, 4),
+      top: 16,
+      left: 16,
+      bottom: 16,
+      child: Listener(
+        onPointerSignal: (pointerSignal) {
+          // Stoppe la propagation des événements de scroll vers la carte
+          if (pointerSignal is PointerScrollEvent) {
+            // L'événement est consommé ici
+          }
+        },
+        behavior: HitTestBehavior.opaque,
+        child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          child: Container(
+            width: 300,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.93),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.5),
+                width: 1,
+              ),
             ),
-          ],
-        ),
-        child: Column(
+            child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
           children: [
+            // Logo Misy
+            Image.asset(
+              MyImagesUrl.misyLogoRose,
+              height: 28,
+              fit: BoxFit.contain,
+            ),
+
+            const SizedBox(height: 16),
+
             // Header avec bouton retour
             Row(
               children: [
@@ -1440,8 +1625,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             const SizedBox(height: 16),
 
             // Liste des véhicules
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 300),
+            Expanded(
               child: SingleChildScrollView(
                 child: Column(
                   children: [
@@ -1573,6 +1757,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             ),
           ],
         ),
+          ),
+        ),
+      ),
       ),
     );
   }
@@ -1613,13 +1800,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const SignUpScreen()),
-    );
-  }
-
-  void _navigateToTransportMap() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const TransportMapScreen()),
     );
   }
 

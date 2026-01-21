@@ -945,13 +945,12 @@ class GoogleMapProvider with ChangeNotifier {
     }
   }
 
-  /// Cache pour les images de base (non rotées)
+  /// Cache pour les images de base redimensionnées (non rotées)
   final Map<String, ui.Image> _baseImageCache = {};
 
   /// Crée un marker redimensionné et pivoté depuis une URL réseau
-  /// [url] URL de l'image
-  /// [targetSize] Taille cible en pixels (défaut: 40)
-  /// [rotation] Rotation en degrés (0-360, sens horaire)
+  /// L'image est d'abord redimensionnée à targetSize, puis pivotée.
+  /// Le canvas garde la même taille pour éviter la déformation.
   Future<BitmapDescriptor> createRotatedMarkerFromNetwork(
     String url, {
     int targetSize = 40,
@@ -967,55 +966,38 @@ class GoogleMapProvider with ChangeNotifier {
     }
 
     try {
-      // Charger ou récupérer l'image de base depuis le cache
+      // Charger ou récupérer l'image de base redimensionnée depuis le cache
       ui.Image baseImage;
-      final baseImageKey = 'base_$url';
+      final baseImageKey = 'base_${targetSize}_$url';
 
       if (_baseImageCache.containsKey(baseImageKey)) {
         baseImage = _baseImageCache[baseImageKey]!;
       } else {
         final Uint8List imageData = await getBytesFromNetwork(url);
-        final ui.Codec codec = await ui.instantiateImageCodec(imageData);
+        // Redimensionner à targetSize (carré)
+        final ui.Codec codec = await ui.instantiateImageCodec(
+          imageData,
+          targetWidth: targetSize,
+          targetHeight: targetSize,
+        );
         final ui.FrameInfo frameInfo = await codec.getNextFrame();
         baseImage = frameInfo.image;
         _baseImageCache[baseImageKey] = baseImage;
       }
 
-      // Calculer les dimensions en préservant le ratio
-      final double srcWidth = baseImage.width.toDouble();
-      final double srcHeight = baseImage.height.toDouble();
-      final double aspectRatio = srcWidth / srcHeight;
-
-      double dstWidth, dstHeight;
-      if (aspectRatio >= 1) {
-        // Image plus large que haute
-        dstWidth = targetSize.toDouble();
-        dstHeight = targetSize / aspectRatio;
-      } else {
-        // Image plus haute que large
-        dstHeight = targetSize.toDouble();
-        dstWidth = targetSize * aspectRatio;
-      }
-
-      // Canvas assez grand pour contenir l'image pivotée
-      // La diagonale est sqrt(w² + h²)
-      final double diagonal = sqrt(dstWidth * dstWidth + dstHeight * dstHeight);
-      final int canvasSize = diagonal.ceil();
+      // Canvas de même taille que l'image
+      final int canvasSize = targetSize;
 
       final ui.PictureRecorder recorder = ui.PictureRecorder();
       final Canvas canvas = Canvas(recorder);
 
-      // Sauvegarder l'état, translater au centre, pivoter
-      canvas.save();
+      // Translater au centre, pivoter, puis dessiner l'image centrée
       canvas.translate(canvasSize / 2, canvasSize / 2);
       canvas.rotate(roundedRotation * pi / 180);
+      canvas.translate(-canvasSize / 2, -canvasSize / 2);
 
-      // Dessiner l'image centrée
-      final srcRect = Rect.fromLTWH(0, 0, srcWidth, srcHeight);
-      final dstRect = Rect.fromLTWH(-dstWidth / 2, -dstHeight / 2, dstWidth, dstHeight);
-      canvas.drawImageRect(baseImage, srcRect, dstRect, Paint()..filterQuality = FilterQuality.high);
-
-      canvas.restore();
+      // Dessiner l'image (elle remplit tout le canvas)
+      canvas.drawImage(baseImage, Offset.zero, Paint()..filterQuality = FilterQuality.high);
 
       // Convertir en image
       final ui.Picture picture = recorder.endRecording();

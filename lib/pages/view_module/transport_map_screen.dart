@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:rider_ride_hailing_app/contants/my_colors.dart';
@@ -47,8 +48,8 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
   // Position par défaut: Antananarivo, Madagascar (centre ville)
   static const LatLng _defaultPosition = LatLng(-18.8792, 47.5079);
 
-  // Style de carte personnalisé (même que home_screen_web)
-  static const String _mapStyle = '[{"elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#A6B5DE"}]},{"featureType":"road.highway","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":3}]},{"featureType":"road.highway","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#BCC5E8"}]},{"featureType":"road.arterial","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.arterial","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"road.local","elementType":"geometry","stylers":[{"color":"#FFFFFF"}]},{"featureType":"road.local","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.local","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"road","elementType":"labels","stylers":[{"visibility":"on"}]},{"featureType":"road.highway","elementType":"labels.icon","stylers":[{"visibility":"on"}]},{"featureType":"water","elementType":"geometry","stylers":[{"color":"#ADD4F5"}]},{"featureType":"poi","elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"poi","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"poi","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"poi","elementType":"labels.icon","stylers":[{"visibility":"on"},{"color":"#B0B0B0"}]},{"featureType":"poi.business","elementType":"labels.text","stylers":[{"visibility":"off"}]},{"featureType":"transit","elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"transit.station.bus","elementType":"labels.text","stylers":[{"visibility":"on"},{"color":"#000000"}]},{"featureType":"transit.station.bus","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"transit.station.bus","elementType":"labels.icon","stylers":[{"visibility":"on"},{"color":"#4A4A4A"}]}]';
+  // Style de carte personnalisé - POIs masqués pour éviter les clics
+  static const String _mapStyle = '[{"elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#A6B5DE"}]},{"featureType":"road.highway","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":3}]},{"featureType":"road.highway","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#BCC5E8"}]},{"featureType":"road.arterial","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.arterial","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"road.local","elementType":"geometry","stylers":[{"color":"#FFFFFF"}]},{"featureType":"road.local","elementType":"labels.text.fill","stylers":[{"color":"#7A7A7A"}]},{"featureType":"road.local","elementType":"labels.text.stroke","stylers":[{"color":"#FFFFFF"},{"weight":2}]},{"featureType":"road","elementType":"labels","stylers":[{"visibility":"on"}]},{"featureType":"road.highway","elementType":"labels.icon","stylers":[{"visibility":"on"}]},{"featureType":"water","elementType":"geometry","stylers":[{"color":"#ADD4F5"}]},{"featureType":"poi","stylers":[{"visibility":"off"}]},{"featureType":"transit","elementType":"geometry","stylers":[{"color":"#E5E9EC"}]},{"featureType":"transit.station","stylers":[{"visibility":"off"}]}]';
 
   // Données de lignes
   List<TransportLineGroup> _lineGroups = [];
@@ -398,8 +399,8 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
           markerId: const MarkerId('user_position'),
           position: _userPosition!,
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet),
-          infoWindow: const InfoWindow(title: 'Ma position'),
           zIndex: 100,
+          consumeTapEvents: true,
         ),
       );
     }
@@ -438,16 +439,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
             position: stop.position,
             icon: icon,
             anchor: const Offset(0.5, 0.5),
-            infoWindow: InfoWindow(
-              title: stop.name,
-              snippet: 'Ligne ${group.displayName}',
-            ),
-            onTap: () {
-              setState(() {
-                _selectedStop = stop;
-                _selectedStopLine = group.aller;
-              });
-            },
+            consumeTapEvents: true,
           );
 
           // Séparer bus et rail
@@ -971,14 +963,47 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
           // Carte Google Maps
           _buildMap(),
 
-          // Header avec recherche
-          _buildHeader(),
-
           // Panneau latéral gauche avec filtres
           _buildLeftPanel(),
 
+          // Bouton profil en haut à droite
+          _buildProfileButton(),
+
           // Panneau de détails de l'arrêt (droite)
           if (_selectedStop != null) _buildStopDetailPanel(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileButton() {
+    return Positioned(
+      top: 16,
+      right: 16,
+      child: Row(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: TextButton(
+              onPressed: () => Navigator.pop(context),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+              child: const Text(
+                'Commander',
+                style: TextStyle(
+                  color: Colors.black87,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1038,16 +1063,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
             setState(() {});
           }
         },
-        onTap: (_) {
-          // Fermer le panneau de détails et les suggestions
-          setState(() {
-            _selectedStop = null;
-            _selectedStopLine = null;
-            _searchSuggestions = [];
-            _originSuggestions = [];
-            _destinationSuggestions = [];
-          });
-        },
+        onTap: (_) {}, // Désactive les clics sur POI
         myLocationEnabled: false,
         myLocationButtonEnabled: false,
         zoomControlsEnabled: false,
@@ -1310,25 +1326,63 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
   /// Panneau latéral gauche avec onglets Lignes/Itinéraire
   Widget _buildLeftPanel() {
     return Positioned(
-      top: 80,
+      top: 16,
       left: 16,
       bottom: 16,
-      child: Container(
-        width: 360,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 20,
-              offset: const Offset(0, 4),
+      child: Listener(
+        onPointerSignal: (pointerSignal) {
+          // Stoppe la propagation des événements de scroll vers la carte
+          if (pointerSignal is PointerScrollEvent) {
+            // L'événement est consommé ici
+          }
+        },
+        behavior: HitTestBehavior.opaque,
+        child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          child: Container(
+            width: 300,
+            padding: const EdgeInsets.only(top: 16, left: 16, right: 16),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.93),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.5),
+                width: 1,
+              ),
             ),
-          ],
-        ),
-        child: Column(
+            child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Logo Misy
+            Image.asset(
+              MyImagesUrl.misyLogoRose,
+              height: 28,
+              fit: BoxFit.contain,
+            ),
+
+            const SizedBox(height: 12),
+
+            // Navigation Course / Transports
+            Row(
+              children: [
+                _buildNavChip(
+                  label: 'Course',
+                  isSelected: false,
+                  onTap: () => Navigator.pop(context),
+                ),
+                const SizedBox(width: 8),
+                _buildNavChip(
+                  label: 'Transports',
+                  isSelected: true,
+                  onTap: () {},
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
             // Onglets Lignes / Itinéraire
             _buildPanelTabs(),
 
@@ -1340,6 +1394,9 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
             ),
           ],
         ),
+          ),
+        ),
+      ),
       ),
     );
   }
@@ -1411,6 +1468,32 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavChip({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? MyColors.primaryColor.withValues(alpha: 0.1) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? MyColors.primaryColor : Colors.grey.shade600,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+            fontSize: 13,
+          ),
         ),
       ),
     );
@@ -2821,8 +2904,8 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
             position: _originPosition!,
             icon: originIcon,
             anchor: const Offset(0.5, 0.5),
-            infoWindow: InfoWindow(title: 'Départ', snippet: _originController.text),
             zIndex: 200,
+            consumeTapEvents: true,
           ),
         );
 
@@ -2834,8 +2917,8 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
             position: _destinationPosition!,
             icon: destinationIcon,
             anchor: const Offset(0.5, 0.5),
-            infoWindow: InfoWindow(title: 'Arrivée', snippet: _destinationController.text),
             zIndex: 200,
+            consumeTapEvents: true,
           ),
         );
 
@@ -2957,11 +3040,8 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
                 position: step.startStop.position,
                 icon: lineIcon,
                 anchor: const Offset(0.5, 0.5),
-                infoWindow: InfoWindow(
-                  title: step.startStop.name,
-                  snippet: 'Monter - ${step.lineName}',
-                ),
                 zIndex: 100,
+                consumeTapEvents: true,
               ),
             );
 
@@ -2974,11 +3054,8 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
                   position: intermediateStop.position,
                   icon: whiteIcon,
                   anchor: const Offset(0.5, 0.5),
-                  infoWindow: InfoWindow(
-                    title: intermediateStop.name,
-                    snippet: step.lineName,
-                  ),
                   zIndex: 90,
+                  consumeTapEvents: true,
                 ),
               );
             }
@@ -2990,11 +3067,8 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
                 position: step.endStop.position,
                 icon: lineIcon,
                 anchor: const Offset(0.5, 0.5),
-                infoWindow: InfoWindow(
-                  title: step.endStop.name,
-                  snippet: 'Descendre - ${step.lineName}',
-                ),
                 zIndex: 100,
+                consumeTapEvents: true,
               ),
             );
           }
@@ -3006,11 +3080,8 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
                 markerId: MarkerId('route_transfer_$i'),
                 position: step.startStop.position,
                 icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-                infoWindow: InfoWindow(
-                  title: 'Correspondance',
-                  snippet: step.startStop.name,
-                ),
                 zIndex: 150,
+                consumeTapEvents: true,
               ),
             );
           }
