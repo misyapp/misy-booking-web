@@ -473,14 +473,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // Récupérer le heading actuel
       final heading = _currentDriverHeadings[driverId] ?? 0.0;
 
-      // Charger l'icône (avec fallback)
-      BitmapDescriptor icon;
-      try {
-        icon = await _getVehicleIcon(driver.vehicleType);
-      } catch (e) {
-        print('❌ Erreur chargement icône: $e');
-        icon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
-      }
+      // Utiliser marker par défaut pour debug (cyan = chauffeur)
+      final icon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan);
 
       print('🚗 Marker $driverId: pos=${position.latitude.toStringAsFixed(4)},${position.longitude.toStringAsFixed(4)} rot=${heading.toStringAsFixed(0)}°');
 
@@ -928,12 +922,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          filter: ImageFilter.blur(sigmaX: 100, sigmaY: 100),
           child: Container(
             width: 300,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.93),
+              color: Colors.white.withOpacity(0.50),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: Colors.white.withOpacity(0.5),
@@ -1528,12 +1522,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          filter: ImageFilter.blur(sigmaX: 100, sigmaY: 100),
           child: Container(
             width: 300,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.93),
+              color: Colors.white.withOpacity(0.75),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: Colors.white.withOpacity(0.5),
