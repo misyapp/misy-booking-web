@@ -831,6 +831,88 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     });
   }
 
+  /// Recherche combinée pour le mode transport: arrêts de transport + Google Places
+  void _debouncedTransportSearch(String query, bool isPickup) {
+    final timer = isPickup ? _pickupDebounceTimer : _destinationDebounceTimer;
+    timer?.cancel();
+
+    if (query.length < 2) {
+      if (isPickup) {
+        _pickupSuggestions.value = [];
+      } else {
+        _destinationSuggestions.value = [];
+      }
+      return;
+    }
+
+    final newTimer = Timer(_debounceDuration, () async {
+      final List<Map<String, dynamic>> combinedResults = [];
+
+      // 1. Rechercher dans les arrêts de transport (priorité)
+      final stops = await _searchTransportStops(query);
+      combinedResults.addAll(stops);
+
+      // 2. Rechercher dans Google Places
+      final predictions = await PlacesAutocompleteWeb.getPlacePredictions(query);
+      for (final prediction in predictions) {
+        combinedResults.add({
+          ...prediction,
+          'type': 'place',
+        });
+      }
+
+      if (isPickup) {
+        _pickupSuggestions.value = combinedResults;
+      } else {
+        _destinationSuggestions.value = combinedResults;
+      }
+    });
+
+    if (isPickup) {
+      _pickupDebounceTimer = newTimer;
+    } else {
+      _destinationDebounceTimer = newTimer;
+    }
+  }
+
+  /// Recherche les arrêts de transport correspondant à la requête
+  Future<List<Map<String, dynamic>>> _searchTransportStops(String query) async {
+    final List<Map<String, dynamic>> results = [];
+    final queryLower = query.toLowerCase();
+
+    try {
+      final stops = await TransportLinesService.instance.getAllStops();
+
+      for (final stop in stops) {
+        if (stop.name.toLowerCase().contains(queryLower)) {
+          results.add({
+            'type': 'stop',
+            'description': stop.name,
+            'stop_id': stop.id,
+            'lat': stop.position.latitude,
+            'lng': stop.position.longitude,
+            'lines': stop.lineNumbers,
+          });
+        }
+      }
+
+      // Trier par pertinence (commence par la requête en premier)
+      results.sort((a, b) {
+        final aStartsWith = a['description'].toString().toLowerCase().startsWith(queryLower);
+        final bStartsWith = b['description'].toString().toLowerCase().startsWith(queryLower);
+        if (aStartsWith && !bStartsWith) return -1;
+        if (!aStartsWith && bStartsWith) return 1;
+        return a['description'].toString().compareTo(b['description'].toString());
+      });
+
+      // Limiter à 5 arrêts max
+      return results.take(5).toList();
+    } catch (e) {
+      debugPrint('Error searching transport stops: $e');
+      return [];
+    }
+  }
+
   Future<void> _selectPickupSuggestion(Map suggestion) async {
     _isSearching.value = true;
     _pickupController.text = suggestion['description'] ?? '';
@@ -853,7 +935,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         );
 
         _reloadDriversNearPosition(pickupPosition);
-        _destinationFocusNode.requestFocus();
+
+        // Passer au champ destination si vide
+        if (_destinationLocation['lat'] == null) {
+          _destinationFocusNode.requestFocus();
+        } else {
+          // Recherche automatique mode transport si les deux champs sont remplis
+          _autoSearchTransportIfReady();
+        }
       }
     } catch (e) {
       debugPrint('Error getting place details: $e');
@@ -881,7 +970,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
         if (_pickupLocation['lat'] != null) {
           _isSearching.value = false;
-          _onSearch();
+          // Mode course: _onSearch, Mode transport: recherche d'itinéraire
+          if (_mainMode.value == 1) {
+            _autoSearchTransportIfReady();
+          } else {
+            _onSearch();
+          }
           return;
         }
       }
@@ -946,7 +1040,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// Bouton pour recentrer la carte sur la position GPS actuelle
   Widget _buildGpsButton() {
     return Positioned(
-      bottom: 100,
+      top: 70,
       right: 16,
       child: Material(
         elevation: 4,
@@ -2062,7 +2156,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             child: TextField(
               controller: controller,
               focusNode: focusNode,
-              onChanged: isPickup ? _debouncedPickupSearch : _debouncedDestinationSearch,
+              onChanged: (query) => _debouncedTransportSearch(query, isPickup),
               decoration: InputDecoration(
                 hintText: hint,
                 hintStyle: TextStyle(color: Colors.grey.shade600),
@@ -2195,24 +2289,47 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
     final route = _foundTransportRoutes[index];
     final Set<Polyline> routePolylines = {};
+    final allRouteCoords = <LatLng>[];
 
     for (int i = 0; i < route.steps.length; i++) {
       final step = route.steps[i];
-      final stepCoordinates = <LatLng>[
-        step.startStop.position,
-        ...step.intermediateStops.map((s) => s.position),
-        step.endStop.position,
-      ];
+      List<LatLng> stepCoordinates;
+
+      // Construire les coordonnées selon le type d'étape
+      if (step.isWalking) {
+        // Étape de marche: utiliser walkStartPosition et walkEndPosition
+        stepCoordinates = [];
+        if (step.walkStartPosition != null) stepCoordinates.add(step.walkStartPosition!);
+        if (step.walkEndPosition != null) stepCoordinates.add(step.walkEndPosition!);
+      } else {
+        // Étape transport: utiliser le tracé réel si disponible
+        if (step.pathCoordinates.isNotEmpty) {
+          stepCoordinates = step.pathCoordinates;
+        } else {
+          // Fallback: positions des arrêts
+          stepCoordinates = [];
+          if (step.startStop != null) stepCoordinates.add(step.startStop!.position);
+          stepCoordinates.addAll(step.intermediateStops.map((s) => s.position));
+          if (step.endStop != null) stepCoordinates.add(step.endStop!.position);
+        }
+      }
+
+      if (stepCoordinates.length < 2) continue;
+
+      allRouteCoords.addAll(stepCoordinates);
 
       // Couleur selon le type de transport ou marche
       Color lineColor;
       int width;
+      List<PatternItem> patterns = [];
+
       if (step.isWalking) {
         lineColor = Colors.grey.shade600;
-        width = 3;
+        width = 4;
+        patterns = [PatternItem.dash(12), PatternItem.gap(8)];
       } else {
-        lineColor = Color(TransportLineColors.getLineColor(step.lineNumber, step.transportType));
-        width = 5;
+        lineColor = Color(TransportLineColors.getLineColor(step.lineNumber ?? '', step.transportType ?? TransportType.bus));
+        width = 6;
       }
 
       routePolylines.add(
@@ -2221,14 +2338,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           points: stepCoordinates,
           color: lineColor,
           width: width,
-          patterns: step.isWalking ? [PatternItem.dash(10), PatternItem.gap(10)] : [],
+          patterns: patterns,
         ),
       );
     }
 
-    // Recentrer sur l'itinéraire complet
-    if (route.allCoordinates.isNotEmpty) {
-      final routeBounds = _boundsFromLatLngList(route.allCoordinates);
+    // Recentrer sur l'itinéraire complet avec les vraies coordonnées
+    if (allRouteCoords.isNotEmpty) {
+      final routeBounds = _boundsFromLatLngList(allRouteCoords);
       _mapController?.animateCamera(CameraUpdate.newLatLngBounds(routeBounds, 80));
     }
 
@@ -2270,6 +2387,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   /// Affiche les résultats de recherche d'itinéraire transport
+  /// Affiche les résultats style IDF Mobilités
   Widget _buildTransportRouteResults() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2289,18 +2407,20 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               constraints: const BoxConstraints(),
             ),
             const SizedBox(width: 8),
-            Text(
-              '${_foundTransportRoutes.length} itinéraire(s) trouvé(s)',
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
+            Expanded(
+              child: Text(
+                '${_foundTransportRoutes.length} itinéraire(s)',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
 
-        // Liste des itinéraires
+        // Liste des itinéraires style IDF Mobilités
         Expanded(
           child: ListView.builder(
             padding: EdgeInsets.zero,
@@ -2311,105 +2431,506 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
               return GestureDetector(
                 onTap: () => _selectTransportRoute(index),
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: isSelected ? Colors.blue.withOpacity(0.1) : Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isSelected ? Colors.blue : Colors.grey.shade200,
-                      width: isSelected ? 2 : 1,
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Temps et correspondances
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.access_time, size: 16, color: isSelected ? Colors.blue : Colors.grey.shade700),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${route.totalDurationMinutes} min',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  color: isSelected ? Colors.blue : Colors.black,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: route.numberOfTransfers == 0
-                                  ? Colors.green.withOpacity(0.1)
-                                  : Colors.orange.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              route.numberOfTransfers == 0
-                                  ? 'Direct'
-                                  : '${route.numberOfTransfers} corresp.',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                color: route.numberOfTransfers == 0 ? Colors.green : Colors.orange.shade700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-
-                      // Lignes utilisées
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: route.steps.where((s) => !s.isWalking).map((step) {
-                          final color = Color(TransportLineColors.getLineColor(step.lineNumber, step.transportType));
-                          return Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: color,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              step.lineNumber,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11,
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 8),
-
-                      // Détails du parcours
-                      Text(
-                        _buildRouteDescription(route),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade600,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
+                child: _buildRouteCardIDF(route, isSelected),
               );
             },
           ),
         ),
       ],
     );
+  }
+
+  /// Card d'itinéraire style IDF Mobilités
+  Widget _buildRouteCardIDF(TransportRoute route, bool isSelected) {
+    final departureTime = route.departureTime ?? DateTime.now();
+    final arrivalTime = route.arrivalTime ?? DateTime.now().add(Duration(minutes: route.totalDurationMinutes));
+
+    // Récupérer les étapes de transport pour les badges de lignes
+    final transportSteps = route.steps.where((s) => s.type == RouteStepType.transport).toList();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: isSelected ? Colors.blue.shade50 : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isSelected ? Colors.blue : Colors.grey.shade200,
+          width: isSelected ? 2 : 1,
+        ),
+        boxShadow: isSelected ? [
+          BoxShadow(
+            color: Colors.blue.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ] : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // En-tête: heures de départ/arrivée + durée + badges info
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isSelected ? Colors.blue.shade100.withOpacity(0.5) : Colors.grey.shade50,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    // Heures et durée
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${_formatTime(departureTime)} → ${_formatTime(arrivalTime)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Text(
+                                '${route.totalDurationMinutes} min',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                              if (route.walkingDistanceMeters > 0) ...[
+                                Text(' · ', style: TextStyle(color: Colors.grey.shade400)),
+                                Icon(Icons.directions_walk, size: 14, color: Colors.grey.shade500),
+                                Text(
+                                  ' ${route.walkingDistanceMeters}m',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                ),
+                              ],
+                              if (route.numberOfTransfers > 0) ...[
+                                Text(' · ', style: TextStyle(color: Colors.grey.shade400)),
+                                Text(
+                                  '${route.numberOfTransfers} corresp.',
+                                  style: TextStyle(fontSize: 12, color: Colors.orange.shade700),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Badges de lignes style IDF Mobilités (visualisation du trajet)
+                if (transportSteps.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  _buildLineBadgesRow(transportSteps),
+                ],
+              ],
+            ),
+          ),
+
+          // Timeline des étapes (peut être réduite/expandée)
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: _buildRouteTimeline(route),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Rangée de badges de lignes style IDF Mobilités
+  Widget _buildLineBadgesRow(List<RouteStep> transportSteps) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        // Icône marche au début
+        Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: Colors.grey.shade300,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.directions_walk, size: 14, color: Colors.grey.shade700),
+        ),
+
+        for (int i = 0; i < transportSteps.length; i++) ...[
+          // Flèche de connexion
+          Icon(Icons.arrow_forward, size: 12, color: Colors.grey.shade400),
+
+          // Badge de ligne
+          _buildLineBadge(transportSteps[i]),
+
+          // Marche entre les correspondances (sauf pour la dernière)
+          if (i < transportSteps.length - 1) ...[
+            Icon(Icons.arrow_forward, size: 12, color: Colors.grey.shade400),
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.directions_walk, size: 14, color: Colors.grey.shade700),
+            ),
+          ],
+        ],
+
+        // Flèche et destination
+        Icon(Icons.arrow_forward, size: 12, color: Colors.grey.shade400),
+        Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: Colors.red.shade100,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.place, size: 14, color: Colors.red.shade700),
+        ),
+      ],
+    );
+  }
+
+  /// Badge de ligne individuel
+  Widget _buildLineBadge(RouteStep step) {
+    final lineColor = Color(TransportLineColors.getLineColor(
+      step.lineNumber ?? '',
+      step.transportType ?? TransportType.bus,
+    ));
+    final icon = _getTransportIcon(step.transportType);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: lineColor,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: Colors.white),
+          const SizedBox(width: 4),
+          Text(
+            step.lineNumber ?? '',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Badge d'info (marche, correspondances)
+  Widget _buildInfoBadge(IconData icon, String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Timeline des étapes style IDF Mobilités avec heures de passage
+  Widget _buildRouteTimeline(TransportRoute route) {
+    // Calculer l'heure cumulative pour chaque étape
+    DateTime currentTime = route.departureTime ?? DateTime.now();
+
+    return Column(
+      children: route.steps.asMap().entries.map((entry) {
+        final index = entry.key;
+        final step = entry.value;
+        final isLast = index == route.steps.length - 1;
+        final isFirst = index == 0;
+
+        final stepStartTime = currentTime;
+        currentTime = currentTime.add(Duration(minutes: step.durationMinutes));
+        final stepEndTime = currentTime;
+
+        return _buildTimelineStep(step, isLast, isFirst, stepStartTime, stepEndTime);
+      }).toList(),
+    );
+  }
+
+  /// Étape de la timeline avec heures
+  Widget _buildTimelineStep(RouteStep step, bool isLast, bool isFirst, DateTime startTime, DateTime endTime) {
+    final isWalking = step.isWalking;
+    final Color lineColor;
+    final IconData icon;
+
+    if (isWalking) {
+      lineColor = Colors.grey.shade400;
+      icon = Icons.directions_walk;
+    } else {
+      lineColor = Color(TransportLineColors.getLineColor(step.lineNumber ?? '', step.transportType ?? TransportType.bus));
+      icon = _getTransportIcon(step.transportType);
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Colonne heure
+        SizedBox(
+          width: 45,
+          child: Column(
+            children: [
+              Text(
+                _formatTime(startTime),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+              if (!isLast)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    '${step.durationMinutes}\'',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        // Ligne verticale + icône
+        SizedBox(
+          width: 36,
+          child: Column(
+            children: [
+              // Icône ou badge ligne
+              if (isWalking)
+                Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.grey.shade300, width: 2),
+                  ),
+                  child: Icon(icon, size: 14, color: Colors.grey.shade600),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: lineColor,
+                    borderRadius: BorderRadius.circular(4),
+                    boxShadow: [
+                      BoxShadow(
+                        color: lineColor.withOpacity(0.3),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    step.lineNumber ?? '',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 10,
+                    ),
+                  ),
+                ),
+              // Ligne verticale vers la prochaine étape
+              if (!isLast)
+                Container(
+                  width: 3,
+                  height: 35,
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isWalking ? Colors.grey.shade300 : lineColor.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        const SizedBox(width: 8),
+
+        // Contenu de l'étape
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isWalking) ...[
+                  // Étape de marche
+                  Text(
+                    step.type == RouteStepType.walkToStop
+                        ? 'Marcher vers ${step.startStop?.name ?? "l\'arrêt"}'
+                        : step.type == RouteStepType.walkFromStop
+                            ? 'Marcher vers votre destination'
+                            : 'Correspondance à pied vers ${step.endStop?.name ?? "l\'arrêt"}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      fontSize: 13,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${step.distanceMeters}m · ${step.durationMinutes} min',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+                ] else ...[
+                  // Étape de transport
+                  Row(
+                    children: [
+                      Icon(icon, size: 14, color: lineColor),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          '${step.lineName ?? "Ligne ${step.lineNumber}"}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: lineColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  // Point de départ
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        margin: const EdgeInsets.only(top: 4, right: 6),
+                        decoration: BoxDecoration(
+                          color: lineColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          step.startStop?.name ?? '',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  // Info intermédiaire
+                  Padding(
+                    padding: const EdgeInsets.only(left: 14, top: 2, bottom: 2),
+                    child: Text(
+                      '${step.numberOfStops} arrêt(s) · ${step.durationMinutes} min',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  ),
+                  // Point d'arrivée
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        margin: const EdgeInsets.only(top: 4, right: 6),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: lineColor, width: 2),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          step.endStop?.name ?? '',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  // Direction
+                  if (step.direction != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 14, top: 4),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: lineColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          'Direction ${step.direction}',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: lineColor,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  IconData _getTransportIcon(TransportType? type) {
+    switch (type) {
+      case TransportType.bus:
+        return Icons.directions_bus;
+      case TransportType.urbanTrain:
+        return Icons.train;
+      case TransportType.telepherique:
+        return Icons.airline_seat_recline_extra; // Placeholder for cable car
+      default:
+        return Icons.directions_transit;
+    }
+  }
+
+  String _formatTime(DateTime time) {
+    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
   }
 
   /// Construit une description textuelle de l'itinéraire
@@ -2419,7 +2940,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       if (step.isWalking) {
         parts.add('Marche ${step.durationMinutes} min');
       } else {
-        parts.add('${step.lineName} → ${step.endStop.name}');
+        parts.add('${step.lineName} → ${step.endStop?.name ?? ""}');
       }
     }
     return parts.join(' • ');
@@ -2497,15 +3018,47 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   /// Bascule vers le mode transport en conservant les adresses actuelles et lance la recherche
   void _switchToTransportWithCurrentAddresses(TripProvider tripProvider) {
-    // Remettre à l'étape initiale sans effacer les adresses
+    if (!mounted) return;
+
+    debugPrint('🚌 === SWITCH TO TRANSPORT ===');
+    debugPrint('🚌 TripProvider.pickLocation: ${tripProvider.pickLocation}');
+    debugPrint('🚌 TripProvider.dropLocation: ${tripProvider.dropLocation}');
+
+    // Sauvegarder les adresses AVANT de changer quoi que ce soit
+    Map<String, dynamic>? savedPickup;
+    Map<String, dynamic>? savedDest;
+    String? savedPickupText;
+    String? savedDestText;
+
+    // Priorité 1: TripProvider (données du flux Course)
+    if (tripProvider.pickLocation != null && tripProvider.pickLocation!['lat'] != null) {
+      savedPickup = Map<String, dynamic>.from(tripProvider.pickLocation!);
+      savedPickupText = tripProvider.pickLocation!['address']?.toString() ?? '';
+      debugPrint('🚌 Got pickup from TripProvider: $savedPickupText');
+    }
+    if (tripProvider.dropLocation != null && tripProvider.dropLocation!['lat'] != null) {
+      savedDest = Map<String, dynamic>.from(tripProvider.dropLocation!);
+      savedDestText = tripProvider.dropLocation!['address']?.toString() ?? '';
+      debugPrint('🚌 Got dest from TripProvider: $savedDestText');
+    }
+
+    // Priorité 2: Variables locales (si TripProvider est vide)
+    if (savedPickup == null && _pickupLocation['lat'] != null) {
+      savedPickup = Map<String, dynamic>.from(_pickupLocation);
+      savedPickupText = _pickupController.text;
+      debugPrint('🚌 Got pickup from local: $savedPickupText');
+    }
+    if (savedDest == null && _destinationLocation['lat'] != null) {
+      savedDest = Map<String, dynamic>.from(_destinationLocation);
+      savedDestText = _destinationController.text;
+      debugPrint('🚌 Got dest from local: $savedDestText');
+    }
+
+    // Remettre à l'étape initiale
     tripProvider.currentStep = CustomTripType.setYourDestination;
 
-    // Effacer le tracé voiture mais garder les markers
+    // Effacer le tracé voiture
     _stopPolylineAnimation();
-    setState(() {
-      _routePolylines = {};
-      _routeCoordinates = [];
-    });
 
     // Basculer vers le mode transport
     _mainMode.value = 1;
@@ -2515,14 +3068,39 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       _loadTransportLines();
     }
 
-    // Forcer la mise à jour
-    setState(() {});
+    // Appliquer les adresses sauvegardées et mettre à jour l'UI
+    if (mounted) {
+      setState(() {
+        _routePolylines = {};
+        _routeCoordinates = [];
+        _foundTransportRoutes = [];
+        _transportRoutePolylines = {};
+        _selectedRouteIndex = 0;
 
-    // Lancer automatiquement la recherche d'itinéraire transport si les adresses sont définies
-    if (_pickupLocation['lat'] != null && _destinationLocation['lat'] != null) {
-      // Petit délai pour laisser le temps à l'UI de se mettre à jour
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (mounted) {
+        // Restaurer les adresses
+        if (savedPickup != null) {
+          _pickupLocation = savedPickup;
+          _pickupController.text = savedPickupText ?? '';
+        }
+        if (savedDest != null) {
+          _destinationLocation = savedDest;
+          _destinationController.text = savedDestText ?? '';
+        }
+      });
+    }
+
+    debugPrint('🚌 After restore - pickup: ${_pickupLocation["address"]}, dest: ${_destinationLocation["address"]}');
+
+    // Lancer la recherche si les deux adresses sont définies
+    final hasPickup = _pickupLocation['lat'] != null;
+    final hasDest = _destinationLocation['lat'] != null;
+    debugPrint('🚌 hasPickup: $hasPickup, hasDest: $hasDest');
+
+    if (hasPickup && hasDest) {
+      debugPrint('🚌 Will launch search in 600ms...');
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted && !_isSearchingTransportRoute) {
+          debugPrint('🚌 Launching _searchTransportRoute()');
           _searchTransportRoute();
         }
       });
@@ -2885,7 +3463,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   Widget _buildSuggestionsList(List suggestions, bool isPickup) {
     return Container(
       margin: const EdgeInsets.only(top: 8),
-      constraints: const BoxConstraints(maxHeight: 200),
+      constraints: const BoxConstraints(maxHeight: 250),
       decoration: BoxDecoration(
         color: Colors.grey.shade50,
         borderRadius: BorderRadius.circular(8),
@@ -2894,13 +3472,17 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       child: ListView.separated(
         shrinkWrap: true,
         padding: EdgeInsets.zero,
-        itemCount: suggestions.length > 5 ? 5 : suggestions.length,
+        itemCount: suggestions.length > 8 ? 8 : suggestions.length,
         separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.shade200),
         itemBuilder: (context, index) {
           final suggestion = suggestions[index];
+          final isTransportStop = suggestion['type'] == 'stop';
+
           return InkWell(
             onTap: () {
-              if (isPickup) {
+              if (isTransportStop) {
+                _selectTransportStopSuggestion(suggestion, isPickup);
+              } else if (isPickup) {
                 _selectPickupSuggestion(suggestion);
               } else {
                 _selectDestinationSuggestion(suggestion);
@@ -2910,20 +3492,79 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.location_on_outlined,
-                    size: 20,
-                    color: Colors.grey.shade600,
+                  // Icône différente pour les arrêts de transport
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: isTransportStop ? Colors.blue.shade100 : Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Icon(
+                      isTransportStop ? Icons.directions_bus : Icons.location_on_outlined,
+                      size: 16,
+                      color: isTransportStop ? Colors.blue.shade700 : Colors.grey.shade600,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                      suggestion['description'] ?? '',
-                      style: const TextStyle(fontSize: 14),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          suggestion['description'] ?? '',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: isTransportStop ? FontWeight.w600 : FontWeight.normal,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        // Afficher les lignes pour les arrêts de transport
+                        if (isTransportStop && suggestion['lines'] != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Wrap(
+                              spacing: 4,
+                              children: (suggestion['lines'] as List).take(4).map<Widget>((line) {
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    line.toString(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
+                  // Badge "Arrêt" pour les stops
+                  if (isTransportStop)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'Arrêt',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.blue.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -2931,6 +3572,60 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         },
       ),
     );
+  }
+
+  /// Sélectionne un arrêt de transport comme point de départ ou d'arrivée
+  void _selectTransportStopSuggestion(Map suggestion, bool isPickup) {
+    final location = {
+      'lat': suggestion['lat'],
+      'lng': suggestion['lng'],
+      'address': suggestion['description'],
+    };
+
+    if (isPickup) {
+      _pickupController.text = suggestion['description'] ?? '';
+      _pickupSuggestions.value = [];
+      _pickupLocation = location;
+      // Passer au champ destination si vide
+      if (_destinationLocation['lat'] == null) {
+        _destinationFocusNode.requestFocus();
+      }
+    } else {
+      _destinationController.text = suggestion['description'] ?? '';
+      _destinationSuggestions.value = [];
+      _destinationLocation = location;
+    }
+
+    // Centrer la carte sur l'arrêt sélectionné
+    if (suggestion['lat'] != null && suggestion['lng'] != null) {
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(
+          LatLng(suggestion['lat'], suggestion['lng']),
+          15,
+        ),
+      );
+    }
+
+    setState(() {});
+
+    // Recherche automatique si les deux champs sont remplis (mode transport)
+    _autoSearchTransportIfReady();
+  }
+
+  /// Déclenche automatiquement la recherche d'itinéraire transport si les deux adresses sont remplies
+  void _autoSearchTransportIfReady() {
+    if (_mainMode.value == 1 && // Mode transport
+        _pickupLocation['lat'] != null &&
+        _destinationLocation['lat'] != null &&
+        !_isSearchingTransportRoute &&
+        _foundTransportRoutes.isEmpty) {
+      // Petite attente pour laisser l'UI se mettre à jour
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          _searchTransportRoute();
+        }
+      });
+    }
   }
 
   Widget _buildScheduleOptions() {
