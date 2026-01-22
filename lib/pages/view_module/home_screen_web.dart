@@ -98,7 +98,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   bool _transportLinesLoaded = false;
   bool _isSearchingTransportRoute = false;
   List<TransportRoute> _foundTransportRoutes = []; // Liste des itinéraires trouvés
-  int _selectedRouteIndex = 0; // Index de l'itinéraire sélectionné
+  int _selectedRouteIndex = -1; // Index de l'itinéraire ouvert (-1 = tous fermés)
   Set<Polyline> _transportRoutePolylines = {}; // Polylines pour l'itinéraire transport sélectionné
 
   // === Markers personnalisés pour pickup/destination ===
@@ -2228,7 +2228,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     setState(() {
       _isSearchingTransportRoute = true;
       _foundTransportRoutes = [];
-      _selectedRouteIndex = 0;
+      _selectedRouteIndex = -1; // Toutes les cards fermées
       // Afficher ligne droite pendant le chargement
       _transportRoutePolylines = {
         Polyline(
@@ -2258,27 +2258,24 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
     try {
       // Rechercher plusieurs itinéraires en transport en commun
-      final routes = await TransportLinesService.instance.findMultipleRoutes(origin, destination, maxRoutes: 5);
+      final routes = await TransportLinesService.instance.findMultipleRoutes(origin, destination, maxRoutes: 10);
 
       if (!mounted) return;
 
       if (routes.isNotEmpty) {
+        // Filtrer pour afficher max 2 résultats:
+        // 1. Le plus rapide
+        // 2. Le plus rapide avec le moins de correspondances (si différent du premier)
+        final filteredRoutes = _filterBestRoutes(routes);
+
         setState(() {
-          _foundTransportRoutes = routes;
-          _selectedRouteIndex = 0;
+          _foundTransportRoutes = filteredRoutes;
+          _selectedRouteIndex = -1; // Toutes les cards fermées par défaut
           _isSearchingTransportRoute = false;
         });
 
-        // Afficher le premier itinéraire sur la carte
-        await _selectTransportRoute(0);
-
-        // Afficher un résumé
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${routes.length} itinéraire(s) trouvé(s)'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        // Afficher le premier itinéraire sur la carte (sans ouvrir la card)
+        await _displayRouteOnMap(0);
       } else {
         setState(() {
           _isSearchingTransportRoute = false;
@@ -2308,8 +2305,60 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
   }
 
-  /// Sélectionne et affiche un itinéraire transport sur la carte
+  /// Filtre les itinéraires pour n'afficher que les 2 meilleurs:
+  /// 1. Le plus rapide
+  /// 2. Le plus rapide avec le moins de correspondances (si différent)
+  List<TransportRoute> _filterBestRoutes(List<TransportRoute> routes) {
+    if (routes.isEmpty) return [];
+    if (routes.length == 1) return routes;
+
+    // Trier par durée (plus rapide en premier)
+    final sortedByDuration = List<TransportRoute>.from(routes)
+      ..sort((a, b) => a.totalDurationMinutes.compareTo(b.totalDurationMinutes));
+
+    // Le plus rapide
+    final fastest = sortedByDuration.first;
+
+    // Chercher le plus rapide avec le moins de correspondances
+    // Parmi tous les itinéraires, trouver celui avec le moins de correspondances
+    // puis prendre le plus rapide parmi ceux-là
+    final minTransfers = routes.map((r) => r.numberOfTransfers).reduce((a, b) => a < b ? a : b);
+    final routesWithMinTransfers = routes.where((r) => r.numberOfTransfers == minTransfers).toList()
+      ..sort((a, b) => a.totalDurationMinutes.compareTo(b.totalDurationMinutes));
+
+    final fastestWithFewestTransfers = routesWithMinTransfers.first;
+
+    // Si c'est le même itinéraire, n'en retourner qu'un
+    if (fastest.totalDurationMinutes == fastestWithFewestTransfers.totalDurationMinutes &&
+        fastest.numberOfTransfers == fastestWithFewestTransfers.numberOfTransfers) {
+      return [fastest];
+    }
+
+    // Sinon retourner les deux (plus rapide en premier)
+    return [fastest, fastestWithFewestTransfers];
+  }
+
+  /// Gère le clic sur une card d'itinéraire (toggle ouverture/fermeture)
   Future<void> _selectTransportRoute(int index) async {
+    if (index < 0 || index >= _foundTransportRoutes.length) return;
+
+    // Si on clique sur la card déjà ouverte, on la ferme
+    if (_selectedRouteIndex == index) {
+      setState(() {
+        _selectedRouteIndex = -1;
+      });
+      return;
+    }
+
+    // Sinon on ouvre la nouvelle card et on affiche l'itinéraire sur la carte
+    setState(() {
+      _selectedRouteIndex = index;
+    });
+    await _displayRouteOnMap(index);
+  }
+
+  /// Affiche un itinéraire transport sur la carte (sans changer l'état d'ouverture des cards)
+  Future<void> _displayRouteOnMap(int index) async {
     if (index < 0 || index >= _foundTransportRoutes.length) return;
 
     final route = _foundTransportRoutes[index];
@@ -2488,7 +2537,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
     if (mounted) {
       setState(() {
-        _selectedRouteIndex = index;
         _transportRoutePolylines = routePolylines;
         _transportMarkers = routeMarkers;
       });
@@ -2703,7 +2751,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: isSelected ? Colors.blue.shade50 : Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -2711,13 +2759,16 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           color: isSelected ? Colors.blue : Colors.grey.shade200,
           width: isSelected ? 2 : 1,
         ),
-        boxShadow: isSelected ? [
+        boxShadow: [
           BoxShadow(
-            color: Colors.blue.withOpacity(0.15),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: isSelected
+                ? Colors.blue.withOpacity(0.2)
+                : Colors.black.withOpacity(0.08),
+            blurRadius: isSelected ? 12 : 6,
+            offset: const Offset(0, 3),
+            spreadRadius: isSelected ? 1 : 0,
           ),
-        ] : null,
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3344,7 +3395,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         _routeCoordinates = [];
         _foundTransportRoutes = [];
         _transportRoutePolylines = {};
-        _selectedRouteIndex = 0;
+        _selectedRouteIndex = -1; // Toutes les cards fermées
 
         // Restaurer les adresses
         if (savedPickup != null) {
