@@ -164,8 +164,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
     final tripProvider = Provider.of<TripProvider>(context, listen: false);
 
-    // Si on retourne à l'écran initial, reset l'UI
-    if (tripProvider.currentStep == CustomTripType.setYourDestination) {
+    // Si on retourne à l'écran initial en mode Course, reset l'UI
+    // Ne pas reset si on est en mode Transport (pour ne pas effacer les adresses lors du switch)
+    if (tripProvider.currentStep == CustomTripType.setYourDestination && _mainMode.value == 0) {
       _stopPolylineAnimation();
       setState(() {
         _routePolylines = {};
@@ -2223,12 +2224,36 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final bounds = _boundsFromLatLngList([origin, destination]);
     _mapController?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 100));
 
-    // Activer l'état de chargement
+    // Activer l'état de chargement avec ligne droite entre les deux points
     setState(() {
       _isSearchingTransportRoute = true;
       _foundTransportRoutes = [];
       _selectedRouteIndex = 0;
-      _transportRoutePolylines = {};
+      // Afficher ligne droite pendant le chargement
+      _transportRoutePolylines = {
+        Polyline(
+          polylineId: const PolylineId('loading_line'),
+          points: [origin, destination],
+          color: Colors.blue.withOpacity(0.5),
+          width: 3,
+          patterns: [PatternItem.dash(15), PatternItem.gap(10)],
+        ),
+      };
+      // Markers de départ et arrivée uniquement
+      _transportMarkers = {
+        Marker(
+          markerId: const MarkerId('loading_origin'),
+          position: origin,
+          icon: _pickupMarkerIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+          anchor: const Offset(0.5, 0.5),
+        ),
+        Marker(
+          markerId: const MarkerId('loading_destination'),
+          position: destination,
+          icon: _destinationMarkerIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+          anchor: const Offset(0.5, 0.5),
+        ),
+      };
     });
 
     try {
@@ -2349,44 +2374,77 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
         // Marker arrêt de montée (grand cercle coloré avec icône)
         if (step.startStop != null) {
-          routeMarkers.add(Marker(
-            markerId: MarkerId('boarding_${i}_${step.startStop!.id}'),
-            position: step.startStop!.position,
-            icon: await _createStopMarkerIcon(lineColor, isBoarding: true, transportType: step.transportType),
-            anchor: const Offset(0.5, 0.5),
-            zIndex: 5,
-            infoWindow: InfoWindow(
-              title: '🚌 Monter: ${step.startStop!.name}',
-              snippet: 'Ligne ${step.lineNumber}',
-            ),
-          ));
+          try {
+            final boardingIcon = await _createStopMarkerIcon(lineColor, isBoarding: true, transportType: step.transportType);
+            routeMarkers.add(Marker(
+              markerId: MarkerId('boarding_${i}_${step.startStop!.id}'),
+              position: step.startStop!.position,
+              icon: boardingIcon,
+              anchor: const Offset(0.5, 0.5),
+              zIndex: 5,
+              infoWindow: InfoWindow(
+                title: '🚌 Monter: ${step.startStop!.name}',
+                snippet: 'Ligne ${step.lineNumber}',
+              ),
+            ));
+          } catch (e) {
+            debugPrint('⚠️ Error creating boarding marker: $e');
+            routeMarkers.add(Marker(
+              markerId: MarkerId('boarding_${i}_${step.startStop!.id}'),
+              position: step.startStop!.position,
+              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+              zIndex: 5,
+            ));
+          }
         }
 
         // Markers arrêts intermédiaires (petits points blancs)
         for (int j = 0; j < step.intermediateStops.length; j++) {
           final intermediateStop = step.intermediateStops[j];
-          routeMarkers.add(Marker(
-            markerId: MarkerId('intermediate_${i}_${j}_${intermediateStop.id}'),
-            position: intermediateStop.position,
-            icon: await _createIntermediateStopMarkerIcon(),
-            anchor: const Offset(0.5, 0.5),
-            zIndex: 3,
-          ));
+          try {
+            final intermediateIcon = await _createIntermediateStopMarkerIcon();
+            routeMarkers.add(Marker(
+              markerId: MarkerId('intermediate_${i}_${j}_${intermediateStop.id}'),
+              position: intermediateStop.position,
+              icon: intermediateIcon,
+              anchor: const Offset(0.5, 0.5),
+              zIndex: 3,
+            ));
+          } catch (e) {
+            debugPrint('⚠️ Error creating intermediate marker: $e');
+            routeMarkers.add(Marker(
+              markerId: MarkerId('intermediate_${i}_${j}_${intermediateStop.id}'),
+              position: intermediateStop.position,
+              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+              zIndex: 3,
+            ));
+          }
         }
 
         // Marker arrêt de descente (grand cercle coloré)
         if (step.endStop != null) {
-          routeMarkers.add(Marker(
-            markerId: MarkerId('alighting_${i}_${step.endStop!.id}'),
-            position: step.endStop!.position,
-            icon: await _createStopMarkerIcon(lineColor, isBoarding: false, transportType: step.transportType),
-            anchor: const Offset(0.5, 0.5),
-            zIndex: 5,
-            infoWindow: InfoWindow(
-              title: '🛑 Descendre: ${step.endStop!.name}',
-              snippet: 'Ligne ${step.lineNumber}',
-            ),
-          ));
+          try {
+            final alightingIcon = await _createStopMarkerIcon(lineColor, isBoarding: false, transportType: step.transportType);
+            routeMarkers.add(Marker(
+              markerId: MarkerId('alighting_${i}_${step.endStop!.id}'),
+              position: step.endStop!.position,
+              icon: alightingIcon,
+              anchor: const Offset(0.5, 0.5),
+              zIndex: 5,
+              infoWindow: InfoWindow(
+                title: '🛑 Descendre: ${step.endStop!.name}',
+                snippet: 'Ligne ${step.lineNumber}',
+              ),
+            ));
+          } catch (e) {
+            debugPrint('⚠️ Error creating alighting marker: $e');
+            routeMarkers.add(Marker(
+              markerId: MarkerId('alighting_${i}_${step.endStop!.id}'),
+              position: step.endStop!.position,
+              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+              zIndex: 5,
+            ));
+          }
         }
       }
 
@@ -2444,8 +2502,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   Future<BitmapDescriptor> _createStopMarkerIcon(Color color, {required bool isBoarding, TransportType? transportType}) async {
     final cacheKey = 'stop_${color.value}_${isBoarding}_${transportType?.index ?? 0}';
     if (_markerIconCache.containsKey(cacheKey)) {
+      debugPrint('🎯 Using cached marker icon: $cacheKey');
       return _markerIconCache[cacheKey]!;
     }
+    debugPrint('🎨 Creating new marker icon: $cacheKey');
 
     final size = 36.0;
     final pictureRecorder = PictureRecorder();
@@ -2593,6 +2653,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                 setState(() {
                   _foundTransportRoutes = [];
                   _transportRoutePolylines = {};
+                  _transportMarkers = {};
                 });
               },
               padding: EdgeInsets.zero,
@@ -2632,7 +2693,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     );
   }
 
-  /// Card d'itinéraire style IDF Mobilités
+  /// Card d'itinéraire style IDF Mobilités (accordéon)
   Widget _buildRouteCardIDF(TransportRoute route, bool isSelected) {
     final departureTime = route.departureTime ?? DateTime.now();
     final arrivalTime = route.arrivalTime ?? DateTime.now().add(Duration(minutes: route.totalDurationMinutes));
@@ -2640,8 +2701,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // Récupérer les étapes de transport pour les badges de lignes
     final transportSteps = route.steps.where((s) => s.type == RouteStepType.transport).toList();
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: isSelected ? Colors.blue.shade50 : Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -2651,7 +2713,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         ),
         boxShadow: isSelected ? [
           BoxShadow(
-            color: Colors.blue.withOpacity(0.1),
+            color: Colors.blue.withOpacity(0.15),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -2665,7 +2727,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: isSelected ? Colors.blue.shade100.withOpacity(0.5) : Colors.grey.shade50,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
+              borderRadius: isSelected
+                  ? const BorderRadius.vertical(top: Radius.circular(11))
+                  : BorderRadius.circular(11),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2715,6 +2779,15 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                         ],
                       ),
                     ),
+                    // Icône expand/collapse
+                    AnimatedRotation(
+                      turns: isSelected ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      child: Icon(
+                        Icons.keyboard_arrow_down,
+                        color: isSelected ? Colors.blue : Colors.grey.shade400,
+                      ),
+                    ),
                   ],
                 ),
 
@@ -2727,11 +2800,15 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             ),
           ),
 
-          // Timeline des étapes (peut être réduite/expandée)
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: _buildRouteTimeline(route),
-          ),
+          // Timeline des étapes (visible seulement quand sélectionné)
+          if (isSelected)
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: _buildRouteTimeline(route),
+              ),
+            ),
         ],
       ),
     );
