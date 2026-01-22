@@ -2245,7 +2245,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         });
 
         // Afficher le premier itinéraire sur la carte
-        _selectTransportRoute(0);
+        await _selectTransportRoute(0);
 
         // Afficher un résumé
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2284,33 +2284,109 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   /// Sélectionne et affiche un itinéraire transport sur la carte
-  void _selectTransportRoute(int index) {
+  Future<void> _selectTransportRoute(int index) async {
     if (index < 0 || index >= _foundTransportRoutes.length) return;
 
     final route = _foundTransportRoutes[index];
     final Set<Polyline> routePolylines = {};
+    final Set<Marker> routeMarkers = {};
     final allRouteCoords = <LatLng>[];
+
+    // Marker de départ (📍 vert)
+    routeMarkers.add(Marker(
+      markerId: const MarkerId('transport_origin'),
+      position: route.origin,
+      icon: _pickupMarkerIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+      anchor: const Offset(0.5, 0.5),
+      zIndex: 10,
+    ));
+
+    // Marker d'arrivée (📍 rouge)
+    routeMarkers.add(Marker(
+      markerId: const MarkerId('transport_destination'),
+      position: route.destination,
+      icon: _destinationMarkerIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+      anchor: const Offset(0.5, 0.5),
+      zIndex: 10,
+    ));
 
     for (int i = 0; i < route.steps.length; i++) {
       final step = route.steps[i];
-      List<LatLng> stepCoordinates;
+      List<LatLng> stepCoordinates = [];
 
-      // Construire les coordonnées selon le type d'étape
       if (step.isWalking) {
-        // Étape de marche: utiliser walkStartPosition et walkEndPosition
-        stepCoordinates = [];
-        if (step.walkStartPosition != null) stepCoordinates.add(step.walkStartPosition!);
-        if (step.walkEndPosition != null) stepCoordinates.add(step.walkEndPosition!);
+        // Étape de marche: récupérer le tracé OSRM
+        if (step.walkStartPosition != null && step.walkEndPosition != null) {
+          try {
+            final walkRoute = await RouteService.fetchRoute(
+              origin: step.walkStartPosition!,
+              destination: step.walkEndPosition!,
+              travelMode: 'walking',
+            );
+            stepCoordinates = walkRoute.coordinates;
+          } catch (e) {
+            // Fallback: ligne droite
+            debugPrint('⚠️ OSRM walking failed, using straight line: $e');
+            stepCoordinates = [step.walkStartPosition!, step.walkEndPosition!];
+          }
+        }
       } else {
-        // Étape transport: utiliser le tracé réel si disponible
+        // Étape transport: utiliser le tracé réel
         if (step.pathCoordinates.isNotEmpty) {
           stepCoordinates = step.pathCoordinates;
         } else {
           // Fallback: positions des arrêts
-          stepCoordinates = [];
           if (step.startStop != null) stepCoordinates.add(step.startStop!.position);
           stepCoordinates.addAll(step.intermediateStops.map((s) => s.position));
           if (step.endStop != null) stepCoordinates.add(step.endStop!.position);
+        }
+
+        // Ajouter markers pour les arrêts de transport
+        final lineColor = Color(TransportLineColors.getLineColor(
+          step.lineNumber ?? '',
+          step.transportType ?? TransportType.bus,
+        ));
+
+        // Marker arrêt de montée (grand cercle coloré avec icône)
+        if (step.startStop != null) {
+          routeMarkers.add(Marker(
+            markerId: MarkerId('boarding_${i}_${step.startStop!.id}'),
+            position: step.startStop!.position,
+            icon: await _createStopMarkerIcon(lineColor, isBoarding: true, transportType: step.transportType),
+            anchor: const Offset(0.5, 0.5),
+            zIndex: 5,
+            infoWindow: InfoWindow(
+              title: '🚌 Monter: ${step.startStop!.name}',
+              snippet: 'Ligne ${step.lineNumber}',
+            ),
+          ));
+        }
+
+        // Markers arrêts intermédiaires (petits points blancs)
+        for (int j = 0; j < step.intermediateStops.length; j++) {
+          final intermediateStop = step.intermediateStops[j];
+          routeMarkers.add(Marker(
+            markerId: MarkerId('intermediate_${i}_${j}_${intermediateStop.id}'),
+            position: intermediateStop.position,
+            icon: await _createIntermediateStopMarkerIcon(),
+            anchor: const Offset(0.5, 0.5),
+            zIndex: 3,
+          ));
+        }
+
+        // Marker arrêt de descente (grand cercle coloré)
+        if (step.endStop != null) {
+          routeMarkers.add(Marker(
+            markerId: MarkerId('alighting_${i}_${step.endStop!.id}'),
+            position: step.endStop!.position,
+            icon: await _createStopMarkerIcon(lineColor, isBoarding: false, transportType: step.transportType),
+            anchor: const Offset(0.5, 0.5),
+            zIndex: 5,
+            infoWindow: InfoWindow(
+              title: '🛑 Descendre: ${step.endStop!.name}',
+              snippet: 'Ligne ${step.lineNumber}',
+            ),
+          ));
         }
       }
 
@@ -2318,18 +2394,21 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
       allRouteCoords.addAll(stepCoordinates);
 
-      // Couleur selon le type de transport ou marche
+      // Style de la polyline
       Color lineColor;
       int width;
-      List<PatternItem> patterns = [];
+      List<PatternItem> patterns;
 
       if (step.isWalking) {
-        lineColor = Colors.grey.shade600;
+        // Marche: pointillés gris
+        lineColor = Colors.grey.shade700;
         width = 4;
-        patterns = [PatternItem.dash(12), PatternItem.gap(8)];
+        patterns = [PatternItem.dash(10), PatternItem.gap(6)];
       } else {
+        // Transport: ligne continue colorée
         lineColor = Color(TransportLineColors.getLineColor(step.lineNumber ?? '', step.transportType ?? TransportType.bus));
         width = 6;
+        patterns = [];
       }
 
       routePolylines.add(
@@ -2343,16 +2422,129 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       );
     }
 
-    // Recentrer sur l'itinéraire complet avec les vraies coordonnées
-    if (allRouteCoords.isNotEmpty) {
+    // Recentrer sur l'itinéraire complet
+    if (allRouteCoords.isNotEmpty && _mapController != null) {
       final routeBounds = _boundsFromLatLngList(allRouteCoords);
-      _mapController?.animateCamera(CameraUpdate.newLatLngBounds(routeBounds, 80));
+      _mapController!.animateCamera(CameraUpdate.newLatLngBounds(routeBounds, 80));
     }
 
-    setState(() {
-      _selectedRouteIndex = index;
-      _transportRoutePolylines = routePolylines;
-    });
+    if (mounted) {
+      setState(() {
+        _selectedRouteIndex = index;
+        _transportRoutePolylines = routePolylines;
+        _transportMarkers = routeMarkers;
+      });
+    }
+  }
+
+  /// Cache pour les icônes de markers
+  final Map<String, BitmapDescriptor> _markerIconCache = {};
+
+  /// Crée un marker pour un arrêt de montée/descente (cercle coloré avec icône transport)
+  Future<BitmapDescriptor> _createStopMarkerIcon(Color color, {required bool isBoarding, TransportType? transportType}) async {
+    final cacheKey = 'stop_${color.value}_${isBoarding}_${transportType?.index ?? 0}';
+    if (_markerIconCache.containsKey(cacheKey)) {
+      return _markerIconCache[cacheKey]!;
+    }
+
+    final size = 36.0;
+    final pictureRecorder = PictureRecorder();
+    final canvas = Canvas(pictureRecorder);
+
+    // Ombre
+    final shadowPaint = Paint()
+      ..color = Colors.black.withOpacity(0.3)
+      ..style = PaintingStyle.fill
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
+    canvas.drawCircle(Offset(size / 2, size / 2 + 2), size / 2 - 2, shadowPaint);
+
+    // Cercle extérieur (bordure blanche)
+    final outerPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(size / 2, size / 2), size / 2 - 2, outerPaint);
+
+    // Cercle intérieur (couleur de la ligne)
+    final innerPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(size / 2, size / 2), size / 2 - 5, innerPaint);
+
+    // Icône de transport au centre
+    final iconText = _getTransportIconText(transportType);
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: iconText,
+        style: const TextStyle(
+          fontSize: 16,
+          color: Colors.white,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    textPainter.paint(
+      canvas,
+      Offset(
+        (size - textPainter.width) / 2,
+        (size - textPainter.height) / 2,
+      ),
+    );
+
+    final picture = pictureRecorder.endRecording();
+    final image = await picture.toImage(size.toInt(), size.toInt());
+    final byteData = await image.toByteData(format: ImageByteFormat.png);
+    final bytes = byteData!.buffer.asUint8List();
+
+    final descriptor = BitmapDescriptor.bytes(bytes);
+    _markerIconCache[cacheKey] = descriptor;
+    return descriptor;
+  }
+
+  /// Retourne l'emoji/caractère pour le type de transport
+  String _getTransportIconText(TransportType? type) {
+    switch (type) {
+      case TransportType.bus:
+        return '🚌';
+      case TransportType.urbanTrain:
+        return '🚆';
+      case TransportType.telepherique:
+        return '🚡';
+      default:
+        return '🚏';
+    }
+  }
+
+  /// Crée un petit marker blanc pour les arrêts intermédiaires
+  Future<BitmapDescriptor> _createIntermediateStopMarkerIcon() async {
+    const cacheKey = 'intermediate_white';
+    if (_markerIconCache.containsKey(cacheKey)) {
+      return _markerIconCache[cacheKey]!;
+    }
+
+    final size = 12.0;
+    final pictureRecorder = PictureRecorder();
+    final canvas = Canvas(pictureRecorder);
+
+    // Cercle blanc avec bordure grise
+    final borderPaint = Paint()
+      ..color = Colors.grey.shade600
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(size / 2, size / 2), size / 2, borderPaint);
+
+    final whitePaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(size / 2, size / 2), size / 2 - 2, whitePaint);
+
+    final picture = pictureRecorder.endRecording();
+    final image = await picture.toImage(size.toInt(), size.toInt());
+    final byteData = await image.toByteData(format: ImageByteFormat.png);
+    final bytes = byteData!.buffer.asUint8List();
+
+    final descriptor = BitmapDescriptor.bytes(bytes);
+    _markerIconCache[cacheKey] = descriptor;
+    return descriptor;
   }
 
   /// Trace la route (utilisé par le mode transport)
