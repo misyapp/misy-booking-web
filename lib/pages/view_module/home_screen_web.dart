@@ -2822,12 +2822,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                           isSelected: mode == 0,
                           onTap: () => _switchToMode(0),
                         ),
-                        const SizedBox(width: 8),
-                        _buildNavTab(
-                          label: 'Transports',
-                          isSelected: mode == 1,
-                          onTap: () => _switchToMode(1),
-                        ),
+                        // TODO: Réactiver l'onglet Transports quand les lignes seront finalisées
+                        // const SizedBox(width: 8),
+                        // _buildNavTab(
+                        //   label: 'Transports',
+                        //   isSelected: mode == 1,
+                        //   onTap: () => _switchToMode(1),
+                        // ),
                       ],
                     );
                   },
@@ -5569,13 +5570,26 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         margin: const EdgeInsets.only(top: 4, bottom: 8),
         constraints: const BoxConstraints(maxHeight: 280),
         decoration: BoxDecoration(
-          // Fond vert clair comme Apple Maps
-          color: const Color(0xFFE8F5E9),
+          // Fond blanc neutre avec ombre pour bien ressortir
+          color: Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: const Color(0xFF34C759).withOpacity(0.3),
+            color: Colors.grey.shade300,
             width: 1,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.15),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+              spreadRadius: 0,
+            ),
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
