@@ -2801,11 +2801,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Logo Misy
+                // Logo Misy - grande taille
                 Image.asset(
                   MyImagesUrl.misyLogoRose,
-                  height: 28,
+                  height: 42,
                   fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
                 ),
 
                 const SizedBox(height: 16),
@@ -2852,25 +2853,21 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
                             const SizedBox(height: 16),
 
-                            // Bouton Commander - style gris foncé liquid glass
+                            // Bouton Commander - rouge corail Misy
                             ValueListenableBuilder<bool>(
                               valueListenable: _isSearching,
                               builder: (context, isSearching, _) {
                                 return Container(
                                   width: double.infinity,
                                   decoration: BoxDecoration(
-                                    // Gris foncé liquid glass
-                                    color: const Color(0xFF2C2C2E),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: Colors.white.withOpacity(0.1),
-                                      width: 0.5,
-                                    ),
+                                    // Rouge corail Misy
+                                    color: const Color(0xFFFF5357),
+                                    borderRadius: BorderRadius.circular(14),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.2),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 2),
+                                        color: const Color(0xFFFF5357).withOpacity(0.3),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 4),
                                       ),
                                     ],
                                   ),
@@ -2878,7 +2875,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                                     color: Colors.transparent,
                                     child: InkWell(
                                       onTap: isSearching ? null : _onSearch,
-                                      borderRadius: BorderRadius.circular(10),
+                                      borderRadius: BorderRadius.circular(14),
                                       child: Padding(
                                         padding: const EdgeInsets.symmetric(vertical: 14),
                                         child: Center(
@@ -5770,15 +5767,20 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       ),
       child: Row(
         children: [
-          // Icône point style Apple
+          // Icône - rond pour pickup, carré pour destination (blanc avec bordure noire)
           Padding(
             padding: const EdgeInsets.only(left: 12),
             child: Container(
-              width: 8,
-              height: 8,
+              width: 12,
+              height: 12,
               decoration: BoxDecoration(
-                color: isPickup ? const Color(0xFF34C759) : const Color(0xFFFF3B30),
-                shape: BoxShape.circle,
+                color: Colors.white,
+                shape: isPickup ? BoxShape.circle : BoxShape.rectangle,
+                borderRadius: isPickup ? null : BorderRadius.circular(2),
+                border: Border.all(
+                  color: const Color(0xFF1D1D1F),
+                  width: 2,
+                ),
               ),
             ),
           ),
@@ -7097,26 +7099,23 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
         hoverColor: Colors.grey.withOpacity(0.08),
         splashColor: Colors.grey.withOpacity(0.12),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
-            // Gris foncé liquid glass quand sélectionné
+            // Rouge corail Misy quand sélectionné, transparent sinon
             color: isSelected
-                ? const Color(0xFF2C2C2E)
+                ? const Color(0xFFFF5357)
                 : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-            border: isSelected
-                ? Border.all(color: Colors.white.withOpacity(0.1), width: 0.5)
-                : null,
+            borderRadius: BorderRadius.circular(10),
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
-                      blurRadius: 4,
-                      offset: const Offset(0, 1),
+                      color: const Color(0xFFFF5357).withOpacity(0.25),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
                   ]
                 : null,
