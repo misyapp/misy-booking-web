@@ -1432,7 +1432,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                 }
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF007AFF),
+                backgroundColor: const Color(0xFFFF5357),
                 foregroundColor: Colors.white,
                 elevation: 0,
                 padding: const EdgeInsets.symmetric(vertical: 10),
@@ -2102,10 +2102,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF007AFF).withOpacity(0.08),
+                      color: const Color(0xFFFF5357).withOpacity(0.08),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: const Color(0xFF007AFF).withOpacity(0.2),
+                        color: const Color(0xFFFF5357).withOpacity(0.2),
                       ),
                     ),
                     child: Row(
@@ -2113,7 +2113,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                         Icon(
                           Icons.touch_app,
                           size: 20,
-                          color: const Color(0xFF007AFF),
+                          color: const Color(0xFFFF5357),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -2121,7 +2121,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                             'Affinez votre point exact de dépose en cliquant sur la carte',
                             style: TextStyle(
                               fontSize: 12,
-                              color: const Color(0xFF007AFF),
+                              color: const Color(0xFFFF5357),
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -2852,41 +2852,57 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
                             const SizedBox(height: 16),
 
-                            // Bouton Commander - style Apple
+                            // Bouton Commander - style gris foncé liquid glass
                             ValueListenableBuilder<bool>(
                               valueListenable: _isSearching,
                               builder: (context, isSearching, _) {
-                                return SizedBox(
+                                return Container(
                                   width: double.infinity,
-                                  child: ElevatedButton(
-                                    onPressed: isSearching ? null : _onSearch,
-                                    style: ElevatedButton.styleFrom(
-                                      // Apple blue
-                                      backgroundColor: const Color(0xFF007AFF),
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
-                                      elevation: 0,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
+                                  decoration: BoxDecoration(
+                                    // Gris foncé liquid glass
+                                    color: const Color(0xFF2C2C2E),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.1),
+                                      width: 0.5,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.2),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: isSearching ? null : _onSearch,
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(vertical: 14),
+                                        child: Center(
+                                          child: isSearching
+                                              ? const SizedBox(
+                                                  height: 20,
+                                                  width: 20,
+                                                  child: CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    color: Colors.white,
+                                                  ),
+                                                )
+                                              : const Text(
+                                                  'Commander',
+                                                  style: TextStyle(
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.w600,
+                                                    letterSpacing: -0.2,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                        ),
                                       ),
                                     ),
-                                    child: isSearching
-                                        ? const SizedBox(
-                                            height: 20,
-                                            width: 20,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white,
-                                            ),
-                                          )
-                                        : const Text(
-                                            'Commander',
-                                            style: TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w600,
-                                              letterSpacing: -0.2,
-                                            ),
-                                          ),
                                   ),
                                 );
                               },
@@ -2958,7 +2974,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.directions_transit, size: 18, color: Color(0xFF007AFF)),
+                        const Icon(Icons.directions_transit, size: 18, color: Color(0xFFFF5357)),
                         const SizedBox(width: 8),
                         const Text(
                           'Rechercher un itinéraire',
@@ -3055,7 +3071,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                               child: ElevatedButton(
                                 onPressed: _isSearchingTransportRoute ? null : _searchTransportRoute,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF007AFF),
+                                  backgroundColor: const Color(0xFFFF5357),
                                   foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(vertical: 12),
                                   elevation: 0,
@@ -5611,13 +5627,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               width: 28,
               height: 28,
               decoration: BoxDecoration(
-                color: const Color(0xFF007AFF).withOpacity(0.1),
+                color: const Color(0xFFFF5357).withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
                 Icons.my_location,
                 size: 16,
-                color: Color(0xFF007AFF),
+                color: Color(0xFFFF5357),
               ),
             ),
             const SizedBox(width: 10),
@@ -5626,7 +5642,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: Color(0xFF007AFF),
+                color: Color(0xFFFF5357),
               ),
             ),
           ],
@@ -5686,14 +5702,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               height: 28,
               decoration: BoxDecoration(
                 color: isTransportStop
-                    ? const Color(0xFF007AFF).withOpacity(0.1)
+                    ? const Color(0xFFFF5357).withOpacity(0.1)
                     : Colors.grey.shade100,
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 isTransportStop ? Icons.directions_bus : Icons.place,
                 size: 16,
-                color: isTransportStop ? const Color(0xFF007AFF) : Colors.grey.shade600,
+                color: isTransportStop ? const Color(0xFFFF5357) : Colors.grey.shade600,
               ),
             ),
             const SizedBox(width: 10),
@@ -5745,11 +5761,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       decoration: BoxDecoration(
         // Style Apple - fond léger
         color: isSelecting
-            ? const Color(0xFF007AFF).withOpacity(0.08)
+            ? const Color(0xFFFF5357).withOpacity(0.08)
             : const Color(0xFFF5F5F7),
         borderRadius: BorderRadius.circular(10),
         border: isSelecting
-            ? Border.all(color: const Color(0xFF007AFF).withOpacity(0.4), width: 1.5)
+            ? Border.all(color: const Color(0xFFFF5357).withOpacity(0.4), width: 1.5)
             : Border.all(color: Colors.grey.withOpacity(0.15)),
       ),
       child: Row(
@@ -5783,7 +5799,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                 hintStyle: TextStyle(
                   fontSize: 14,
                   letterSpacing: -0.2,
-                  color: isSelecting ? const Color(0xFF007AFF) : const Color(0xFF86868B),
+                  color: isSelecting ? const Color(0xFFFF5357) : const Color(0xFF86868B),
                 ),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
@@ -5804,7 +5820,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                 child: Icon(
                   Icons.my_location,
                   size: 18,
-                  color: Color(0xFF007AFF),
+                  color: Color(0xFFFF5357),
                 ),
               ),
             ),
@@ -5822,7 +5838,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                 child: Icon(
                   Icons.map_outlined,
                   size: 18,
-                  color: isSelecting ? const Color(0xFF007AFF) : const Color(0xFF86868B),
+                  color: isSelecting ? const Color(0xFFFF5357) : const Color(0xFF86868B),
                 ),
               ),
             ),
@@ -6178,7 +6194,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                     end: Alignment.bottomCenter,
                     colors: [
                       const Color(0xFF5AC8FA),
-                      const Color(0xFF007AFF),
+                      const Color(0xFFFF5357),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(8),
@@ -6353,7 +6369,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       icon = Icons.airline_seat_recline_extra;
       displayText = 'TEL';
     } else {
-      bgColor = const Color(0xFF007AFF); // Bleu Apple
+      bgColor = const Color(0xFFFF5357); // Bleu Apple
     }
 
     return Container(
@@ -6857,11 +6873,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: isScheduled
-                    ? const Color(0xFF007AFF).withOpacity(0.08)
+                    ? const Color(0xFFFF5357).withOpacity(0.08)
                     : const Color(0xFFF5F5F7),
                 borderRadius: BorderRadius.circular(10),
                 border: isScheduled
-                    ? Border.all(color: const Color(0xFF007AFF).withOpacity(0.3))
+                    ? Border.all(color: const Color(0xFFFF5357).withOpacity(0.3))
                     : Border.all(color: Colors.grey.withOpacity(0.15)),
               ),
               child: Row(
@@ -6869,7 +6885,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                   Icon(
                     isScheduled ? Icons.event : Icons.access_time_rounded,
                     size: 18,
-                    color: isScheduled ? const Color(0xFF007AFF) : const Color(0xFF86868B),
+                    color: isScheduled ? const Color(0xFFFF5357) : const Color(0xFF86868B),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -6879,7 +6895,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
                         letterSpacing: -0.2,
-                        color: isScheduled ? const Color(0xFF007AFF) : const Color(0xFF1D1D1F),
+                        color: isScheduled ? const Color(0xFFFF5357) : const Color(0xFF1D1D1F),
                       ),
                     ),
                   ),
@@ -7087,18 +7103,30 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
-            // Style Apple - fond subtil quand sélectionné
+            // Gris foncé liquid glass quand sélectionné
             color: isSelected
-                ? const Color(0xFF007AFF).withOpacity(0.12)
+                ? const Color(0xFF2C2C2E)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
+            border: isSelected
+                ? Border.all(color: Colors.white.withOpacity(0.1), width: 0.5)
+                : null,
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ]
+                : null,
           ),
           child: Text(
             label,
             style: TextStyle(
-              // Bleu Apple pour sélectionné, gris foncé sinon
+              // Blanc quand sélectionné, gris foncé sinon
               color: isSelected
-                  ? const Color(0xFF007AFF)
+                  ? Colors.white
                   : const Color(0xFF1D1D1F),
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
               fontSize: 15,
