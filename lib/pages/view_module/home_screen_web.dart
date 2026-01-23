@@ -5495,7 +5495,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           },
         ),
 
-        const SizedBox(height: 8),
+        // Suggestions pickup - directement sous le champ pickup
+        ValueListenableBuilder<List>(
+          valueListenable: _pickupSuggestions,
+          builder: (context, suggestions, _) {
+            if (suggestions.isEmpty) return const SizedBox(height: 8);
+            return _buildInlineSuggestionsList(suggestions, true);
+          },
+        ),
 
         // Champ Destination
         _buildLocationField(
@@ -5512,24 +5519,215 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           },
         ),
 
-        // Suggestions pickup
-        ValueListenableBuilder<List>(
-          valueListenable: _pickupSuggestions,
-          builder: (context, suggestions, _) {
-            if (suggestions.isEmpty) return const SizedBox.shrink();
-            return _buildSuggestionsList(suggestions, true);
-          },
-        ),
-
-        // Suggestions destination
+        // Suggestions destination - directement sous le champ destination
         ValueListenableBuilder<List>(
           valueListenable: _destinationSuggestions,
           builder: (context, suggestions, _) {
             if (suggestions.isEmpty) return const SizedBox.shrink();
-            return _buildSuggestionsList(suggestions, false);
+            return _buildInlineSuggestionsList(suggestions, false);
           },
         ),
       ],
+    );
+  }
+
+  /// Liste de suggestions inline style Apple Maps - s'affiche directement sous le champ
+  Widget _buildInlineSuggestionsList(List suggestions, bool isPickup) {
+    // Séparer les arrêts de transport des adresses Google
+    final transportStops = suggestions.where((s) => s['type'] == 'stop').toList();
+    final googlePlaces = suggestions.where((s) => s['type'] != 'stop').toList();
+
+    return MouseRegion(
+      onEnter: (_) {
+        if (isPickup) {
+          _isHoveringPickupSuggestions = true;
+        } else {
+          _isHoveringDestinationSuggestions = true;
+        }
+      },
+      onExit: (_) {
+        if (isPickup) {
+          _isHoveringPickupSuggestions = false;
+        } else {
+          _isHoveringDestinationSuggestions = false;
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.only(top: 4, bottom: 8),
+        constraints: const BoxConstraints(maxHeight: 280),
+        decoration: BoxDecoration(
+          // Fond vert clair comme Apple Maps
+          color: const Color(0xFFE8F5E9),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: const Color(0xFF34C759).withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Scrollbar(
+            thumbVisibility: true,
+            radius: const Radius.circular(4),
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              children: [
+                // Option "Ma position" en haut (seulement pour le départ)
+                if (isPickup) _buildMyPositionOptionInline(),
+
+                // Section Arrêts de transport
+                if (transportStops.isNotEmpty)
+                  ...transportStops.take(4).map((stop) => _buildSuggestionItemInline(stop, isPickup, isTransportStop: true)),
+
+                // Section Adresses
+                if (googlePlaces.isNotEmpty)
+                  ...googlePlaces.take(5).map((place) => _buildSuggestionItemInline(place, isPickup, isTransportStop: false)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Option "Ma position" inline
+  Widget _buildMyPositionOptionInline() {
+    return InkWell(
+      onTap: () async {
+        _pickupSuggestions.value = [];
+        await _useCurrentLocationFor(true);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: Colors.grey.shade200, width: 0.5),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: const Color(0xFF007AFF).withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.my_location,
+                size: 16,
+                color: Color(0xFF007AFF),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'Ma position',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF007AFF),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Item de suggestion inline style Apple Maps
+  Widget _buildSuggestionItemInline(Map<String, dynamic> item, bool isPickup, {required bool isTransportStop}) {
+    final String title = item['title'] ?? item['description'] ?? '';
+    final String subtitle = item['subtitle'] ?? '';
+
+    return InkWell(
+      onTap: () async {
+        if (isPickup) {
+          _pickupSuggestions.value = [];
+        } else {
+          _destinationSuggestions.value = [];
+        }
+
+        if (isTransportStop) {
+          // C'est un arrêt de transport
+          final lat = item['lat'] as double?;
+          final lng = item['lng'] as double?;
+          if (lat != null && lng != null) {
+            if (isPickup) {
+              _pickupController.text = title;
+              _pickupLocation = {'lat': lat, 'lng': lng, 'address': title};
+            } else {
+              _destinationController.text = title;
+              _destinationLocation = {'lat': lat, 'lng': lng, 'address': title};
+            }
+            setState(() {});
+          }
+        } else {
+          // C'est une adresse Google Places
+          if (isPickup) {
+            _selectPickupSuggestion(item);
+          } else {
+            _selectDestinationSuggestion(item);
+          }
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: Colors.grey.shade200, width: 0.5),
+          ),
+        ),
+        child: Row(
+          children: [
+            // Icône
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: isTransportStop
+                    ? const Color(0xFF007AFF).withOpacity(0.1)
+                    : Colors.grey.shade100,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isTransportStop ? Icons.directions_bus : Icons.place,
+                size: 16,
+                color: isTransportStop ? const Color(0xFF007AFF) : Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(width: 10),
+            // Texte
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF1D1D1F),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (subtitle.isNotEmpty)
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
