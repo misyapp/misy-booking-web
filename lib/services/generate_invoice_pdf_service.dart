@@ -366,8 +366,8 @@ Future<Uint8List> generateDriverInvoice(
   final Uint8List splashImage = await getImageBytes(MyImagesUrl.splashLogo);
   double totalCommision = double.parse(
       formatNearest(double.parse(bookingDetails['ride_price_commission'])));
-  double totalTVA18 = totalCommision * 0.20;
-  double totalHT = totalCommision - totalTVA18;
+  double totalTVA = 0;  // Entreprise non assujettie à la TVA (impôt synthétique)
+  double totalHT = totalCommision;  // HT = TTC car pas de TVA
 
   // Obtenir le taux de commission pour affichage (fallback 15%)
   double commissionPercent = ((bookingDetails['admin_commission_in_per'] ?? 15.0) as num).toDouble();
@@ -389,7 +389,7 @@ Future<Uint8List> generateDriverInvoice(
   doc.addPage(pw.MultiPage(
       footer: (context) => pw.Paragraph(
             text:
-                "SARLU Misy Technology / Ambohimamory AB 739/III, ANTANETY, BEMASOANDRO, ANTANANARIVO ATSIMONDRANO / RCS Antananarivo 2024 B 00089 / NIF : 3 018 428 139 / STAT : 49292-11-2024-0-10090",
+                "Exonéré de TVA - Régime de l'impôt synthétique\nSARLU Misy Technology / Ambohimamory AB 739/III, ANTANETY, BEMASOANDRO, ANTANANARIVO ATSIMONDRANO / RCS Antananarivo 2024 B 00089 / NIF : 3 018 428 139 / STAT : 49292-11-2024-0-10090",
             style: pw.Theme.of(context).defaultTextStyle.copyWith(
                 color: PdfColors.black,
                 fontSize: 8,
@@ -649,7 +649,7 @@ Future<Uint8List> generateDriverInvoice(
                   alignment: pw.Alignment.centerRight,
                   child: pw.Text(
                       style: const pw.TextStyle(lineSpacing: 0),
-                      "Total TVA 20% : "),
+                      "Total TVA 0% : "),
                 ),
               ),
               pw.Expanded(
@@ -657,7 +657,7 @@ Future<Uint8List> generateDriverInvoice(
                 child: pw.Align(
                   alignment: pw.Alignment.centerRight,
                   child: pw.Text(
-                    "${totalTVA18.toStringAsFixed(2)} ${globalSettings.currency}",
+                    "${totalTVA.toStringAsFixed(2)} ${globalSettings.currency}",
                     style: const pw.TextStyle(lineSpacing: 0),
                   ),
                 ),

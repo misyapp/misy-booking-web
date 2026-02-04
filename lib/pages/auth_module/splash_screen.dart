@@ -4,6 +4,7 @@ import 'package:flutter_easyloading/flutter_easyloading.dart';
 
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/my_colors.dart';
+import 'package:rider_ride_hailing_app/pages/test_invoice_regeneration_page.dart';
 
 import '../../../contants/my_image_url.dart';
 import '../../../provider/auth_provider.dart';
@@ -17,9 +18,26 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   late CustomAuthProvider auth;
+
+  // Vérifie si on est en mode test-invoice
+  bool get _isTestInvoiceMode {
+    final url = Uri.base.toString();
+    return url.contains('test-invoice');
+  }
+
   @override
   void initState() {
     super.initState();
+
+    // Si mode test-invoice, ne pas faire l'authentification normale
+    if (_isTestInvoiceMode) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const TestInvoiceRegenerationPage()),
+        );
+      });
+      return;
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
       auth = Provider.of<CustomAuthProvider>(context, listen: false);
