@@ -7,7 +7,7 @@
       "line_number": "009",
       "display_name": "Ligne 009",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF328F65",
       "is_bundled": false,
       "aller": {
         "direction": "67HA",
@@ -26,7 +26,7 @@
       "line_number": "015",
       "display_name": "Ligne 015",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF1A73C7",
       "is_bundled": true,
       "aller": {
         "direction": "67ha",
@@ -45,7 +45,7 @@
       "line_number": "17",
       "display_name": "Ligne 17",
       "transport_type": "bus",
-      "color": "0xFF9C27B0",
+      "color": "0xFF7B3FA0",
       "is_bundled": true,
       "aller": {
         "direction": "Ambohipo",
@@ -64,7 +64,7 @@
       "line_number": "103",
       "display_name": "Ligne 103",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFFAD692E",
       "is_bundled": false,
       "aller": {
         "direction": "Petite Vitesse",
@@ -83,7 +83,7 @@
       "line_number": "104",
       "display_name": "Ligne 104",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFFB26D2E",
       "is_bundled": false,
       "aller": {
         "direction": "Ambohijatovo - Soanierana",
@@ -102,7 +102,7 @@
       "line_number": "105",
       "display_name": "Ligne 105",
       "transport_type": "bus",
-      "color": "0xFF00BCD4",
+      "color": "0xFF815931",
       "is_bundled": true,
       "aller": {
         "direction": "Ambodifilao",
@@ -121,7 +121,7 @@
       "line_number": "106",
       "display_name": "Ligne 106",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF865D31",
       "is_bundled": false,
       "aller": {
         "direction": "Ambodifilao",
@@ -140,7 +140,7 @@
       "line_number": "107",
       "display_name": "Ligne 107",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF8A6132",
       "is_bundled": false,
       "aller": {
         "direction": "Behoririka",
@@ -159,7 +159,7 @@
       "line_number": "109",
       "display_name": "Ligne 109",
       "transport_type": "bus",
-      "color": "0xFF3F51B5",
+      "color": "0xFF946932",
       "is_bundled": true,
       "aller": {
         "direction": "",
@@ -178,7 +178,7 @@
       "line_number": "110",
       "display_name": "Ligne 110",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFFA39B2E",
       "is_bundled": false,
       "aller": {
         "direction": "Ambodifilao",
@@ -197,7 +197,7 @@
       "line_number": "112",
       "display_name": "Ligne 112",
       "transport_type": "bus",
-      "color": "0xFFFF5722",
+      "color": "0xFFADA92E",
       "is_bundled": true,
       "aller": {
         "direction": "Andranoro",
@@ -216,7 +216,7 @@
       "line_number": "113",
       "display_name": "Ligne 113",
       "transport_type": "bus",
-      "color": "0xFF795548",
+      "color": "0xFFB2B02E",
       "is_bundled": true,
       "aller": {
         "direction": "Mahazoarivo",
@@ -235,7 +235,7 @@
       "line_number": "114",
       "display_name": "Ligne 114",
       "transport_type": "bus",
-      "color": "0xFF607D8B",
+      "color": "0xFF818131",
       "is_bundled": true,
       "aller": {
         "direction": "Ambatolampy",
@@ -254,7 +254,7 @@
       "line_number": "115",
       "display_name": "Ligne 115",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF848631",
       "is_bundled": false,
       "aller": {
         "direction": "Ambatomena",
@@ -273,7 +273,7 @@
       "line_number": "116",
       "display_name": "Ligne 116",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF878A32",
       "is_bundled": false,
       "aller": {
         "direction": "Ambohijatovo",
@@ -292,7 +292,7 @@
       "line_number": "117",
       "display_name": "Ligne 117",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF8A8F32",
       "is_bundled": false,
       "aller": {
         "direction": "Ambohijatovo",
@@ -311,7 +311,7 @@
       "line_number": "119",
       "display_name": "Ligne 119",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF909932",
       "is_bundled": false,
       "aller": {
         "direction": "67ha",
@@ -330,7 +330,7 @@
       "line_number": "120",
       "display_name": "Ligne 120",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF71A82E",
       "is_bundled": false,
       "aller": {
         "direction": "Ambodifilao",
@@ -349,7 +349,7 @@
       "line_number": "122",
       "display_name": "Ligne 122",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF72B22E",
       "is_bundled": false,
       "aller": {
         "direction": "Antanimena",
@@ -368,7 +368,7 @@
       "line_number": "123",
       "display_name": "Ligne 123",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF598131",
       "is_bundled": false,
       "aller": {
         "direction": "",
@@ -387,7 +387,7 @@
       "line_number": "125",
       "display_name": "Ligne 125",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF5B8A32",
       "is_bundled": false,
       "aller": {
         "direction": "Manankambahiny",
@@ -406,7 +406,7 @@
       "line_number": "126",
       "display_name": "Ligne 126",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF5C8F32",
       "is_bundled": false,
       "aller": {
         "direction": "Cf : 67ha - Anosy",
@@ -425,7 +425,7 @@
       "line_number": "128",
       "display_name": "Ligne 128",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF5D9932",
       "is_bundled": false,
       "aller": {
         "direction": "Ambohijatovo - Manakambahiny",
@@ -444,7 +444,7 @@
       "line_number": "129",
       "display_name": "Ligne 129",
       "transport_type": "bus",
-      "color": "0xFFE91E63",
+      "color": "0xFFC2185B",
       "is_bundled": true,
       "aller": {
         "direction": "Ambohipo",
@@ -463,7 +463,7 @@
       "line_number": "133",
       "display_name": "Ligne 133",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF318632",
       "is_bundled": false,
       "aller": {
         "direction": "",
@@ -482,7 +482,7 @@
       "line_number": "134",
       "display_name": "Ligne 134",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF328A34",
       "is_bundled": false,
       "aller": {
         "direction": "Analakely",
@@ -501,7 +501,7 @@
       "line_number": "135",
       "display_name": "Ligne 135",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF328F37",
       "is_bundled": false,
       "aller": {
         "direction": "",
@@ -520,7 +520,7 @@
       "line_number": "136",
       "display_name": "Ligne 136",
       "transport_type": "bus",
-      "color": "0xFF8BC34A",
+      "color": "0xFF329439",
       "is_bundled": true,
       "aller": {
         "direction": "Analakely",
@@ -539,7 +539,7 @@
       "line_number": "137",
       "display_name": "Ligne 137",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF32993B",
       "is_bundled": false,
       "aller": {
         "direction": "Andoharanofotsy",
@@ -558,7 +558,7 @@
       "line_number": "138",
       "display_name": "Ligne 138",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF339D3D",
       "is_bundled": false,
       "aller": {
         "direction": "Anosibe",
@@ -577,7 +577,7 @@
       "line_number": "139",
       "display_name": "Ligne 139",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF33A240",
       "is_bundled": false,
       "aller": {
         "direction": "Ambatoroka",
@@ -596,7 +596,7 @@
       "line_number": "140",
       "display_name": "Ligne 140",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF2EB26D",
       "is_bundled": false,
       "aller": {
         "direction": "Ampitatafika",
@@ -615,7 +615,7 @@
       "line_number": "141",
       "display_name": "Ligne 141",
       "transport_type": "bus",
-      "color": "0xFFCDDC39",
+      "color": "0xFF318159",
       "is_bundled": true,
       "aller": {
         "direction": "Ambatomaro",
@@ -634,7 +634,7 @@
       "line_number": "142",
       "display_name": "Ligne 142",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF31865D",
       "is_bundled": false,
       "aller": {
         "direction": "Ambatomena",
@@ -653,7 +653,7 @@
       "line_number": "143",
       "display_name": "Ligne 143",
       "transport_type": "bus",
-      "color": "0xFF009688",
+      "color": "0xFF328A61",
       "is_bundled": true,
       "aller": {
         "direction": "Analakely",
@@ -672,7 +672,7 @@
       "line_number": "144",
       "display_name": "Ligne 144",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF328F65",
       "is_bundled": false,
       "aller": {
         "direction": "Ambodifilao",
@@ -691,7 +691,7 @@
       "line_number": "146",
       "display_name": "Ligne 146",
       "transport_type": "bus",
-      "color": "0xFF673AB7",
+      "color": "0xFF32996E",
       "is_bundled": true,
       "aller": {
         "direction": "",
@@ -710,7 +710,7 @@
       "line_number": "147",
       "display_name": "Ligne 147",
       "transport_type": "bus",
-      "color": "0xFFF44336",
+      "color": "0xFF339D73",
       "is_bundled": true,
       "aller": {
         "direction": "",
@@ -729,7 +729,7 @@
       "line_number": "150",
       "display_name": "Ligne 150",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF318181",
       "is_bundled": false,
       "aller": {
         "direction": "Androhibe",
@@ -748,7 +748,7 @@
       "line_number": "151",
       "display_name": "Ligne 151",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF318486",
       "is_bundled": false,
       "aller": {
         "direction": "67ha",
@@ -767,7 +767,7 @@
       "line_number": "153",
       "display_name": "Ligne 153",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF328A8F",
       "is_bundled": false,
       "aller": {
         "direction": "A - Antanimena Rasalama",
@@ -786,7 +786,7 @@
       "line_number": "154",
       "display_name": "Ligne 154",
       "transport_type": "bus",
-      "color": "0xFF03A9F4",
+      "color": "0xFF328D94",
       "is_bundled": true,
       "aller": {
         "direction": "Amboditsiry",
@@ -805,7 +805,7 @@
       "line_number": "159",
       "display_name": "Ligne 159",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF339AAC",
       "is_bundled": false,
       "aller": {
         "direction": "Andranomena",
@@ -824,7 +824,7 @@
       "line_number": "160",
       "display_name": "Ligne 160",
       "transport_type": "bus",
-      "color": "0xFFFF9800",
+      "color": "0xFF315A86",
       "is_bundled": true,
       "aller": {
         "direction": "Ankatso",
@@ -843,7 +843,7 @@
       "line_number": "161",
       "display_name": "Ligne 161",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF325B8A",
       "is_bundled": false,
       "aller": {
         "direction": "Ambatobe",
@@ -856,7 +856,7 @@
       "line_number": "162",
       "display_name": "Ligne 162",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF325C8F",
       "is_bundled": false,
       "aller": {
         "direction": "Ambohijatovo - Anosibe",
@@ -875,7 +875,7 @@
       "line_number": "163",
       "display_name": "Ligne 163",
       "transport_type": "bus",
-      "color": "0xFF4CAF50",
+      "color": "0xFF325C94",
       "is_bundled": true,
       "aller": {
         "direction": "Ankadikely Ilafy",
@@ -894,7 +894,7 @@
       "line_number": "164",
       "display_name": "Ligne 164",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF325D99",
       "is_bundled": false,
       "aller": {
         "direction": "Ambohipo",
@@ -913,7 +913,7 @@
       "line_number": "165",
       "display_name": "Ligne 165",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF335D9D",
       "is_bundled": false,
       "aller": {
         "direction": "Androhibe",
@@ -932,7 +932,7 @@
       "line_number": "166",
       "display_name": "Ligne 166",
       "transport_type": "bus",
-      "color": "0xFFE040FB",
+      "color": "0xFF335EA2",
       "is_bundled": true,
       "aller": {
         "direction": "Ankatso",
@@ -951,7 +951,7 @@
       "line_number": "172",
       "display_name": "Ligne 172",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF393294",
       "is_bundled": false,
       "aller": {
         "direction": "67ha",
@@ -970,7 +970,7 @@
       "line_number": "178",
       "display_name": "Ligne 178",
       "transport_type": "bus",
-      "color": "0xFF00E5FF",
+      "color": "0xFF38288A",
       "is_bundled": true,
       "aller": {
         "direction": "",
@@ -989,7 +989,7 @@
       "line_number": "182",
       "display_name": "Ligne 182",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF6E3299",
       "is_bundled": false,
       "aller": {
         "direction": "Ambohijatovo",
@@ -1008,7 +1008,7 @@
       "line_number": "184",
       "display_name": "Ligne 184",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF7833A2",
       "is_bundled": false,
       "aller": {
         "direction": "Ambanidia",
@@ -1027,7 +1027,7 @@
       "line_number": "187",
       "display_name": "Ligne 187",
       "transport_type": "bus",
-      "color": "0xFFFF6D00",
+      "color": "0xFF69288A",
       "is_bundled": true,
       "aller": {
         "direction": "67ha",
@@ -1046,7 +1046,7 @@
       "line_number": "190",
       "display_name": "Ligne 190",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF94328D",
       "is_bundled": false,
       "aller": {
         "direction": "Ambohipotsy",
@@ -1065,7 +1065,7 @@
       "line_number": "191",
       "display_name": "Ligne 191",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF993290",
       "is_bundled": false,
       "aller": {
         "direction": "67ha - Anosy",
@@ -1084,7 +1084,7 @@
       "line_number": "192",
       "display_name": "Ligne 192",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF9D3393",
       "is_bundled": false,
       "aller": {
         "direction": "",
@@ -1103,7 +1103,7 @@
       "line_number": "194",
       "display_name": "Ligne 194",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFFA73398",
       "is_bundled": false,
       "aller": {
         "direction": "",
@@ -1122,7 +1122,7 @@
       "line_number": "196",
       "display_name": "Ligne 196",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF8A2879",
       "is_bundled": false,
       "aller": {
         "direction": "Ambolokandrina",
@@ -1141,7 +1141,7 @@
       "line_number": "199",
       "display_name": "Ligne 199",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF992880",
       "is_bundled": false,
       "aller": {
         "direction": "Alarobia",
@@ -1160,7 +1160,7 @@
       "line_number": "127A",
       "display_name": "Ligne 127A",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF5EAC33",
       "is_bundled": false,
       "aller": {
         "direction": "Mahamasina - Manakambahiny",
@@ -1179,7 +1179,7 @@
       "line_number": "133A",
       "display_name": "Ligne 133A",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF335D9D",
       "is_bundled": false,
       "aller": {
         "direction": "Analakely",
@@ -1198,7 +1198,7 @@
       "line_number": "133B",
       "display_name": "Ligne 133B",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF335EA2",
       "is_bundled": false,
       "aller": {
         "direction": "Analakely",
@@ -1217,7 +1217,7 @@
       "line_number": "133C",
       "display_name": "Ligne 133C",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF335EA7",
       "is_bundled": false,
       "aller": {
         "direction": "Ambohimamory",
@@ -1236,7 +1236,7 @@
       "line_number": "135A",
       "display_name": "Ligne 135A",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF7D33A7",
       "is_bundled": false,
       "aller": {
         "direction": "Ambodifilao",
@@ -1255,7 +1255,7 @@
       "line_number": "135_",
       "display_name": "Ligne 135_",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFFA73398",
       "is_bundled": false,
       "aller": {
         "direction": "Manakambahiny - Soarano",
@@ -1268,7 +1268,7 @@
       "line_number": "150B",
       "display_name": "Ligne 150B",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF3D339D",
       "is_bundled": false,
       "aller": {
         "direction": "Anosibe",
@@ -1287,7 +1287,7 @@
       "line_number": "154A",
       "display_name": "Ligne 154A",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFFAC4533",
       "is_bundled": false,
       "aller": {
         "direction": "Amboditsiry",
@@ -1306,7 +1306,7 @@
       "line_number": "154B",
       "display_name": "Ligne 154B",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF8A3828",
       "is_bundled": false,
       "aller": {
         "direction": "Amboditsiry",
@@ -1325,7 +1325,7 @@
       "line_number": "154C",
       "display_name": "Ligne 154C",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF8F3B28",
       "is_bundled": false,
       "aller": {
         "direction": "Andraharo - Amboditsiry",
@@ -1344,7 +1344,7 @@
       "line_number": "157A",
       "display_name": "Ligne 157A",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF489428",
       "is_bundled": false,
       "aller": {
         "direction": "Anosibe",
@@ -1363,7 +1363,7 @@
       "line_number": "157B",
       "display_name": "Ligne 157B",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF489928",
       "is_bundled": false,
       "aller": {
         "direction": "Anosibe",
@@ -1382,7 +1382,7 @@
       "line_number": "163B",
       "display_name": "Ligne 163B",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF28488A",
       "is_bundled": false,
       "aller": {
         "direction": "Ankadikely Ilafy",
@@ -1401,7 +1401,7 @@
       "line_number": "180A",
       "display_name": "Ligne 180A",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF4333A7",
       "is_bundled": false,
       "aller": {
         "direction": "Alarobia",
@@ -1420,7 +1420,7 @@
       "line_number": "180B",
       "display_name": "Ligne 180B",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF4533AC",
       "is_bundled": false,
       "aller": {
         "direction": "Belair",
@@ -1433,7 +1433,7 @@
       "line_number": "183A",
       "display_name": "Ligne 183A",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF8F2848",
       "is_bundled": false,
       "aller": {
         "direction": "67ha - Anosy",
@@ -1446,7 +1446,7 @@
       "line_number": "183B",
       "display_name": "Ligne 183B",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF942848",
       "is_bundled": false,
       "aller": {
         "direction": "Anosy - 67ha",
@@ -1459,7 +1459,7 @@
       "line_number": "186A",
       "display_name": "Ligne 186A",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF829E28",
       "is_bundled": false,
       "aller": {
         "direction": "A : Cf :  Anosy > 67ha",
@@ -1478,7 +1478,7 @@
       "line_number": "192A",
       "display_name": "Ligne 192A",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF287C8F",
       "is_bundled": false,
       "aller": {
         "direction": "Antsampandrano",
@@ -1497,7 +1497,7 @@
       "line_number": "192B",
       "display_name": "Ligne 192B",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF287E94",
       "is_bundled": false,
       "aller": {
         "direction": "Behoririka",
@@ -1510,7 +1510,7 @@
       "line_number": "193A",
       "display_name": "Ligne 193A",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF284894",
       "is_bundled": false,
       "aller": {
         "direction": "Ambohitrakely",
@@ -1529,7 +1529,7 @@
       "line_number": "147BIS",
       "display_name": "Ligne 147BIS",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFFA28D39",
       "is_bundled": false,
       "aller": {
         "direction": "",
@@ -1548,7 +1548,7 @@
       "line_number": "A",
       "display_name": "Ligne A",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF909932",
       "is_bundled": false,
       "aller": {
         "direction": "",
@@ -1567,7 +1567,7 @@
       "line_number": "AMBOHIDRATRIMO",
       "display_name": "Ligne AMBOHIDRATRIMO",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF8F822D",
       "is_bundled": false,
       "aller": {
         "direction": "",
@@ -1586,7 +1586,7 @@
       "line_number": "AMBOHITRIMANJAKA",
       "display_name": "Ligne AMBOHITRIMANJAKA",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF815931",
       "is_bundled": false,
       "aller": {
         "direction": "",
@@ -1605,7 +1605,7 @@
       "line_number": "D",
       "display_name": "Ligne D",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF98A733",
       "is_bundled": false,
       "aller": {
         "direction": "Ambohibao",
@@ -1624,7 +1624,7 @@
       "line_number": "E",
       "display_name": "Ligne E",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF9AAC33",
       "is_bundled": false,
       "aller": {
         "direction": "",
@@ -1643,7 +1643,7 @@
       "line_number": "G",
       "display_name": "Ligne G",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF7C8F28",
       "is_bundled": false,
       "aller": {
         "direction": "",
@@ -1662,7 +1662,7 @@
       "line_number": "H",
       "display_name": "Ligne H",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF7E9428",
       "is_bundled": false,
       "aller": {
         "direction": "",
@@ -1681,7 +1681,7 @@
       "line_number": "J",
       "display_name": "Ligne J",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF829E28",
       "is_bundled": false,
       "aller": {
         "direction": "",
@@ -1700,7 +1700,7 @@
       "line_number": "KOFIMI",
       "display_name": "Ligne KOFIMI",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF2EA864",
       "is_bundled": false,
       "aller": {
         "direction": "",
@@ -1719,7 +1719,7 @@
       "line_number": "MAHITSY",
       "display_name": "Ligne MAHITSY",
       "transport_type": "bus",
-      "color": "0xFF2196F3",
+      "color": "0xFF5C8F32",
       "is_bundled": false,
       "aller": {
         "direction": "",
@@ -1738,7 +1738,7 @@
       "line_number": "TELEPHERIQUE_Orange",
       "display_name": "Téléphérique Orange",
       "transport_type": "cable_car",
-      "color": "0xFFFF9800",
+      "color": "0xFFE65100",
       "is_bundled": true,
       "aller": {
         "direction": "aller",
@@ -1757,7 +1757,7 @@
       "line_number": "TRAIN_TCE",
       "display_name": "Train TCE",
       "transport_type": "train",
-      "color": "0xFF4CAF50",
+      "color": "0xFF2E7D32",
       "is_bundled": true,
       "aller": {
         "direction": "aller",

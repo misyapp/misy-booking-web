@@ -1,3 +1,4 @@
+import 'package:flutter/painting.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 /// Types de transport disponibles
@@ -32,23 +33,42 @@ extension TransportTypeExtension on TransportType {
   }
 }
 
-/// Couleurs spécifiques pour chaque ligne de bus
+/// Couleurs spécifiques pour chaque ligne de bus (style IDFM)
 class TransportLineColors {
-  static const Map<String, int> _busColors = {
-    '015': 0xFF2196F3, // Bleu
-    '017': 0xFF9C27B0, // Violet
-    '17': 0xFF9C27B0,  // Violet (alias)
-    '129': 0xFFE91E63, // Rose/Magenta
+  // Couleurs manuelles — palette transport public (tons mats, professionnels)
+  static const Map<String, int> _fixedColors = {
+    '015': 0xFF1A73C7, // Bleu IDFM
+    '017': 0xFF7B3FA0, // Violet
+    '17': 0xFF7B3FA0,  // Violet (alias)
+    '129': 0xFFC2185B, // Rose foncé
+    'TRAIN_TCE': 0xFF2E7D32, // Vert foncé
+    'TELEPHERIQUE_Orange': 0xFFE65100, // Orange foncé
   };
+
+  /// Génère une couleur unique déterministe (tons mats, style transport public)
+  static int _generateColor(String lineNumber) {
+    int hash = 0;
+    for (int i = 0; i < lineNumber.length; i++) {
+      hash = lineNumber.codeUnitAt(i) + ((hash << 5) - hash);
+    }
+
+    // Hue : 0-360, bien distribué
+    final hue = (hash.abs() % 360).toDouble();
+    // Saturation : 45-60% — couleurs douces, pas criardes
+    final saturation = 0.45 + (hash.abs() % 15) / 100.0;
+    // Lightness : 35-45% — assez foncé pour lisibilité sur carte claire
+    final lightness = 0.35 + (hash.abs() % 10) / 100.0;
+
+    return HSLColor.fromAHSL(1.0, hue, saturation, lightness)
+        .toColor()
+        .value;
+  }
 
   /// Obtient la couleur pour une ligne donnée
   static int getLineColor(String lineNumber, TransportType type) {
-    // Pour le train et téléphérique, utiliser la couleur du type
-    if (type == TransportType.urbanTrain) return 0xFF4CAF50;
-    if (type == TransportType.telepherique) return 0xFFFF9800;
-
-    // Pour les bus, utiliser la couleur spécifique ou la couleur par défaut
-    return _busColors[lineNumber] ?? 0xFF2196F3;
+    if (type == TransportType.urbanTrain) return 0xFF2E7D32;
+    if (type == TransportType.telepherique) return 0xFFE65100;
+    return _fixedColors[lineNumber] ?? _generateColor(lineNumber);
   }
 }
 

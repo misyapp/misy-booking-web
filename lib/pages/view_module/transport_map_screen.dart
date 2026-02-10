@@ -181,12 +181,10 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
         setState(() {
           _lineGroups = lines;
           _isLoading = false;
-          // Afficher toutes les lignes par défaut
           for (final group in lines) {
             _visibleLines.add(group.lineNumber);
           }
         });
-        // Mettre à jour la carte avec toutes les lignes
         _updateMapDisplay();
       }
       myCustomPrintStatement('${_lineGroups.length} groupes de lignes chargés');
@@ -414,37 +412,49 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
 
       final color = Color(TransportLineColors.getLineColor(group.lineNumber, group.transportType));
 
-      // Largeur selon le type de transport (train et téléphérique plus gros)
       final bool isRailType = group.transportType == TransportType.urbanTrain ||
           group.transportType == TransportType.telepherique;
-      final int lineWidth = isRailType ? 6 : 5;
+      final int lineWidth = isRailType ? 7 : 6;
 
-      // Style IDFM: ligne colorée simple
+      // Style IDFM : bordure blanche + trait coloré
       if (group.aller != null) {
+        // Bordure blanche (plus large, en dessous)
+        newPolylines.add(
+          Polyline(
+            polylineId: PolylineId('${group.lineNumber}_aller_border'),
+            points: group.aller!.coordinates,
+            color: Colors.white,
+            width: lineWidth + 3,
+            zIndex: 0,
+            patterns: [],
+          ),
+        );
+        // Trait coloré par-dessus
         newPolylines.add(
           Polyline(
             polylineId: PolylineId('${group.lineNumber}_aller'),
             points: group.aller!.coordinates,
             color: color,
             width: lineWidth,
+            zIndex: 1,
             patterns: [],
           ),
         );
 
-        // Ajouter les markers des arrêts (cercles avec numéro)
+        // Markers arrêts — ronds colorés avec numéro de ligne
         for (final stop in group.aller!.stops) {
           final markerId = '${group.lineNumber}_${stop.stopId}';
-          final icon = await _getCircleMarkerIcon(group.lineNumber, color);
+          final icon = await _getStopCircleIcon(group.lineNumber, color, group.transportType);
 
           final marker = Marker(
             markerId: MarkerId(markerId),
             position: stop.position,
             icon: icon,
             anchor: const Offset(0.5, 0.5),
+            zIndex: 2,
             consumeTapEvents: true,
           );
 
-          // Séparer bus et rail
           if (isRailType) {
             newRailMarkers.add(marker);
           } else {
@@ -454,12 +464,25 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
       }
 
       if (group.retour != null) {
+        // Bordure blanche retour
+        newPolylines.add(
+          Polyline(
+            polylineId: PolylineId('${group.lineNumber}_retour_border'),
+            points: group.retour!.coordinates,
+            color: Colors.white.withValues(alpha: 0.7),
+            width: lineWidth + 2,
+            zIndex: 0,
+            patterns: [],
+          ),
+        );
+        // Trait coloré retour
         newPolylines.add(
           Polyline(
             polylineId: PolylineId('${group.lineNumber}_retour'),
             points: group.retour!.coordinates,
-            color: color.withValues(alpha: 0.6),
+            color: color.withValues(alpha: 0.55),
             width: lineWidth - 1,
+            zIndex: 1,
             patterns: [],
           ),
         );
@@ -472,6 +495,93 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
         _busStopMarkers = newBusMarkers;
         _railStopMarkers = newRailMarkers;
       });
+    }
+  }
+
+  /// Crée un rond coloré avec numéro de ligne en blanc, bordure blanche
+  Future<BitmapDescriptor> _getStopCircleIcon(String lineNumber, Color color, TransportType type) async {
+    final cacheKey = 'stopcircle_${lineNumber}_${color.value}';
+
+    if (_markerIconCache.containsKey(cacheKey)) {
+      return _markerIconCache[cacheKey]!;
+    }
+
+    try {
+      final isTrain = type == TransportType.urbanTrain;
+      final isCable = type == TransportType.telepherique;
+
+      // Texte à afficher dans le rond
+      String displayText;
+      if (isTrain) {
+        displayText = 'TCE';
+      } else if (isCable) {
+        displayText = 'TP';
+      } else {
+        displayText = lineNumber.replaceAll(RegExp(r'^0+'), '');
+        if (displayText.isEmpty) displayText = lineNumber;
+      }
+
+      // Taille du cercle — assez grand pour être lisible
+      const double size = 28.0;
+      const double borderWidth = 2.5;
+      const center = Offset(size / 2, size / 2);
+      const outerRadius = size / 2;
+      const innerRadius = outerRadius - borderWidth;
+
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+
+      // Ombre légère
+      final shadowPaint = Paint()
+        ..color = Colors.black.withValues(alpha: 0.25)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
+      canvas.drawCircle(center + const Offset(0, 1), outerRadius, shadowPaint);
+
+      // Bordure blanche
+      final borderPaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(center, outerRadius, borderPaint);
+
+      // Cercle coloré
+      final fillPaint = Paint()
+        ..color = color
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(center, innerRadius, fillPaint);
+
+      // Numéro centré en blanc
+      final fontSize = displayText.length > 2 ? 8.0 : (displayText.length > 1 ? 10.0 : 12.0);
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: displayText,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: fontSize,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+      textPainter.layout();
+      textPainter.paint(
+        canvas,
+        Offset(
+          (size - textPainter.width) / 2,
+          (size - textPainter.height) / 2,
+        ),
+      );
+
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(size.toInt(), size.toInt());
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      final bytes = byteData!.buffer.asUint8List();
+
+      final icon = BitmapDescriptor.bytes(bytes);
+      _markerIconCache[cacheKey] = icon;
+      return icon;
+    } catch (e) {
+      debugPrint('Error creating stop circle icon: $e');
+      return BitmapDescriptor.defaultMarkerWithHue(_getHueFromColor(color));
     }
   }
 
@@ -1353,7 +1463,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
         child: BackdropFilter(
           filter: ui.ImageFilter.blur(sigmaX: 15, sigmaY: 15),
           child: Container(
-            width: 300,
+            width: 380,
             padding: const EdgeInsets.only(top: 16, left: 16, right: 16),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.93),
@@ -1401,7 +1511,9 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
             Expanded(
               child: _leftPanelMode == 0
                   ? _buildItineraryPanel()
-                  : _buildLinesPanel(),
+                  : _leftPanelMode == 1
+                      ? _buildLinesPanel()
+                      : _buildMapManagementPanel(),
             ),
           ],
         ),
@@ -1430,11 +1542,22 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
           ),
           Expanded(
             child: _buildPanelTab(
-              icon: Icons.map_outlined,
+              icon: Icons.list_alt,
               label: 'Lignes',
               isSelected: _leftPanelMode == 1,
               onTap: () => setState(() {
                 _leftPanelMode = 1;
+                _clearRoute();
+              }),
+            ),
+          ),
+          Expanded(
+            child: _buildPanelTab(
+              icon: Icons.map_outlined,
+              label: 'Carte',
+              isSelected: _leftPanelMode == 2,
+              onTap: () => setState(() {
+                _leftPanelMode = 2;
                 _clearRoute();
               }),
             ),
@@ -1510,7 +1633,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
     );
   }
 
-  /// Panneau des lignes de transport
+  /// Panneau des lignes de transport (info seulement)
   Widget _buildLinesPanel() {
     return Column(
       children: [
@@ -1524,6 +1647,30 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
               : _buildLinesList(),
+        ),
+      ],
+    );
+  }
+
+  /// Panneau Carte des transports — gestion d'affichage + modifications
+  Widget _buildMapManagementPanel() {
+    return Column(
+      children: [
+        // Filtres par type
+        _buildTypeFilters(),
+
+        const Divider(height: 1),
+
+        // Boutons Tout afficher / Tout masquer
+        _buildShowHideAllButtons(),
+
+        const Divider(height: 1),
+
+        // Liste des lignes avec toggle + soumettre modification
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _buildMapLinesList(),
         ),
 
         // Bouton zoom
@@ -1553,6 +1700,188 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
     );
   }
 
+  /// Liste des lignes pour le panneau Carte (avec toggle + modification)
+  Widget _buildMapLinesList() {
+    final filteredLines = _lineGroups
+        .where((g) => _typeFilters[g.transportType]!)
+        .toList();
+
+    if (filteredLines.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.filter_alt_off, size: 48, color: Colors.grey.shade400),
+            const SizedBox(height: 8),
+            Text(
+              'Aucune ligne',
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      itemCount: filteredLines.length,
+      itemBuilder: (context, index) {
+        final group = filteredLines[index];
+        return _buildMapLineItem(group);
+      },
+    );
+  }
+
+  /// Élément de ligne dans le panneau Carte (toggle + soumettre modification)
+  Widget _buildMapLineItem(TransportLineGroup group) {
+    final isVisible = _visibleLines.contains(group.lineNumber);
+    final color = Color(TransportLineColors.getLineColor(group.lineNumber, group.transportType));
+    final numStops = group.aller?.numStops ?? group.retour?.numStops ?? 0;
+
+    final allerDirection = group.aller?.direction ?? '';
+    final retourDirection = group.retour?.direction ?? '';
+    final directionText = allerDirection.isNotEmpty && retourDirection.isNotEmpty
+        ? '$allerDirection ↔ $retourDirection'
+        : allerDirection.isNotEmpty ? allerDirection : retourDirection;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isVisible ? color.withOpacity(0.06) : Colors.transparent,
+        border: Border(
+          left: BorderSide(
+            color: isVisible ? color : Colors.transparent,
+            width: 3,
+          ),
+          bottom: BorderSide(color: Colors.grey.shade100),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Ligne principale avec toggle
+          InkWell(
+            onTap: () => _toggleLineVisibility(group.lineNumber),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 16, right: 8, top: 10, bottom: 4),
+              child: Row(
+                children: [
+                  // Badge
+                  Container(
+                    width: 44,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      _getShortLineNumber(group.lineNumber),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Infos
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          group.displayName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        if (directionText.isNotEmpty)
+                          Text(
+                            directionText,
+                            style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  ),
+                  // Switch
+                  SizedBox(
+                    height: 28,
+                    child: Switch(
+                      value: isVisible,
+                      onChanged: (_) => _toggleLineVisibility(group.lineNumber),
+                      activeColor: color,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Ligne secondaire : arrêts + bouton modifier
+          Padding(
+            padding: const EdgeInsets.only(left: 70, right: 16, bottom: 8),
+            child: Row(
+              children: [
+                Text(
+                  '$numStops arrêts',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                ),
+                const Spacer(),
+                InkWell(
+                  onTap: () => _openEditorForLine(group),
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.edit_outlined, size: 13, color: MyColors.primaryColor),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Modifier',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: MyColors.primaryColor,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Ouvre l'éditeur de contribution pour une ligne spécifique
+  void _openEditorForLine(TransportLineGroup group) {
+    final location = _userPosition ?? _defaultPosition;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) => TransportEditorSheet(
+          lineNumber: group.lineNumber,
+          initialLocation: location,
+          onEditConfirmed: (editData) {
+            _previewEdit(editData);
+          },
+        ),
+      ),
+    );
+  }
+
   /// Panneau de calcul d'itinéraire
   Widget _buildItineraryPanel() {
     return Column(
@@ -1577,7 +1906,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
                 onUseMyLocation: _useMyLocationAsOrigin,
               ),
 
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
 
               // Bouton inverser
               Center(
@@ -1588,7 +1917,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
                 ),
               ),
 
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
 
               // Champ Arrivée
               _buildItineraryField(
@@ -1691,9 +2020,9 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
                     hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 14),
                     border: InputBorder.none,
                     isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                  style: const TextStyle(fontSize: 14),
+                  style: const TextStyle(fontSize: 15),
                 ),
               ),
               if (onUseMyLocation != null)
@@ -1828,7 +2157,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
     final totalPrice = _calculateRoutePrice(_currentRoute!);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1914,7 +2243,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
             ],
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
 
           // Info correspondances et distance
           Container(
@@ -1943,7 +2272,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
 
           // Étapes
           Text(
@@ -2005,7 +2334,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
         : step.durationMinutes;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2013,11 +2342,11 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
           Column(
             children: [
               Container(
-                width: 32,
-                height: 32,
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
                   color: color,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: Icon(
                   step.isWalking
@@ -2030,7 +2359,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
               if (!isLast)
                 Container(
                   width: 2,
-                  height: 40,
+                  height: 48,
                   color: color.withValues(alpha: 0.3),
                 ),
             ],
@@ -2227,6 +2556,70 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
     );
   }
 
+  /// Boutons pour tout afficher / tout masquer
+  Widget _buildShowHideAllButtons() {
+    final filteredLines = _lineGroups
+        .where((g) => _typeFilters[g.transportType]!)
+        .toList();
+    final allVisible = filteredLines.isNotEmpty &&
+        filteredLines.every((g) => _visibleLines.contains(g.lineNumber));
+    final noneVisible = filteredLines.every((g) => !_visibleLines.contains(g.lineNumber));
+    final visibleCount = filteredLines.where((g) => _visibleLines.contains(g.lineNumber)).length;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          Text(
+            '$visibleCount/${filteredLines.length} affichées',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const Spacer(),
+          InkWell(
+            onTap: noneVisible ? null : () {
+              setState(() {
+                for (final g in filteredLines) {
+                  _visibleLines.remove(g.lineNumber);
+                }
+              });
+              _updateMapDisplay();
+            },
+            child: Text(
+              'Tout masquer',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: noneVisible ? Colors.grey.shade400 : Colors.grey.shade700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          InkWell(
+            onTap: allVisible ? null : () {
+              setState(() {
+                for (final g in filteredLines) {
+                  _visibleLines.add(g.lineNumber);
+                }
+              });
+              _updateMapDisplay();
+            },
+            child: Text(
+              'Tout afficher',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: allVisible ? Colors.grey.shade400 : MyColors.primaryColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Filtres par type de transport
   Widget _buildTypeFilters() {
     return Padding(
@@ -2242,7 +2635,7 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
               color: Colors.grey.shade700,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -2319,25 +2712,31 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
     );
   }
 
-  /// Élément de ligne dans la liste
+  /// Élément de ligne dans la liste (onglet Lignes — info seulement)
   Widget _buildLineItem(TransportLineGroup group) {
-    final isVisible = _visibleLines.contains(group.lineNumber);
     final color = Color(TransportLineColors.getLineColor(group.lineNumber, group.transportType));
     final numStops = group.aller?.numStops ?? group.retour?.numStops ?? 0;
 
+    // Extraire direction aller/retour (terminus)
+    final allerDirection = group.aller?.direction ?? '';
+    final retourDirection = group.retour?.direction ?? '';
+    final directionText = allerDirection.isNotEmpty && retourDirection.isNotEmpty
+        ? '$allerDirection ↔ $retourDirection'
+        : allerDirection.isNotEmpty ? allerDirection : retourDirection;
+
     return InkWell(
-      onTap: () => _toggleLineVisibility(group.lineNumber),
+      onTap: () {
+        // Basculer vers l'onglet Carte et activer cette ligne
+        setState(() {
+          _leftPanelMode = 2;
+          if (!_visibleLines.contains(group.lineNumber)) {
+            _visibleLines.add(group.lineNumber);
+          }
+        });
+        _updateMapDisplay();
+      },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: isVisible ? color.withOpacity(0.08) : Colors.transparent,
-          border: Border(
-            left: BorderSide(
-              color: isVisible ? color : Colors.transparent,
-              width: 3,
-            ),
-          ),
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
             // Badge de ligne
@@ -2373,6 +2772,16 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
                       fontSize: 14,
                     ),
                   ),
+                  if (directionText.isNotEmpty)
+                    Text(
+                      directionText,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   Text(
                     '$numStops arrêts',
                     style: TextStyle(
@@ -2384,13 +2793,8 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
               ),
             ),
 
-            // Toggle de visibilité
-            Switch(
-              value: isVisible,
-              onChanged: (_) => _toggleLineVisibility(group.lineNumber),
-              activeColor: color,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
+            // Flèche vers Carte
+            Icon(Icons.chevron_right, color: Colors.grey.shade400, size: 20),
           ],
         ),
       ),
