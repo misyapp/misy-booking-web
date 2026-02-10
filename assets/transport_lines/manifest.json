@@ -1,0 +1,1776 @@
+{
+  "version": "2.0",
+  "last_updated": "2026-02-10",
+  "total_lines": 95,
+  "lines": [
+    {
+      "line_number": "009",
+      "display_name": "Ligne 009",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "67HA",
+        "num_stops": 14,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/009_aller.geojson"
+      },
+      "retour": {
+        "direction": "Antanandrano",
+        "num_stops": 13,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/009_retour.geojson"
+      }
+    },
+    {
+      "line_number": "015",
+      "display_name": "Ligne 015",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": true,
+      "aller": {
+        "direction": "67ha",
+        "num_stops": 31,
+        "asset_path": "assets/transport_lines/core/015_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "Mandroseza",
+        "num_stops": 30,
+        "asset_path": "assets/transport_lines/core/015_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "17",
+      "display_name": "Ligne 17",
+      "transport_type": "bus",
+      "color": "0xFF9C27B0",
+      "is_bundled": true,
+      "aller": {
+        "direction": "Ambohipo",
+        "num_stops": 16,
+        "asset_path": "assets/transport_lines/core/17_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "Mahamasina",
+        "num_stops": 20,
+        "asset_path": "assets/transport_lines/core/17_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "103",
+      "display_name": "Ligne 103",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Petite Vitesse",
+        "num_stops": 8,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/103_aller.geojson"
+      },
+      "retour": {
+        "direction": "Analakely",
+        "num_stops": 8,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/103_retour.geojson"
+      }
+    },
+    {
+      "line_number": "104",
+      "display_name": "Ligne 104",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambohijatovo - Soanierana",
+        "num_stops": 28,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/104_aller.geojson"
+      },
+      "retour": {
+        "direction": "Soanierana Analakely",
+        "num_stops": 33,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/104_retour.geojson"
+      }
+    },
+    {
+      "line_number": "105",
+      "display_name": "Ligne 105",
+      "transport_type": "bus",
+      "color": "0xFF00BCD4",
+      "is_bundled": true,
+      "aller": {
+        "direction": "Ambodifilao",
+        "num_stops": 15,
+        "asset_path": "assets/transport_lines/core/105_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "Ambohimanarina",
+        "num_stops": 12,
+        "asset_path": "assets/transport_lines/core/105_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "106",
+      "display_name": "Ligne 106",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambodifilao",
+        "num_stops": 14,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/106_aller.geojson"
+      },
+      "retour": {
+        "direction": "Soavimasoandro",
+        "num_stops": 12,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/106_retour.geojson"
+      }
+    },
+    {
+      "line_number": "107",
+      "display_name": "Ligne 107",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Behoririka",
+        "num_stops": 16,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/107_aller.geojson"
+      },
+      "retour": {
+        "direction": "Soavinandriana",
+        "num_stops": 16,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/107_retour.geojson"
+      }
+    },
+    {
+      "line_number": "109",
+      "display_name": "Ligne 109",
+      "transport_type": "bus",
+      "color": "0xFF3F51B5",
+      "is_bundled": true,
+      "aller": {
+        "direction": "",
+        "num_stops": 21,
+        "asset_path": "assets/transport_lines/core/109_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 20,
+        "asset_path": "assets/transport_lines/core/109_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "110",
+      "display_name": "Ligne 110",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambodifilao",
+        "num_stops": 18,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/110_aller.geojson"
+      },
+      "retour": {
+        "direction": "Anosizato",
+        "num_stops": 18,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/110_retour.geojson"
+      }
+    },
+    {
+      "line_number": "112",
+      "display_name": "Ligne 112",
+      "transport_type": "bus",
+      "color": "0xFFFF5722",
+      "is_bundled": true,
+      "aller": {
+        "direction": "Andranoro",
+        "num_stops": 30,
+        "asset_path": "assets/transport_lines/core/112_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "Morondava",
+        "num_stops": 27,
+        "asset_path": "assets/transport_lines/core/112_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "113",
+      "display_name": "Ligne 113",
+      "transport_type": "bus",
+      "color": "0xFF795548",
+      "is_bundled": true,
+      "aller": {
+        "direction": "Mahazoarivo",
+        "num_stops": 14,
+        "asset_path": "assets/transport_lines/core/113_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "Sicam - Analakely",
+        "num_stops": 17,
+        "asset_path": "assets/transport_lines/core/113_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "114",
+      "display_name": "Ligne 114",
+      "transport_type": "bus",
+      "color": "0xFF607D8B",
+      "is_bundled": true,
+      "aller": {
+        "direction": "Ambatolampy",
+        "num_stops": 25,
+        "asset_path": "assets/transport_lines/core/114_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "Ambodihady",
+        "num_stops": 15,
+        "asset_path": "assets/transport_lines/core/114_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "115",
+      "display_name": "Ligne 115",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambatomena",
+        "num_stops": 9,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/115_aller.geojson"
+      },
+      "retour": {
+        "direction": "Tsimbazaza",
+        "num_stops": 5,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/115_retour.geojson"
+      }
+    },
+    {
+      "line_number": "116",
+      "display_name": "Ligne 116",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambohijatovo",
+        "num_stops": 9,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/116_aller.geojson"
+      },
+      "retour": {
+        "direction": "Mandroseza",
+        "num_stops": 9,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/116_retour.geojson"
+      }
+    },
+    {
+      "line_number": "117",
+      "display_name": "Ligne 117",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambohijatovo",
+        "num_stops": 11,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/117_aller.geojson"
+      },
+      "retour": {
+        "direction": "Ambohitsoa",
+        "num_stops": 9,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/117_retour.geojson"
+      }
+    },
+    {
+      "line_number": "119",
+      "display_name": "Ligne 119",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "67ha",
+        "num_stops": 18,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/119_aller.geojson"
+      },
+      "retour": {
+        "direction": "Ankatso",
+        "num_stops": 17,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/119_retour.geojson"
+      }
+    },
+    {
+      "line_number": "120",
+      "display_name": "Ligne 120",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambodifilao",
+        "num_stops": 14,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/120_aller.geojson"
+      },
+      "retour": {
+        "direction": "Soavimasoandro",
+        "num_stops": 12,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/120_retour.geojson"
+      }
+    },
+    {
+      "line_number": "122",
+      "display_name": "Ligne 122",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Antanimena",
+        "num_stops": 15,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/122_aller.geojson"
+      },
+      "retour": {
+        "direction": "Mahazoarivo",
+        "num_stops": 15,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/122_retour.geojson"
+      }
+    },
+    {
+      "line_number": "123",
+      "display_name": "Ligne 123",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "",
+        "num_stops": 30,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_123_aller.geojson"
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 34,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_123_retour.geojson"
+      }
+    },
+    {
+      "line_number": "125",
+      "display_name": "Ligne 125",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Manankambahiny",
+        "num_stops": 21,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/125_aller.geojson"
+      },
+      "retour": {
+        "direction": "Soarano",
+        "num_stops": 17,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/125_retour.geojson"
+      }
+    },
+    {
+      "line_number": "126",
+      "display_name": "Ligne 126",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Cf : 67ha - Anosy",
+        "num_stops": 40,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/126_aller.geojson"
+      },
+      "retour": {
+        "direction": "Cf : Anosy - 67ha",
+        "num_stops": 39,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/126_retour.geojson"
+      }
+    },
+    {
+      "line_number": "128",
+      "display_name": "Ligne 128",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambohijatovo - Manakambahiny",
+        "num_stops": 35,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/128_aller.geojson"
+      },
+      "retour": {
+        "direction": "Manakambahiny - Ambohijatovo",
+        "num_stops": 36,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/128_retour.geojson"
+      }
+    },
+    {
+      "line_number": "129",
+      "display_name": "Ligne 129",
+      "transport_type": "bus",
+      "color": "0xFFE91E63",
+      "is_bundled": true,
+      "aller": {
+        "direction": "Ambohipo",
+        "num_stops": 15,
+        "asset_path": "assets/transport_lines/core/129_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "Analakely",
+        "num_stops": 13,
+        "asset_path": "assets/transport_lines/core/129_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "133",
+      "display_name": "Ligne 133",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "",
+        "num_stops": 43,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_133_aller.geojson"
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 40,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_133_retour.geojson"
+      }
+    },
+    {
+      "line_number": "134",
+      "display_name": "Ligne 134",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Analakely",
+        "num_stops": 13,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/134_aller.geojson"
+      },
+      "retour": {
+        "direction": "Manjakamiadana",
+        "num_stops": 12,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/134_retour.geojson"
+      }
+    },
+    {
+      "line_number": "135",
+      "display_name": "Ligne 135",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "",
+        "num_stops": 25,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_135_aller.geojson"
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 25,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_135_retour.geojson"
+      }
+    },
+    {
+      "line_number": "136",
+      "display_name": "Ligne 136",
+      "transport_type": "bus",
+      "color": "0xFF8BC34A",
+      "is_bundled": true,
+      "aller": {
+        "direction": "Analakely",
+        "num_stops": 21,
+        "asset_path": "assets/transport_lines/core/136_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "Anosy",
+        "num_stops": 24,
+        "asset_path": "assets/transport_lines/core/136_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "137",
+      "display_name": "Ligne 137",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Andoharanofotsy",
+        "num_stops": 24,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/137_aller.geojson"
+      },
+      "retour": {
+        "direction": "Soarano",
+        "num_stops": 20,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/137_retour.geojson"
+      }
+    },
+    {
+      "line_number": "138",
+      "display_name": "Ligne 138",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Anosibe",
+        "num_stops": 7,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/138_aller.geojson"
+      },
+      "retour": {
+        "direction": "Anosipatrana",
+        "num_stops": 9,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/138_retour.geojson"
+      }
+    },
+    {
+      "line_number": "139",
+      "display_name": "Ligne 139",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambatoroka",
+        "num_stops": 12,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/139_aller.geojson"
+      },
+      "retour": {
+        "direction": "Antanimena",
+        "num_stops": 11,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/139_retour.geojson"
+      }
+    },
+    {
+      "line_number": "140",
+      "display_name": "Ligne 140",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ampitatafika",
+        "num_stops": 22,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/140_aller.geojson"
+      },
+      "retour": {
+        "direction": "Tsaralalàna",
+        "num_stops": 20,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/140_retour.geojson"
+      }
+    },
+    {
+      "line_number": "141",
+      "display_name": "Ligne 141",
+      "transport_type": "bus",
+      "color": "0xFFCDDC39",
+      "is_bundled": true,
+      "aller": {
+        "direction": "Ambatomaro",
+        "num_stops": 18,
+        "asset_path": "assets/transport_lines/core/141_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "Ambodifilao",
+        "num_stops": 30,
+        "asset_path": "assets/transport_lines/core/141_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "142",
+      "display_name": "Ligne 142",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambatomena",
+        "num_stops": 8,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/142_aller.geojson"
+      },
+      "retour": {
+        "direction": "Soanierana",
+        "num_stops": 11,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/142_retour.geojson"
+      }
+    },
+    {
+      "line_number": "143",
+      "display_name": "Ligne 143",
+      "transport_type": "bus",
+      "color": "0xFF009688",
+      "is_bundled": true,
+      "aller": {
+        "direction": "Analakely",
+        "num_stops": 25,
+        "asset_path": "assets/transport_lines/core/143_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "Itaosy Cité",
+        "num_stops": 26,
+        "asset_path": "assets/transport_lines/core/143_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "144",
+      "display_name": "Ligne 144",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambodifilao",
+        "num_stops": 14,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/144_aller.geojson"
+      },
+      "retour": {
+        "direction": "Ambohimahitsy",
+        "num_stops": 12,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/144_retour.geojson"
+      }
+    },
+    {
+      "line_number": "146",
+      "display_name": "Ligne 146",
+      "transport_type": "bus",
+      "color": "0xFF673AB7",
+      "is_bundled": true,
+      "aller": {
+        "direction": "",
+        "num_stops": 14,
+        "asset_path": "assets/transport_lines/core/146_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 14,
+        "asset_path": "assets/transport_lines/core/146_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "147",
+      "display_name": "Ligne 147",
+      "transport_type": "bus",
+      "color": "0xFFF44336",
+      "is_bundled": true,
+      "aller": {
+        "direction": "",
+        "num_stops": 34,
+        "asset_path": "assets/transport_lines/core/147_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 42,
+        "asset_path": "assets/transport_lines/core/147_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "150",
+      "display_name": "Ligne 150",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Androhibe",
+        "num_stops": 17,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/150_aller.geojson"
+      },
+      "retour": {
+        "direction": "Imamba",
+        "num_stops": 19,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/150_retour.geojson"
+      }
+    },
+    {
+      "line_number": "151",
+      "display_name": "Ligne 151",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "67ha",
+        "num_stops": 23,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/151_aller.geojson"
+      },
+      "retour": {
+        "direction": "Ambohitsoa",
+        "num_stops": 22,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/151_retour.geojson"
+      }
+    },
+    {
+      "line_number": "153",
+      "display_name": "Ligne 153",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "A - Antanimena Rasalama",
+        "num_stops": 33,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/153_aller.geojson"
+      },
+      "retour": {
+        "direction": "B - Antanimena Mahamasina",
+        "num_stops": 31,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/153_retour.geojson"
+      }
+    },
+    {
+      "line_number": "154",
+      "display_name": "Ligne 154",
+      "transport_type": "bus",
+      "color": "0xFF03A9F4",
+      "is_bundled": true,
+      "aller": {
+        "direction": "Amboditsiry",
+        "num_stops": 25,
+        "asset_path": "assets/transport_lines/core/154_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "Tanjombato",
+        "num_stops": 24,
+        "asset_path": "assets/transport_lines/core/154_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "159",
+      "display_name": "Ligne 159",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Andranomena",
+        "num_stops": 28,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/159_aller.geojson"
+      },
+      "retour": {
+        "direction": "Tanjombato",
+        "num_stops": 25,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/159_retour.geojson"
+      }
+    },
+    {
+      "line_number": "160",
+      "display_name": "Ligne 160",
+      "transport_type": "bus",
+      "color": "0xFFFF9800",
+      "is_bundled": true,
+      "aller": {
+        "direction": "Ankatso",
+        "num_stops": 10,
+        "asset_path": "assets/transport_lines/core/160_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "Antanimena",
+        "num_stops": 9,
+        "asset_path": "assets/transport_lines/core/160_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "161",
+      "display_name": "Ligne 161",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambatobe",
+        "num_stops": 32,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/161_aller.geojson"
+      }
+    },
+    {
+      "line_number": "162",
+      "display_name": "Ligne 162",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambohijatovo - Anosibe",
+        "num_stops": 24,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/162_aller.geojson"
+      },
+      "retour": {
+        "direction": "Andraharo - Anosibe",
+        "num_stops": 29,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/162_retour.geojson"
+      }
+    },
+    {
+      "line_number": "163",
+      "display_name": "Ligne 163",
+      "transport_type": "bus",
+      "color": "0xFF4CAF50",
+      "is_bundled": true,
+      "aller": {
+        "direction": "Ankadikely Ilafy",
+        "num_stops": 20,
+        "asset_path": "assets/transport_lines/core/163_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "Anosy",
+        "num_stops": 18,
+        "asset_path": "assets/transport_lines/core/163_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "164",
+      "display_name": "Ligne 164",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambohipo",
+        "num_stops": 12,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/164_aller.geojson"
+      },
+      "retour": {
+        "direction": "Analakely",
+        "num_stops": 13,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/164_retour.geojson"
+      }
+    },
+    {
+      "line_number": "165",
+      "display_name": "Ligne 165",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Androhibe",
+        "num_stops": 18,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/165_aller.geojson"
+      },
+      "retour": {
+        "direction": "Anosy",
+        "num_stops": 21,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/165_retour.geojson"
+      }
+    },
+    {
+      "line_number": "166",
+      "display_name": "Ligne 166",
+      "transport_type": "bus",
+      "color": "0xFFE040FB",
+      "is_bundled": true,
+      "aller": {
+        "direction": "Ankatso",
+        "num_stops": 11,
+        "asset_path": "assets/transport_lines/core/166_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "Antanimena",
+        "num_stops": 10,
+        "asset_path": "assets/transport_lines/core/166_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "172",
+      "display_name": "Ligne 172",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "67ha",
+        "num_stops": 26,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/172_aller.geojson"
+      },
+      "retour": {
+        "direction": "Andoharanofotsy",
+        "num_stops": 27,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/172_retour.geojson"
+      }
+    },
+    {
+      "line_number": "178",
+      "display_name": "Ligne 178",
+      "transport_type": "bus",
+      "color": "0xFF00E5FF",
+      "is_bundled": true,
+      "aller": {
+        "direction": "",
+        "num_stops": 33,
+        "asset_path": "assets/transport_lines/core/178_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 24,
+        "asset_path": "assets/transport_lines/core/178_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "182",
+      "display_name": "Ligne 182",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambohijatovo",
+        "num_stops": 12,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/182_aller.geojson"
+      },
+      "retour": {
+        "direction": "Antsobolo",
+        "num_stops": 10,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/182_retour.geojson"
+      }
+    },
+    {
+      "line_number": "184",
+      "display_name": "Ligne 184",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambanidia",
+        "num_stops": 11,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/184_aller.geojson"
+      },
+      "retour": {
+        "direction": "Mahamasina",
+        "num_stops": 14,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/184_retour.geojson"
+      }
+    },
+    {
+      "line_number": "187",
+      "display_name": "Ligne 187",
+      "transport_type": "bus",
+      "color": "0xFFFF6D00",
+      "is_bundled": true,
+      "aller": {
+        "direction": "67ha",
+        "num_stops": 22,
+        "asset_path": "assets/transport_lines/core/187_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "Ambanidia - Fiadanamanga",
+        "num_stops": 27,
+        "asset_path": "assets/transport_lines/core/187_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "190",
+      "display_name": "Ligne 190",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambohipotsy",
+        "num_stops": 15,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/190_aller.geojson"
+      },
+      "retour": {
+        "direction": "Analakely",
+        "num_stops": 17,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/190_retour.geojson"
+      }
+    },
+    {
+      "line_number": "191",
+      "display_name": "Ligne 191",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "67ha - Anosy",
+        "num_stops": 37,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/191_aller.geojson"
+      },
+      "retour": {
+        "direction": "Anosy - 67ha",
+        "num_stops": 41,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/191_retour.geojson"
+      }
+    },
+    {
+      "line_number": "192",
+      "display_name": "Ligne 192",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "",
+        "num_stops": 2,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_192_aller.geojson"
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 2,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_192_retour.geojson"
+      }
+    },
+    {
+      "line_number": "194",
+      "display_name": "Ligne 194",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "",
+        "num_stops": 58,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_194_aller.geojson"
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 57,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_194_retour.geojson"
+      }
+    },
+    {
+      "line_number": "196",
+      "display_name": "Ligne 196",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambolokandrina",
+        "num_stops": 15,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/196_aller.geojson"
+      },
+      "retour": {
+        "direction": "Soarano",
+        "num_stops": 13,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/196_retour.geojson"
+      }
+    },
+    {
+      "line_number": "199",
+      "display_name": "Ligne 199",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Alarobia",
+        "num_stops": 29,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/199_aller.geojson"
+      },
+      "retour": {
+        "direction": "Soavina",
+        "num_stops": 26,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/199_retour.geojson"
+      }
+    },
+    {
+      "line_number": "127A",
+      "display_name": "Ligne 127A",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Mahamasina - Manakambahiny",
+        "num_stops": 28,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/127A_aller.geojson"
+      },
+      "retour": {
+        "direction": "Manakambahiny - Mahamasina",
+        "num_stops": 30,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/127A_retour.geojson"
+      }
+    },
+    {
+      "line_number": "133A",
+      "display_name": "Ligne 133A",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Analakely",
+        "num_stops": 24,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/133A_aller.geojson"
+      },
+      "retour": {
+        "direction": "Itaosy Hopitaly",
+        "num_stops": 23,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/133A_retour.geojson"
+      }
+    },
+    {
+      "line_number": "133B",
+      "display_name": "Ligne 133B",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Analakely",
+        "num_stops": 24,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/133B_aller.geojson"
+      },
+      "retour": {
+        "direction": "Itaosy Cité",
+        "num_stops": 22,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/133B_retour.geojson"
+      }
+    },
+    {
+      "line_number": "133C",
+      "display_name": "Ligne 133C",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambohimamory",
+        "num_stops": 31,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/133C_aller.geojson"
+      },
+      "retour": {
+        "direction": "Analakely",
+        "num_stops": 28,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/133C_retour.geojson"
+      }
+    },
+    {
+      "line_number": "135A",
+      "display_name": "Ligne 135A",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambodifilao",
+        "num_stops": 13,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/135A_aller.geojson"
+      },
+      "retour": {
+        "direction": "Ambohimahitsy",
+        "num_stops": 14,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/135A_retour.geojson"
+      }
+    },
+    {
+      "line_number": "135_",
+      "display_name": "Ligne 135_",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Manakambahiny - Soarano",
+        "num_stops": 42,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/135_ROUGE_aller.geojson"
+      }
+    },
+    {
+      "line_number": "150B",
+      "display_name": "Ligne 150B",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Anosibe",
+        "num_stops": 15,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/150B_aller.geojson"
+      },
+      "retour": {
+        "direction": "Mahatony",
+        "num_stops": 14,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/150B_retour.geojson"
+      }
+    },
+    {
+      "line_number": "154A",
+      "display_name": "Ligne 154A",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Amboditsiry",
+        "num_stops": 54,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/154A_aller.geojson"
+      },
+      "retour": {
+        "direction": "Tanjombato",
+        "num_stops": 32,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/154A_retour.geojson"
+      }
+    },
+    {
+      "line_number": "154B",
+      "display_name": "Ligne 154B",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Amboditsiry",
+        "num_stops": 36,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/154B_aller.geojson"
+      },
+      "retour": {
+        "direction": "Tanjombato",
+        "num_stops": 36,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/154B_retour.geojson"
+      }
+    },
+    {
+      "line_number": "154C",
+      "display_name": "Ligne 154C",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Andraharo - Amboditsiry",
+        "num_stops": 83,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/154C_aller.geojson"
+      },
+      "retour": {
+        "direction": "Ankorondrano - Andraharo",
+        "num_stops": 78,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/154C_retour.geojson"
+      }
+    },
+    {
+      "line_number": "157A",
+      "display_name": "Ligne 157A",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Anosibe",
+        "num_stops": 14,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/157A_aller.geojson"
+      },
+      "retour": {
+        "direction": "Manjakaray",
+        "num_stops": 16,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/157A_retour.geojson"
+      }
+    },
+    {
+      "line_number": "157B",
+      "display_name": "Ligne 157B",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Anosibe",
+        "num_stops": 15,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/157B_aller.geojson"
+      },
+      "retour": {
+        "direction": "Manjakaray",
+        "num_stops": 19,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/157B_retour.geojson"
+      }
+    },
+    {
+      "line_number": "163B",
+      "display_name": "Ligne 163B",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ankadikely Ilafy",
+        "num_stops": 26,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/163B_aller.geojson"
+      },
+      "retour": {
+        "direction": "Saropody",
+        "num_stops": 36,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/163B_retour.geojson"
+      }
+    },
+    {
+      "line_number": "180A",
+      "display_name": "Ligne 180A",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Alarobia",
+        "num_stops": 28,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/180A_aller.geojson"
+      },
+      "retour": {
+        "direction": "Ambolokandrina",
+        "num_stops": 28,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/180A_retour.geojson"
+      }
+    },
+    {
+      "line_number": "180B",
+      "display_name": "Ligne 180B",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Belair",
+        "num_stops": 31,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/180B_aller.geojson"
+      }
+    },
+    {
+      "line_number": "183A",
+      "display_name": "Ligne 183A",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "67ha - Anosy",
+        "num_stops": 33,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/183A_aller.geojson"
+      }
+    },
+    {
+      "line_number": "183B",
+      "display_name": "Ligne 183B",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Anosy - 67ha",
+        "num_stops": 45,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/183B_aller.geojson"
+      }
+    },
+    {
+      "line_number": "186A",
+      "display_name": "Ligne 186A",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "A : Cf :  Anosy > 67ha",
+        "num_stops": 37,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/186A_aller.geojson"
+      },
+      "retour": {
+        "direction": "B : Cf 67ha > Anosy",
+        "num_stops": 37,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/186A_retour.geojson"
+      }
+    },
+    {
+      "line_number": "192A",
+      "display_name": "Ligne 192A",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Antsampandrano",
+        "num_stops": 30,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/192A_aller.geojson"
+      },
+      "retour": {
+        "direction": "Mandroseza",
+        "num_stops": 34,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/192A_retour.geojson"
+      }
+    },
+    {
+      "line_number": "192B",
+      "display_name": "Ligne 192B",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Behoririka",
+        "num_stops": 39,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/192B_aller.geojson"
+      }
+    },
+    {
+      "line_number": "193A",
+      "display_name": "Ligne 193A",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambohitrakely",
+        "num_stops": 19,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/193A_aller.geojson"
+      },
+      "retour": {
+        "direction": "Ampasika",
+        "num_stops": 18,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/193A_retour.geojson"
+      }
+    },
+    {
+      "line_number": "147BIS",
+      "display_name": "Ligne 147BIS",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "",
+        "num_stops": 9,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_147BIS_aller.geojson"
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 43,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_147BIS_retour.geojson"
+      }
+    },
+    {
+      "line_number": "A",
+      "display_name": "Ligne A",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "",
+        "num_stops": 30,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_A_aller.geojson"
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 30,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_A_retour.geojson"
+      }
+    },
+    {
+      "line_number": "AMBOHIDRATRIMO",
+      "display_name": "Ligne AMBOHIDRATRIMO",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "",
+        "num_stops": 17,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_AMBOHIDRATRIMO_aller.geojson"
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 17,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_AMBOHIDRATRIMO_retour.geojson"
+      }
+    },
+    {
+      "line_number": "AMBOHITRIMANJAKA",
+      "display_name": "Ligne AMBOHITRIMANJAKA",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "",
+        "num_stops": 9,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_AMBOHITRIMANJAKA_aller.geojson"
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 9,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_AMBOHITRIMANJAKA_retour.geojson"
+      }
+    },
+    {
+      "line_number": "D",
+      "display_name": "Ligne D",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "Ambohibao",
+        "num_stops": 5,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/D_aller.geojson"
+      },
+      "retour": {
+        "direction": "Vassacos",
+        "num_stops": 5,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/D_retour.geojson"
+      }
+    },
+    {
+      "line_number": "E",
+      "display_name": "Ligne E",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "",
+        "num_stops": 69,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_E_aller.geojson"
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 53,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_E_retour.geojson"
+      }
+    },
+    {
+      "line_number": "G",
+      "display_name": "Ligne G",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "",
+        "num_stops": 7,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_G_aller.geojson"
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 7,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_G_retour.geojson"
+      }
+    },
+    {
+      "line_number": "H",
+      "display_name": "Ligne H",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "",
+        "num_stops": 20,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_H_aller.geojson"
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 19,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_H_retour.geojson"
+      }
+    },
+    {
+      "line_number": "J",
+      "display_name": "Ligne J",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "",
+        "num_stops": 8,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_J_aller.geojson"
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 8,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_J_retour.geojson"
+      }
+    },
+    {
+      "line_number": "KOFIMI",
+      "display_name": "Ligne KOFIMI",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "",
+        "num_stops": 10,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_KOFIMI_aller.geojson"
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 10,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_KOFIMI_retour.geojson"
+      }
+    },
+    {
+      "line_number": "MAHITSY",
+      "display_name": "Ligne MAHITSY",
+      "transport_type": "bus",
+      "color": "0xFF2196F3",
+      "is_bundled": false,
+      "aller": {
+        "direction": "",
+        "num_stops": 10,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_MAHITSY_aller.geojson"
+      },
+      "retour": {
+        "direction": "",
+        "num_stops": 10,
+        "asset_path": null,
+        "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_MAHITSY_retour.geojson"
+      }
+    },
+    {
+      "line_number": "TELEPHERIQUE_Orange",
+      "display_name": "Téléphérique Orange",
+      "transport_type": "cable_car",
+      "color": "0xFFFF9800",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 7,
+        "asset_path": "assets/transport_lines/core/TELEPHERIQUE_Orange_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 7,
+        "asset_path": "assets/transport_lines/core/TELEPHERIQUE_Orange_retour.geojson",
+        "remote_url": null
+      }
+    },
+    {
+      "line_number": "TRAIN_TCE",
+      "display_name": "Train TCE",
+      "transport_type": "train",
+      "color": "0xFF4CAF50",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 11,
+        "asset_path": "assets/transport_lines/core/TRAIN_TCE_aller.geojson",
+        "remote_url": null
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 11,
+        "asset_path": "assets/transport_lines/core/TRAIN_TCE_retour.geojson",
+        "remote_url": null
+      }
+    }
+  ]
+}

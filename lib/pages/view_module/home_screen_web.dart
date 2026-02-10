@@ -2822,13 +2822,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                           isSelected: mode == 0,
                           onTap: () => _switchToMode(0),
                         ),
-                        // TODO: Réactiver l'onglet Transports quand les lignes seront finalisées
-                        // const SizedBox(width: 8),
-                        // _buildNavTab(
-                        //   label: 'Transports',
-                        //   isSelected: mode == 1,
-                        //   onTap: () => _switchToMode(1),
-                        // ),
+                        const SizedBox(width: 8),
+                        _buildNavTab(
+                          label: 'Transports',
+                          isSelected: mode == 1,
+                          onTap: () => _switchToMode(1),
+                        ),
                       ],
                     );
                   },

@@ -146,6 +146,8 @@ flutter:
     - assets/json_files/service_account_credential.json
     - assets/json_files/
     - assets/transport_lines/
+    - assets/transport_lines/manifest.json
+    - assets/transport_lines/core/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware

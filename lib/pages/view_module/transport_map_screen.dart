@@ -14,6 +14,8 @@ import 'package:rider_ride_hailing_app/services/transport_lines_service.dart';
 import 'package:rider_ride_hailing_app/services/places_autocomplete_web.dart';
 import 'package:rider_ride_hailing_app/services/osrm_service.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/home_screen_web.dart';
+import 'package:rider_ride_hailing_app/models/transport_contribution.dart';
+import 'package:rider_ride_hailing_app/bottom_sheet_widget/transport_editor_sheet.dart';
 
 /// Page affichant les lignes de transport d'Antananarivo sur une carte
 /// Style inspiré de Île-de-France Mobilités
@@ -973,6 +975,15 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
           if (_selectedStop != null) _buildStopDetailPanel(),
         ],
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showEditorSheet,
+        icon: const Icon(Icons.edit_location_alt),
+        label: const Text('Editer'),
+        backgroundColor: MyColors.coralPink,
+        foregroundColor: Colors.white,
+        elevation: 4,
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 
@@ -3317,5 +3328,73 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
       context,
       MaterialPageRoute(builder: (_) => const HomeScreenWeb()),
     );
+  }
+
+  /// Affiche le bottom sheet d'édition de ligne
+  void _showEditorSheet() {
+    // Déterminer la ligne sélectionnée
+    String? selectedLineNumber;
+    if (_selectedStopLine != null) {
+      selectedLineNumber = _selectedStopLine!.lineNumber;
+    } else if (_visibleLines.length == 1) {
+      selectedLineNumber = _visibleLines.first;
+    }
+
+    if (selectedLineNumber == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selectionnez d\'abord une ligne ou un arret'),
+        ),
+      );
+      return;
+    }
+
+    // Position par défaut : arrêt sélectionné ou centre d'Antananarivo
+    final location = _selectedStop?.position ??
+        _userPosition ??
+        _defaultPosition;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) => TransportEditorSheet(
+          lineNumber: selectedLineNumber!,
+          initialLocation: location,
+          onEditConfirmed: (editData) {
+            _previewEdit(editData);
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Affiche un marqueur de preview après soumission d'une édition
+  void _previewEdit(EditData editData) {
+    if (editData.action == EditAction.add_stop &&
+        editData.newCoordinates != null) {
+      setState(() {
+        _busStopMarkers.add(
+          Marker(
+            markerId: MarkerId(
+              'preview_${DateTime.now().millisecondsSinceEpoch}',
+            ),
+            position: editData.newCoordinates!,
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              BitmapDescriptor.hueOrange,
+            ),
+            alpha: 0.7,
+            infoWindow: InfoWindow(
+              title: editData.stopName ?? 'Nouvel arret',
+              snippet: 'En attente de validation',
+            ),
+          ),
+        );
+      });
+    }
   }
 }
