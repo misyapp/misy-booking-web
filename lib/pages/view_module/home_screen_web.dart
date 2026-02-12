@@ -29,6 +29,9 @@ import 'package:rider_ride_hailing_app/pages/auth_module/signup_screen.dart' sho
 import 'package:rider_ride_hailing_app/models/transport_line.dart';
 import 'package:rider_ride_hailing_app/models/route_planner.dart';
 import 'package:rider_ride_hailing_app/services/transport_lines_service.dart';
+import 'package:rider_ride_hailing_app/bottom_sheet_widget/transport_editor_sheet.dart';
+import 'package:rider_ride_hailing_app/models/transport_contribution.dart';
+import 'package:rider_ride_hailing_app/services/transport_contribution_service.dart';
 import 'package:rider_ride_hailing_app/bottom_sheet_widget/choose_vehicle_sheet.dart';
 import 'package:rider_ride_hailing_app/bottom_sheet_widget/request_for_ride.dart';
 import 'package:rider_ride_hailing_app/bottom_sheet_widget/drive_on_way.dart';
@@ -99,6 +102,42 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   Set<Polyline> _transportPolylines = {};
   Set<Marker> _transportMarkers = {};
   bool _transportLinesLoaded = false;
+
+  // === Mode Carte des transports (mode 2) ===
+  final ValueNotifier<TransportLineGroup?> _carteIsolatedLine = ValueNotifier(null);
+  Set<Polyline> _cartePolylines = {};
+  Set<Marker> _carteMarkers = {};
+  final Map<String, BitmapDescriptor> _stopIconCache = {}; // Cache "colorHex_num" → icon
+
+  // === Éditeur de tracé (mode Carte) ===
+  bool _isCarteEditMode = false;
+  bool _carteEditActionSelected = false;  // true seulement après sélection d'une action
+  EditAction _carteEditAction = EditAction.modify_route;
+  List<LatLng> _editWaypoints = [];       // Points intermédiaires posés par l'user
+  List<LatLng> _editRouteCoords = [];     // Tracé routier OSRM entre les waypoints
+  bool _isComputingEditRoute = false;     // OSRM en cours de calcul
+  LatLng? _editStopPosition;
+  final TextEditingController _editStopNameController = TextEditingController();
+  final TextEditingController _editDescriptionController = TextEditingController();
+
+  // === Primus/Terminus pour modification de tracé ===
+  String _editRouteDirection = 'aller';       // 'aller' ou 'retour'
+  bool _editRouteInitialComputed = false;     // tracé initial OSRM calculé ?
+  LatLng? _editPrimus;
+  LatLng? _editTerminus;
+  String _editPrimusName = '';
+  String _editTerminusName = '';
+  String? _editSettingField;                  // 'primus', 'terminus', ou null
+  final TextEditingController _editPrimusController = TextEditingController();
+  final TextEditingController _editTerminusController = TextEditingController();
+  List<Map<String, dynamic>> _editPrimusSuggestions = [];
+  List<Map<String, dynamic>> _editTerminusSuggestions = [];
+  Timer? _editSearchDebounceTimer;
+  List<LatLng> _editAllerRouteCoords = [];    // Tracé aller sauvegardé
+  List<LatLng> _editAllerWaypoints = [];      // Waypoints aller sauvegardés
+  BitmapDescriptor? _midpointHandleIcon;     // Icône handle pour glisser le tracé
+  BitmapDescriptor? _waypointIcon;           // Icône waypoint placé (orange rempli)
+  bool _editWaitingForMapClick = false;      // Attend un clic carte après zoom Google Places
   bool _isSearchingTransportRoute = false;
   List<TransportRoute> _foundTransportRoutes = []; // Liste des itinéraires trouvés
   int _selectedRouteIndex = -1; // Index de l'itinéraire ouvert (-1 = tous fermés)
@@ -1024,6 +1063,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _isDestinationFocused.dispose();
     _isSearching.dispose();
     _mainMode.dispose();
+    _carteIsolatedLine.dispose();
+    _editStopNameController.dispose();
+    _editDescriptionController.dispose();
     super.dispose();
   }
 
@@ -1047,6 +1089,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
           // Bouton recentrer sur ma position GPS
           _buildGpsButton(),
+
+          // Bouton contribuer (mode Carte, ligne isolée)
+          _buildCarteContributeButton(),
         ],
       ),
     );
@@ -2558,7 +2603,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           ),
         );
       }
-    } else {
+    } else if (_mainMode.value == 1) {
       // Mode Transport: lignes de transport + markers pickup/destination
       allMarkers = {..._transportMarkers};
 
@@ -2594,6 +2639,155 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           ),
         );
       }
+    } else {
+      // Mode Carte: affichage des lignes de transport
+      // En mode éditeur modify_route, rendre les polylines existantes semi-transparentes
+      if (_isCarteEditMode && _carteEditActionSelected && _carteEditAction == EditAction.modify_route) {
+        allPolylines = _cartePolylines.map((p) => Polyline(
+          polylineId: p.polylineId,
+          points: p.points,
+          color: p.color.withOpacity(0.25),
+          width: p.width,
+          zIndex: p.zIndex,
+          patterns: p.patterns,
+        )).toSet();
+      } else {
+        allPolylines = {..._cartePolylines};
+      }
+      allMarkers = _isCarteEditMode ? {} : {..._carteMarkers};
+
+      // Superposer les éléments d'édition si en mode éditeur
+      if (_isCarteEditMode) {
+        if (_carteEditAction == EditAction.modify_route) {
+          // === Mode modification de tracé (primus/terminus) ===
+
+          // Tracé aller sauvegardé (affiché en bleu semi-transparent pendant le retour)
+          if (_editRouteDirection == 'retour' && _editAllerRouteCoords.length >= 2) {
+            allPolylines.add(Polyline(
+              polylineId: const PolylineId('edit_aller_route'),
+              points: _editAllerRouteCoords,
+              color: const Color(0xFF2196F3).withOpacity(0.4),
+              width: 5,
+              zIndex: 8,
+            ));
+          }
+
+          // Tracé OSRM actuel (rouge)
+          if (_editRouteCoords.length >= 2) {
+            allPolylines.add(Polyline(
+              polylineId: const PolylineId('edit_route'),
+              points: _editRouteCoords,
+              color: const Color(0xFFFF5357),
+              width: 5,
+              zIndex: 10,
+            ));
+          }
+
+          // Polyline pointillée pendant le calcul OSRM
+          if (_isComputingEditRoute && _editPrimus != null && _editTerminus != null) {
+            allPolylines.add(Polyline(
+              polylineId: const PolylineId('edit_route_preview'),
+              points: [_editPrimus!, ..._editWaypoints, _editTerminus!],
+              color: const Color(0xFFFF5357).withOpacity(0.3),
+              width: 3,
+              zIndex: 9,
+              patterns: [PatternItem.dash(8), PatternItem.gap(8)],
+            ));
+          }
+
+          if (!_editRouteInitialComputed) {
+            // === Phase setup : markers primus/terminus draggables ===
+            if (_editPrimus != null) {
+              allMarkers.add(Marker(
+                markerId: const MarkerId('edit_primus'),
+                position: _editPrimus!,
+                draggable: true,
+                zIndex: 12,
+                icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+                infoWindow: InfoWindow(title: _editPrimusName.isNotEmpty ? _editPrimusName : 'Primus'),
+                onDragEnd: (newPos) {
+                  setState(() {
+                    _editPrimus = newPos;
+                    _editPrimusName = '${newPos.latitude.toStringAsFixed(4)}, ${newPos.longitude.toStringAsFixed(4)}';
+                    _editPrimusController.text = _editPrimusName;
+                  });
+                },
+              ));
+            }
+            if (_editTerminus != null) {
+              allMarkers.add(Marker(
+                markerId: const MarkerId('edit_terminus'),
+                position: _editTerminus!,
+                draggable: true,
+                zIndex: 12,
+                icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+                infoWindow: InfoWindow(title: _editTerminusName.isNotEmpty ? _editTerminusName : 'Terminus'),
+                onDragEnd: (newPos) {
+                  setState(() {
+                    _editTerminus = newPos;
+                    _editTerminusName = '${newPos.latitude.toStringAsFixed(4)}, ${newPos.longitude.toStringAsFixed(4)}';
+                    _editTerminusController.text = _editTerminusName;
+                  });
+                },
+              ));
+            }
+          } else {
+            // === Phase refine : waypoints placés + handles pour glisser le tracé ===
+            if (_editPrimus != null && _editTerminus != null && _midpointHandleIcon != null) {
+              final controlPoints = [_editPrimus!, ..._editWaypoints, _editTerminus!];
+
+              // 1) Afficher les waypoints existants (orange rempli, draggable + tap pour supprimer)
+              if (_waypointIcon != null) {
+                for (int w = 0; w < _editWaypoints.length; w++) {
+                  allMarkers.add(Marker(
+                    markerId: MarkerId('edit_waypoint_$w'),
+                    position: _editWaypoints[w],
+                    draggable: true,
+                    zIndex: 11,
+                    anchor: const Offset(0.5, 0.5),
+                    icon: _waypointIcon!,
+                    onTap: () => _deleteWaypoint(w),
+                    onDragEnd: (newPos) => _moveExistingWaypoint(w, newPos),
+                  ));
+                }
+              }
+
+              // 2) Handles aux milieux entre chaque paire de points de contrôle
+              for (int i = 0; i < controlPoints.length - 1; i++) {
+                final mid = LatLng(
+                  (controlPoints[i].latitude + controlPoints[i + 1].latitude) / 2,
+                  (controlPoints[i].longitude + controlPoints[i + 1].longitude) / 2,
+                );
+                allMarkers.add(Marker(
+                  markerId: MarkerId('edit_midpoint_$i'),
+                  position: mid,
+                  draggable: true,
+                  zIndex: 10,
+                  anchor: const Offset(0.5, 0.5),
+                  icon: _midpointHandleIcon!,
+                  onDragEnd: (newPos) => _onMidpointDragged(i, newPos),
+                ));
+              }
+            }
+          }
+        } else {
+          // === Mode édition d'arrêt ===
+          // Marker pour ajout/déplacement d'arrêt
+          if ((_carteEditAction == EditAction.add_stop || _carteEditAction == EditAction.move_stop)
+              && _editStopPosition != null) {
+            allMarkers.add(Marker(
+              markerId: const MarkerId('edit_new_stop'),
+              position: _editStopPosition!,
+              draggable: true,
+              zIndex: 10,
+              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet),
+              onDragEnd: (newPos) {
+                setState(() => _editStopPosition = newPos);
+              },
+            ));
+          }
+        }
+      }
     }
 
     return GoogleMap(
@@ -2628,6 +2822,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   /// Gère le tap sur la carte (pour sélectionner une position)
   void _onMapTap(LatLng latLng) {
+    // Mode édition Carte : intercepter les taps (seulement si une action est sélectionnée)
+    if (_isCarteEditMode && _mainMode.value == 2) {
+      if (!_carteEditActionSelected) return;  // Ignorer les taps avant sélection d'action
+      _handleCarteEditTap(latLng);
+      return;
+    }
+
     final tripProvider = Provider.of<TripProvider>(context, listen: false);
 
     // Si on est à l'étape de confirmation de destination, permettre d'ajuster le point de dépose
@@ -2828,6 +3029,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                           isSelected: mode == 1,
                           onTap: () => _switchToMode(1),
                         ),
+                        const SizedBox(width: 8),
+                        _buildNavTab(
+                          label: 'Carte',
+                          isSelected: mode == 2,
+                          onTap: () => _switchToMode(2),
+                        ),
                       ],
                     );
                   },
@@ -2906,7 +3113,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                             ),
                           ],
                         );
-                      } else {
+                      } else if (mode == 1) {
                         // Mode Transport avec recherche d'itinéraire
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2928,6 +3135,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                             ),
                           ],
                         );
+                      } else {
+                        // Mode Carte des transports
+                        return _buildCarteContent();
                       }
                     },
                   ),
@@ -5341,6 +5551,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     if (mode == 1 && !_transportLinesLoaded) {
       _loadTransportLines();
     }
+
+    // Mode Carte: charger metadata + lignes
+    if (mode == 2) {
+      _carteIsolatedLine.value = null;
+      _loadCarteData();
+    }
   }
 
   /// Bascule vers le mode transport en conservant les adresses actuelles et lance la recherche
@@ -5454,7 +5670,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
   }
 
-  void _updateTransportMapDisplay() {
+  Future<void> _updateTransportMapDisplay() async {
     final Set<Polyline> newPolylines = {};
     final Set<Marker> newMarkers = {};
 
@@ -5482,12 +5698,2272 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           ),
         );
       }
+
+      // Arrêts dédupliqués (aller + retour → un seul marker par position)
+      final icon = await _getLineStopIcon(color, group.lineNumber);
+      final Set<String> placedPositions = {};
+
+      void addStops(List<TransportStop> stops) {
+        for (final stop in stops) {
+          final key = _stopPosKey(stop.position);
+          if (placedPositions.contains(key)) continue;
+          placedPositions.add(key);
+          newMarkers.add(Marker(
+            markerId: MarkerId('ts_${group.lineNumber}_$key'),
+            position: stop.position,
+            anchor: const Offset(0.5, 0.5),
+            icon: icon,
+            zIndex: 2,
+            infoWindow: InfoWindow(title: stop.name, snippet: 'Ligne ${group.lineNumber}'),
+          ));
+        }
+      }
+
+      if (group.aller != null) addStops(group.aller!.stops);
+      if (group.retour != null) addStops(group.retour!.stops);
     }
 
+    if (!mounted) return;
     setState(() {
       _transportPolylines = newPolylines;
       _transportMarkers = newMarkers;
     });
+  }
+
+  // ===================================================================
+  // === Mode Carte des transports (mode 2) ===
+  // ===================================================================
+
+  Widget _buildCarteContent() {
+    // Mode éditeur actif
+    if (_isCarteEditMode && _carteIsolatedLine.value != null) {
+      return _buildCarteEditorView(_carteIsolatedLine.value!);
+    }
+
+    return ValueListenableBuilder<TransportLineGroup?>(
+      valueListenable: _carteIsolatedLine,
+      builder: (context, isolatedLine, _) {
+        if (isolatedLine != null) {
+          return _buildCarteIsolatedView(isolatedLine);
+        }
+        return _buildCarteAllLinesView();
+      },
+    );
+  }
+
+  Widget _buildCarteAllLinesView() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.map_outlined, size: 18, color: Color(0xFFFF5357)),
+            const SizedBox(width: 8),
+            const Text(
+              'Carte des transports',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1D1D1F),
+                letterSpacing: -0.2,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '${_transportLines.length} lignes',
+          style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+        ),
+        const SizedBox(height: 12),
+
+        // Bouton "Proposer une ligne"
+        _buildProposerLigneButton(),
+
+        const SizedBox(height: 12),
+
+        // Liste des lignes scrollable
+        Expanded(
+          child: _transportLinesLoaded
+              ? ListView.builder(
+                  padding: EdgeInsets.zero,
+                  itemCount: _transportLines.length,
+                  itemBuilder: (context, index) {
+                    final group = _transportLines[index];
+                    return _buildCarteLineItem(group);
+                  },
+                )
+              : const Center(child: CircularProgressIndicator()),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCarteLineItem(TransportLineGroup group) {
+    final color = Color(TransportLineColors.getLineColor(
+        group.lineNumber, group.transportType));
+    final allerDirection = group.aller?.direction ?? '';
+    final retourDirection = group.retour?.direction ?? '';
+    final directionText = allerDirection.isNotEmpty && retourDirection.isNotEmpty
+        ? '$allerDirection \u2194 $retourDirection'
+        : allerDirection.isNotEmpty ? allerDirection : retourDirection;
+    final numStops = group.aller?.numStops ?? group.retour?.numStops ?? 0;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          _carteIsolatedLine.value = group;
+          _updateCarteMapDisplay();
+        },
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Center(
+                  child: Text(
+                    group.lineNumber,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      group.displayName,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w500, fontSize: 13),
+                    ),
+                    if (directionText.isNotEmpty)
+                      Text(
+                        directionText,
+                        style: TextStyle(
+                            fontSize: 10, color: Colors.grey.shade500),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
+              Text(
+                '$numStops arr.',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right, size: 16, color: Colors.grey.shade400),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _exitIsolatedView() {
+    _carteIsolatedLine.value = null;
+    _updateCarteMapDisplay();
+
+    _mapController?.animateCamera(CameraUpdate.newCameraPosition(
+      CameraPosition(target: _defaultPosition, zoom: 13),
+    ));
+  }
+
+  Widget _buildCarteIsolatedView(TransportLineGroup group) {
+    final color = Color(TransportLineColors.getLineColor(
+        group.lineNumber, group.transportType));
+    final numStopsAller = group.aller?.numStops ?? 0;
+    final numStopsRetour = group.retour?.numStops ?? 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header: bouton retour + badge + nom
+        Row(
+          children: [
+            InkWell(
+              onTap: _exitIsolatedView,
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.arrow_back, size: 18),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Container(
+              width: 40,
+              height: 24,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Center(
+                child: Text(
+                  group.lineNumber,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                group.displayName,
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 12),
+
+        // Directions info
+        if (group.aller?.direction != null)
+          _buildDirectionRow('Aller', group.aller!.direction, numStopsAller, color),
+        if (group.retour?.direction != null)
+          _buildDirectionRow('Retour', group.retour!.direction, numStopsRetour, color.withOpacity(0.65)),
+
+        const SizedBox(height: 12),
+
+        // Liste des arrêts (aller)
+        if (group.aller != null && group.aller!.stops.isNotEmpty) ...[
+          Text(
+            'Arrêts (Aller)',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: ListView.builder(
+              padding: EdgeInsets.zero,
+              itemCount: group.aller!.stops.length,
+              itemBuilder: (context, index) {
+                final stop = group.aller!.stops[index];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: color.withOpacity(0.3),
+                              blurRadius: 3,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          stop.name,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildDirectionRow(String label, String direction, int numStops, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '$label: $direction',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+          ),
+          const Spacer(),
+          Text(
+            '$numStops arrêts',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Bouton contribuer affiché sur la carte (top-right, sous le bouton GPS)
+  Widget _buildCarteContributeButton() {
+    // Visible uniquement en mode Carte avec une ligne isolée, hors mode éditeur
+    if (_mainMode.value != 2 || _carteIsolatedLine.value == null || _isCarteEditMode) {
+      return const SizedBox.shrink();
+    }
+
+    return Positioned(
+      top: 130,
+      right: 16,
+      child: Material(
+        elevation: 4,
+        shape: const CircleBorder(),
+        color: const Color(0xFFFF5357),
+        child: InkWell(
+          onTap: () => _enterCarteEditMode(_carteIsolatedLine.value!),
+          customBorder: const CircleBorder(),
+          child: const SizedBox(
+            width: 48,
+            height: 48,
+            child: Icon(Icons.edit_location_alt, color: Colors.white, size: 24),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProposerLigneButton() {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFFF5357).withOpacity(0.3)),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _showProposerLigneSheet,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+            child: Row(
+              children: [
+                const Icon(Icons.add_circle_outline, size: 18, color: Color(0xFFFF5357)),
+                const SizedBox(width: 8),
+                const Text(
+                  'Proposer une ligne',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFFF5357),
+                  ),
+                ),
+                const Spacer(),
+                Icon(Icons.chevron_right, size: 16, color: Colors.grey.shade400),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Charge toutes les lignes (bundled + remote) pour l'onglet Carte
+  // ===================================================================
+  // === Éditeur de tracé sur la carte ===
+  // ===================================================================
+
+  void _enterCarteEditMode(TransportLineGroup group) {
+    setState(() {
+      _isCarteEditMode = true;
+      _carteEditActionSelected = false;
+      _carteEditAction = EditAction.modify_route;
+      _editWaypoints = [];
+      _editRouteCoords = [];
+      _isComputingEditRoute = false;
+      _editStopPosition = null;
+      _editStopNameController.clear();
+      _editDescriptionController.clear();
+      // Reset primus/terminus
+      _editRouteDirection = 'aller';
+      _editRouteInitialComputed = false;
+      _editPrimus = null;
+      _editTerminus = null;
+      _editPrimusName = '';
+      _editTerminusName = '';
+      _editSettingField = null;
+      _editPrimusController.clear();
+      _editTerminusController.clear();
+      _editPrimusSuggestions = [];
+      _editTerminusSuggestions = [];
+      _editAllerRouteCoords = [];
+      _editAllerWaypoints = [];
+      _editWaitingForMapClick = false;
+    });
+  }
+
+  /// Quitte le mode édition avec confirmation si du travail est en cours
+  void _exitCarteEditMode() {
+    // Vérifier s'il y a du travail en cours (primus/terminus défini, waypoints, arrêt posé...)
+    final hasWork = _editPrimus != null ||
+        _editTerminus != null ||
+        _editWaypoints.isNotEmpty ||
+        _editRouteCoords.isNotEmpty ||
+        _editAllerRouteCoords.isNotEmpty ||
+        _editStopPosition != null;
+
+    if (hasWork) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Color(0xFFFF9800), size: 24),
+              SizedBox(width: 10),
+              Text('Quitter l\'édition ?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            ],
+          ),
+          content: const Text(
+            'Vous êtes sur le point de quitter sans envoyer votre contribution. Toutes les modifications en cours seront perdues.',
+            style: TextStyle(fontSize: 13, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Continuer l\'édition', style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                _forceExitCarteEditMode();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF5357),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Quitter', style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      );
+    } else {
+      _forceExitCarteEditMode();
+    }
+  }
+
+  /// Quitte le mode édition sans confirmation (après envoi réussi ou si rien en cours)
+  void _forceExitCarteEditMode() {
+    _editSearchDebounceTimer?.cancel();
+    setState(() {
+      _isCarteEditMode = false;
+      _carteEditActionSelected = false;
+      _editWaypoints = [];
+      _editRouteCoords = [];
+      _isComputingEditRoute = false;
+      _editStopPosition = null;
+      _editStopNameController.clear();
+      _editDescriptionController.clear();
+      // Reset primus/terminus
+      _editRouteDirection = 'aller';
+      _editRouteInitialComputed = false;
+      _editPrimus = null;
+      _editTerminus = null;
+      _editPrimusName = '';
+      _editTerminusName = '';
+      _editSettingField = null;
+      _editPrimusController.clear();
+      _editTerminusController.clear();
+      _editPrimusSuggestions = [];
+      _editTerminusSuggestions = [];
+      _editAllerRouteCoords = [];
+      _editAllerWaypoints = [];
+      _editWaitingForMapClick = false;
+    });
+    _updateCarteMapDisplay();
+  }
+
+  /// Gère un tap sur la carte en mode édition
+  void _handleCarteEditTap(LatLng latLng) {
+    if (_carteEditAction == EditAction.modify_route) {
+      // Phase affinage : le tracé se modifie en glissant les handles, pas par clic
+      // (rien à faire ici en phase refine)
+
+      // Phase setup : définir primus/terminus via tap carte
+      if (!_editRouteInitialComputed) {
+        // Déterminer automatiquement quel champ remplir
+        String? targetField = _editSettingField;
+        if (targetField == null) {
+          if (_editPrimus == null) {
+            targetField = 'primus';
+          } else if (_editTerminus == null) {
+            targetField = 'terminus';
+          }
+        }
+
+        // Si on attendait un clic après zoom Google Places
+        if (_editWaitingForMapClick) {
+          setState(() => _editWaitingForMapClick = false);
+        }
+
+        if (targetField == 'primus') {
+          setState(() {
+            _editPrimus = latLng;
+            _editPrimusName = '${latLng.latitude.toStringAsFixed(4)}, ${latLng.longitude.toStringAsFixed(4)}';
+            _editPrimusController.text = _editPrimusName;
+            _editSettingField = null;
+            _editPrimusSuggestions = [];
+          });
+          // Auto-compute si terminus est aussi défini
+          if (_editTerminus != null) {
+            _computeInitialRoute();
+          }
+          return;
+        }
+        if (targetField == 'terminus') {
+          setState(() {
+            _editTerminus = latLng;
+            _editTerminusName = '${latLng.latitude.toStringAsFixed(4)}, ${latLng.longitude.toStringAsFixed(4)}';
+            _editTerminusController.text = _editTerminusName;
+            _editSettingField = null;
+            _editTerminusSuggestions = [];
+          });
+          // Auto-compute si primus est aussi défini
+          if (_editPrimus != null) {
+            _computeInitialRoute();
+          }
+          return;
+        }
+      }
+    } else if (_carteEditAction == EditAction.add_stop ||
+               _carteEditAction == EditAction.move_stop) {
+      setState(() {
+        _editStopPosition = latLng;
+      });
+    }
+  }
+
+  /// Gère le drag d'un waypoint d'édition
+  void _onEditWaypointDragged(int index, LatLng newPos) {
+    setState(() {
+      _editWaypoints[index] = newPos;
+    });
+    _computeEditRoute();
+  }
+
+  /// Annule le dernier waypoint ajouté
+  void _undoLastWaypoint() {
+    if (_editWaypoints.isNotEmpty) {
+      setState(() {
+        _editWaypoints.removeLast();
+      });
+      _computeEditRoute();
+    }
+  }
+
+  /// Quand l'user glisse un handle au milieu du tracé → insère un waypoint
+  void _onMidpointDragged(int insertIndex, LatLng newPos) {
+    setState(() {
+      _editWaypoints.insert(insertIndex, newPos);
+    });
+    _computeEditRoute();
+  }
+
+  /// Crée l'icône de handle pour glisser le tracé (gros cercle orange vif)
+  Future<void> _ensureMidpointHandleIcon() async {
+    if (_midpointHandleIcon != null) return;
+    const double size = 32.0;
+    final recorder = PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    // Ombre
+    final shadowPaint = Paint()
+      ..color = Colors.black.withOpacity(0.2)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(const Offset(size / 2, size / 2 + 1), size / 2 - 1, shadowPaint);
+
+    // Cercle blanc (bordure)
+    final whitePaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(const Offset(size / 2, size / 2), size / 2 - 2, whitePaint);
+
+    // Cercle orange vif
+    final orangePaint = Paint()
+      ..color = const Color(0xFFFF9800)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(const Offset(size / 2, size / 2), size / 2 - 4, orangePaint);
+
+    // Croix blanche au centre (indique "glisser")
+    final crossPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
+    const c = size / 2;
+    canvas.drawLine(const Offset(c - 5, c), const Offset(c + 5, c), crossPaint);
+    canvas.drawLine(const Offset(c, c - 5), const Offset(c, c + 5), crossPaint);
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size.toInt(), size.toInt());
+    final bytes = await image.toByteData(format: ImageByteFormat.png);
+    _midpointHandleIcon = BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+  }
+
+  /// Crée l'icône waypoint placé (cercle orange rempli, sans croix — distinct du handle)
+  Future<void> _ensureWaypointIcon() async {
+    if (_waypointIcon != null) return;
+    const double size = 28.0;
+    final recorder = PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    // Ombre
+    final shadowPaint = Paint()
+      ..color = Colors.black.withOpacity(0.25)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(const Offset(size / 2, size / 2 + 1), size / 2 - 1, shadowPaint);
+
+    // Bordure blanche
+    final whitePaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(const Offset(size / 2, size / 2), size / 2 - 2, whitePaint);
+
+    // Cercle orange rempli
+    final orangePaint = Paint()
+      ..color = const Color(0xFFFF9800)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(const Offset(size / 2, size / 2), size / 2 - 4, orangePaint);
+
+    // Petit point blanc au centre (distingue du handle qui a une croix)
+    final dotPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(const Offset(size / 2, size / 2), 3, dotPaint);
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size.toInt(), size.toInt());
+    final bytes = await image.toByteData(format: ImageByteFormat.png);
+    _waypointIcon = BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+  }
+
+  /// Supprime un waypoint intermédiaire par son index et recalcule le tracé
+  void _deleteWaypoint(int index) {
+    if (index < 0 || index >= _editWaypoints.length) return;
+    setState(() {
+      _editWaypoints.removeAt(index);
+    });
+    _computeEditRoute();
+  }
+
+  /// Déplace un waypoint intermédiaire existant et recalcule le tracé
+  void _moveExistingWaypoint(int index, LatLng newPos) {
+    if (index < 0 || index >= _editWaypoints.length) return;
+    setState(() {
+      _editWaypoints[index] = newPos;
+    });
+    _computeEditRoute();
+  }
+
+  /// Calcule le tracé initial OSRM entre primus et terminus
+  Future<void> _computeInitialRoute() async {
+    if (_editPrimus == null || _editTerminus == null) return;
+
+    setState(() => _isComputingEditRoute = true);
+
+    try {
+      // Préparer les icônes en parallèle
+      await Future.wait([
+        _ensureMidpointHandleIcon(),
+        _ensureWaypointIcon(),
+      ]);
+
+      final route = await RouteService.fetchRoute(
+        origin: _editPrimus!,
+        destination: _editTerminus!,
+      );
+
+      if (mounted) {
+        setState(() {
+          _editRouteCoords = route.coordinates;
+          _isComputingEditRoute = false;
+          _editRouteInitialComputed = true;
+          _editWaypoints = [];
+        });
+      }
+    } catch (e) {
+      debugPrint('Erreur OSRM tracé initial: $e');
+      if (mounted) {
+        setState(() => _isComputingEditRoute = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erreur de calcul du tracé. Réessayez.')),
+        );
+      }
+    }
+  }
+
+  /// Recalcule le tracé OSRM avec les waypoints intermédiaires
+  Future<void> _computeEditRoute() async {
+    if (_carteEditAction == EditAction.modify_route) {
+      // Mode primus/terminus : primus + intermédiaires + terminus
+      if (_editPrimus == null || _editTerminus == null) return;
+      if (_editWaypoints.isEmpty) {
+        // Pas de points intermédiaires → refaire le calcul initial
+        _computeInitialRoute();
+        return;
+      }
+
+      setState(() => _isComputingEditRoute = true);
+
+      try {
+        final route = await RouteService.fetchRoute(
+          origin: _editPrimus!,
+          destination: _editTerminus!,
+          waypoints: _editWaypoints,
+        );
+
+        if (mounted) {
+          setState(() {
+            _editRouteCoords = route.coordinates;
+            _isComputingEditRoute = false;
+          });
+        }
+      } catch (e) {
+        debugPrint('Erreur OSRM édition: $e');
+        if (mounted) {
+          setState(() => _isComputingEditRoute = false);
+        }
+      }
+    } else {
+      // Ancien mode (non modify_route) - legacy fallback
+      if (_editWaypoints.length < 2) {
+        setState(() {
+          _editRouteCoords = [];
+          _isComputingEditRoute = false;
+        });
+        return;
+      }
+
+      setState(() => _isComputingEditRoute = true);
+
+      try {
+        final route = await RouteService.fetchRoute(
+          origin: _editWaypoints.first,
+          destination: _editWaypoints.last,
+          waypoints: _editWaypoints.length > 2
+              ? _editWaypoints.sublist(1, _editWaypoints.length - 1)
+              : [],
+        );
+
+        if (mounted) {
+          setState(() {
+            _editRouteCoords = route.coordinates;
+            _isComputingEditRoute = false;
+          });
+        }
+      } catch (e) {
+        debugPrint('Erreur OSRM édition: $e');
+        if (mounted) {
+          setState(() => _isComputingEditRoute = false);
+        }
+      }
+    }
+  }
+
+  /// Valide le tracé aller et passe au retour
+  void _validateAllerAndStartRetour() {
+    setState(() {
+      // Sauvegarder le tracé aller
+      _editAllerRouteCoords = List.from(_editRouteCoords);
+      _editAllerWaypoints = List.from(_editWaypoints);
+
+      // Reset primus/terminus pour que l'user les re-renseigne
+      _editPrimus = null;
+      _editTerminus = null;
+      _editPrimusName = '';
+      _editTerminusName = '';
+      _editPrimusController.clear();
+      _editTerminusController.clear();
+
+      // Reset pour le retour
+      _editWaypoints = [];
+      _editRouteCoords = [];
+      _editRouteDirection = 'retour';
+      _editRouteInitialComputed = false;
+      _isComputingEditRoute = false;
+      _editSettingField = null;
+      _editPrimusSuggestions = [];
+      _editTerminusSuggestions = [];
+      _editWaitingForMapClick = false;
+    });
+  }
+
+  /// Recherche debounced pour les champs primus/terminus (Google Places uniquement)
+  void _debouncedEditSearch(String query, String field) {
+    _editSearchDebounceTimer?.cancel();
+
+    if (query.length < 2) {
+      setState(() {
+        if (field == 'primus') {
+          _editPrimusSuggestions = [];
+        } else {
+          _editTerminusSuggestions = [];
+        }
+      });
+      return;
+    }
+
+    _editSearchDebounceTimer = Timer(const Duration(milliseconds: 400), () async {
+      final predictions = await PlacesAutocompleteWeb.getPlacePredictions(query);
+      final results = predictions.map<Map<String, dynamic>>((p) => {...p, 'type': 'place'}).toList();
+
+      if (mounted) {
+        setState(() {
+          if (field == 'primus') {
+            _editPrimusSuggestions = results;
+          } else {
+            _editTerminusSuggestions = results;
+          }
+        });
+      }
+    });
+  }
+
+  /// Sélectionne une suggestion Google Places → zoom sur le lieu + attente clic carte
+  Future<void> _selectEditSuggestion(Map<String, dynamic> suggestion, String field) async {
+    final placeId = suggestion['place_id'];
+    if (placeId == null) return;
+
+    try {
+      final details = await PlacesAutocompleteWeb.getPlaceDetails(placeId);
+      if (details != null && mounted) {
+        final loc = details['result']?['geometry']?['location'];
+        if (loc != null) {
+          final lat = (loc['lat'] as num).toDouble();
+          final lng = (loc['lng'] as num).toDouble();
+          final target = LatLng(lat, lng);
+
+          // Zoom la carte sur le lieu
+          _mapController?.animateCamera(CameraUpdate.newCameraPosition(
+            CameraPosition(target: target, zoom: 16),
+          ));
+
+          // Indiquer quel champ on remplit + attente clic
+          setState(() {
+            _editSettingField = field;
+            _editWaitingForMapClick = true;
+            _editPrimusSuggestions = [];
+            _editTerminusSuggestions = [];
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Erreur getPlaceDetails: $e');
+    }
+  }
+
+  /// Soumet la contribution d'édition — affiche d'abord une popup pour le prénom + description
+  Future<void> _submitCarteEdit() async {
+    final group = _carteIsolatedLine.value;
+    if (group == null) return;
+
+    // Validation selon l'action
+    if (_carteEditAction == EditAction.modify_route) {
+      if (_editRouteCoords.isEmpty && _editAllerRouteCoords.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Veuillez calculer au moins un tracé')),
+        );
+        return;
+      }
+    }
+    if ((_carteEditAction == EditAction.add_stop || _carteEditAction == EditAction.move_stop)
+        && _editStopPosition == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cliquez sur la carte pour positionner l\'arrêt')),
+      );
+      return;
+    }
+    if ((_carteEditAction == EditAction.add_stop) && _editStopNameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez indiquer le nom de l\'arrêt')),
+      );
+      return;
+    }
+
+    // Popup pour demander prénom + description optionnelle
+    final nameController = TextEditingController();
+    final descController = TextEditingController();
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final nameValid = nameController.text.trim().isNotEmpty;
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.person_outline, color: Color(0xFFFF5357), size: 24),
+                  SizedBox(width: 10),
+                  Text('Envoyer la contribution', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                ],
+              ),
+              content: SizedBox(
+                width: 340,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      autofocus: true,
+                      style: const TextStyle(fontSize: 14),
+                      decoration: InputDecoration(
+                        labelText: 'Votre prénom *',
+                        hintText: 'Ex: Rakoto',
+                        prefixIcon: const Icon(Icons.person, size: 20),
+                        isDense: true,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      ),
+                      onChanged: (_) => setDialogState(() {}),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: descController,
+                      maxLines: 3,
+                      style: const TextStyle(fontSize: 14),
+                      decoration: InputDecoration(
+                        labelText: 'Description (optionnel)',
+                        hintText: 'Précisions sur votre modification...',
+                        prefixIcon: const Padding(
+                          padding: EdgeInsets.only(bottom: 40),
+                          child: Icon(Icons.notes, size: 20),
+                        ),
+                        isDense: true,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(null),
+                  child: const Text('Annuler'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: nameValid
+                      ? () => Navigator.of(ctx).pop({
+                            'name': nameController.text.trim(),
+                            'description': descController.text.trim(),
+                          })
+                      : null,
+                  icon: const Icon(Icons.send, size: 16),
+                  label: const Text('Envoyer', style: TextStyle(fontWeight: FontWeight.w600)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF5357),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    // L'utilisateur a annulé
+    if (result == null || !mounted) return;
+
+    final contributorName = result['name']!;
+    final description = result['description'] ?? '';
+
+    final EditData editData;
+    if (_carteEditAction == EditAction.modify_route) {
+      editData = EditData(
+        action: _carteEditAction,
+        routeAllerSegment: _editAllerRouteCoords.isNotEmpty
+            ? List.from(_editAllerRouteCoords)
+            : null,
+        routeSegment: _editRouteCoords.isNotEmpty
+            ? List.from(_editRouteCoords)
+            : null,
+        primus: _editPrimus,
+        terminus: _editTerminus,
+        primusName: _editPrimusName.isNotEmpty ? _editPrimusName : null,
+        terminusName: _editTerminusName.isNotEmpty ? _editTerminusName : null,
+      );
+    } else {
+      editData = EditData(
+        action: _carteEditAction,
+        stopName: _editStopNameController.text.trim().isNotEmpty
+            ? _editStopNameController.text.trim()
+            : null,
+        newCoordinates: _editStopPosition,
+      );
+    }
+
+    final location = _editPrimus ?? _editStopPosition ?? _defaultPosition;
+
+    final success = await TransportContributionService.submitContribution(
+      lineNumber: group.lineNumber,
+      contributionType: _carteEditAction == EditAction.modify_route
+          ? ContributionType.route_edit
+          : ContributionType.stop_edit,
+      description: description.isNotEmpty ? description : 'Contribution de $contributorName',
+      location: location,
+      editData: editData,
+      contributorName: contributorName,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Merci $contributorName ! Contribution envoyée.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      _forceExitCarteEditMode();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Erreur lors de l\'envoi. Réessayez.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Vue de l'éditeur dans la sidebar
+  Widget _buildCarteEditorView(TransportLineGroup group) {
+    final color = Color(TransportLineColors.getLineColor(
+        group.lineNumber, group.transportType));
+
+    // Écran de sélection d'action (avant que la carte soit interactive)
+    if (!_carteEditActionSelected) {
+      return _buildCarteActionSelectionView(group, color);
+    }
+
+    // Écran d'édition actif (carte interactive)
+    return _buildCarteActiveEditorView(group, color);
+  }
+
+  /// Écran de choix de l'action à effectuer
+  Widget _buildCarteActionSelectionView(TransportLineGroup group, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header
+        Row(
+          children: [
+            InkWell(
+              onTap: _exitCarteEditMode,
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.close, size: 18),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Container(
+              width: 40,
+              height: 24,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Center(
+                child: Text(
+                  group.lineNumber,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text('Contribuer', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 20),
+
+        Text(
+          'Que souhaitez-vous modifier ?',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey.shade800),
+        ),
+        const SizedBox(height: 12),
+
+        // Gros boutons de choix d'action
+        _buildActionSelectionButton(
+          icon: Icons.edit_road,
+          label: 'Modifier le tracé',
+          description: 'Redessiner le parcours de la ligne sur la carte',
+          action: EditAction.modify_route,
+        ),
+        const SizedBox(height: 8),
+        _buildActionSelectionButton(
+          icon: Icons.add_location,
+          label: 'Ajouter un arrêt',
+          description: 'Placer un nouvel arrêt sur le tracé',
+          action: EditAction.add_stop,
+        ),
+        const SizedBox(height: 8),
+        _buildActionSelectionButton(
+          icon: Icons.open_with,
+          label: 'Déplacer un arrêt',
+          description: 'Corriger la position d\'un arrêt existant',
+          action: EditAction.move_stop,
+        ),
+        const SizedBox(height: 8),
+        _buildActionSelectionButton(
+          icon: Icons.remove_circle_outline,
+          label: 'Supprimer un arrêt',
+          description: 'Signaler qu\'un arrêt n\'existe plus',
+          action: EditAction.delete_stop,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionSelectionButton({
+    required IconData icon,
+    required String label,
+    required String description,
+    required EditAction action,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _carteEditAction = action;
+            _carteEditActionSelected = true;
+            _editWaypoints = [];
+            _editRouteCoords = [];
+            _editStopPosition = null;
+          });
+        },
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade200),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF5357).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, size: 18, color: const Color(0xFFFF5357)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                    Text(description, style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, size: 18, color: Colors.grey.shade400),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Vue d'édition active (après sélection d'action)
+  Widget _buildCarteActiveEditorView(TransportLineGroup group, Color color) {
+    // Pour modify_route : déléguer aux vues spécifiques primus/terminus
+    if (_carteEditAction == EditAction.modify_route) {
+      if (!_editRouteInitialComputed) {
+        return _buildRouteSetupView(group, color);
+      } else {
+        return _buildRouteRefineView(group, color);
+      }
+    }
+
+    // Pour les autres actions : garder le comportement actuel
+    return _buildStopEditorView(group, color);
+  }
+
+  /// Header commun pour les vues d'édition
+  Widget _buildEditHeader(TransportLineGroup group, Color color, String title, {VoidCallback? onBack}) {
+    return Row(
+      children: [
+        InkWell(
+          onTap: onBack ?? () {
+            _editSearchDebounceTimer?.cancel();
+            setState(() {
+              _carteEditActionSelected = false;
+              _editWaypoints = [];
+              _editRouteCoords = [];
+              _editStopPosition = null;
+              _editStopNameController.clear();
+              _editDescriptionController.clear();
+              _editRouteDirection = 'aller';
+              _editRouteInitialComputed = false;
+              _editPrimus = null;
+              _editTerminus = null;
+              _editPrimusName = '';
+              _editTerminusName = '';
+              _editSettingField = null;
+              _editPrimusController.clear();
+              _editTerminusController.clear();
+              _editPrimusSuggestions = [];
+              _editTerminusSuggestions = [];
+              _editAllerRouteCoords = [];
+              _editAllerWaypoints = [];
+              _editWaitingForMapClick = false;
+            });
+          },
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.arrow_back, size: 18),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Container(
+          width: 40,
+          height: 24,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Center(
+            child: Text(
+              group.lineNumber,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        ),
+      ],
+    );
+  }
+
+  /// Vue setup : sélection primus + terminus
+  Widget _buildRouteSetupView(TransportLineGroup group, Color color) {
+    final dirLabel = _editRouteDirection == 'aller' ? 'Aller' : 'Retour';
+
+
+    // Déterminer l'étape en cours et le message guide
+    String stepMessage;
+    IconData stepIcon;
+    Color stepColor;
+    if (_editWaitingForMapClick) {
+      stepMessage = 'CLIQUEZ SUR LA CARTE pour confirmer la position exacte';
+      stepIcon = Icons.touch_app;
+      stepColor = const Color(0xFFFF5357);
+    } else if (_editPrimus == null) {
+      stepMessage = 'ETAPE 1/3 — Placez le point de depart (Primus) : recherchez un lieu ou cliquez sur la carte';
+      stepIcon = Icons.looks_one;
+      stepColor = Colors.green;
+    } else if (_editTerminus == null) {
+      stepMessage = 'ETAPE 2/3 — Placez le point d\'arrivee (Terminus) : recherchez un lieu ou cliquez sur la carte';
+      stepIcon = Icons.looks_two;
+      stepColor = Colors.red;
+    } else {
+      stepMessage = 'ETAPE 3/3 — Calcul du tracé en cours...';
+      stepIcon = Icons.hourglass_top;
+      stepColor = const Color(0xFF2196F3);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildEditHeader(group, color, 'Tracer $dirLabel'),
+
+        const SizedBox(height: 12),
+
+        // Indicateur direction + aller OK
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: _editRouteDirection == 'aller'
+                ? const Color(0xFF2196F3).withOpacity(0.1)
+                : const Color(0xFFFF9800).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                _editRouteDirection == 'aller' ? Icons.arrow_forward : Icons.arrow_back,
+                size: 14,
+                color: _editRouteDirection == 'aller'
+                    ? const Color(0xFF2196F3)
+                    : const Color(0xFFFF9800),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Sens $dirLabel',
+                style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600,
+                  color: _editRouteDirection == 'aller' ? const Color(0xFF2196F3) : const Color(0xFFFF9800),
+                ),
+              ),
+              if (_editAllerRouteCoords.isNotEmpty) ...[
+                const Spacer(),
+                const Icon(Icons.check_circle, size: 14, color: Colors.green),
+                const SizedBox(width: 4),
+                const Text('Aller OK', style: TextStyle(fontSize: 11, color: Colors.green)),
+              ],
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        // === GUIDE ETAPE — toujours visible et évident ===
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: stepColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: stepColor.withOpacity(0.3), width: 1.5),
+          ),
+          child: Row(
+            children: [
+              Icon(stepIcon, size: 20, color: stepColor),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  stepMessage,
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: stepColor, height: 1.3),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 14),
+
+        // Champ Primus
+        _buildEditLocationField(
+          label: 'Primus (Depart)',
+          controller: _editPrimusController,
+          position: _editPrimus,
+          fieldKey: 'primus',
+          suggestions: _editPrimusSuggestions,
+          markerColor: Colors.green,
+        ),
+
+        const SizedBox(height: 10),
+
+        // Champ Terminus
+        _buildEditLocationField(
+          label: 'Terminus (Arrivee)',
+          controller: _editTerminusController,
+          position: _editTerminus,
+          fieldKey: 'terminus',
+          suggestions: _editTerminusSuggestions,
+          markerColor: Colors.red,
+        ),
+
+        if (_isComputingEditRoute)
+          const Padding(
+            padding: EdgeInsets.only(top: 12),
+            child: LinearProgressIndicator(color: Color(0xFF2196F3)),
+          ),
+
+        const Spacer(),
+
+        // Bouton Annuler
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: _exitCarteEditMode,
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Annuler', style: TextStyle(fontSize: 13)),
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  /// Champ de saisie pour primus ou terminus
+  Widget _buildEditLocationField({
+    required String label,
+    required TextEditingController controller,
+    required LatLng? position,
+    required String fieldKey,
+    required List<Map<String, dynamic>> suggestions,
+    required Color markerColor,
+  }) {
+    final isActive = _editSettingField == fieldKey;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Label
+        Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
+        const SizedBox(height: 4),
+
+        // Champ + bouton pin
+        Row(
+          children: [
+            // Pastille de couleur
+            Container(
+              width: 10, height: 10,
+              decoration: BoxDecoration(
+                color: position != null ? markerColor : Colors.grey.shade300,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+            // TextField
+            Expanded(
+              child: TextField(
+                controller: controller,
+                style: const TextStyle(fontSize: 12),
+                onChanged: (query) => _debouncedEditSearch(query, fieldKey),
+                onTap: () {
+                  if (_editSettingField != null && _editSettingField != fieldKey) {
+                    setState(() => _editSettingField = null);
+                  }
+                },
+                decoration: InputDecoration(
+                  hintText: 'Rechercher un lieu...',
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: isActive ? markerColor : Colors.grey.shade300,
+                      width: isActive ? 2 : 1,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: isActive ? markerColor : Colors.grey.shade300,
+                      width: isActive ? 2 : 1,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: markerColor, width: 2),
+                  ),
+                  suffixIcon: position != null
+                      ? InkWell(
+                          onTap: () {
+                            setState(() {
+                              if (fieldKey == 'primus') {
+                                _editPrimus = null;
+                                _editPrimusName = '';
+                                _editPrimusController.clear();
+                              } else {
+                                _editTerminus = null;
+                                _editTerminusName = '';
+                                _editTerminusController.clear();
+                              }
+                            });
+                          },
+                          child: const Icon(Icons.close, size: 16),
+                        )
+                      : null,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            // Bouton pin on map
+            InkWell(
+              onTap: () {
+                setState(() {
+                  _editSettingField = isActive ? null : fieldKey;
+                  // Clear suggestions quand on passe en mode pin
+                  if (fieldKey == 'primus') _editPrimusSuggestions = [];
+                  if (fieldKey == 'terminus') _editTerminusSuggestions = [];
+                });
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isActive ? markerColor.withOpacity(0.15) : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                  border: isActive ? Border.all(color: markerColor, width: 1.5) : null,
+                ),
+                child: Icon(
+                  Icons.my_location,
+                  size: 18,
+                  color: isActive ? markerColor : Colors.grey.shade600,
+                ),
+              ),
+            ),
+          ],
+        ),
+
+        // Message "cliquez sur la carte"
+        if (isActive)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 18),
+            child: Text(
+              'Cliquez sur la carte...',
+              style: TextStyle(fontSize: 10, color: markerColor, fontStyle: FontStyle.italic),
+            ),
+          ),
+
+        // Liste de suggestions
+        if (suggestions.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(top: 4, left: 18),
+            constraints: const BoxConstraints(maxHeight: 150),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey.shade200),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: ListView.builder(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              itemCount: suggestions.length > 6 ? 6 : suggestions.length,
+              itemBuilder: (context, index) {
+                final s = suggestions[index];
+                return InkWell(
+                  onTap: () => _selectEditSuggestion(s, fieldKey),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    child: Row(
+                      children: [
+                        Icon(Icons.place, size: 14, color: Colors.grey.shade600),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            s['description'] ?? '',
+                            style: const TextStyle(fontSize: 11),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Icon(Icons.north_east, size: 12, color: Colors.grey.shade400),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Vue d'affinage du tracé (après calcul initial)
+  Widget _buildRouteRefineView(TransportLineGroup group, Color color) {
+    final dirLabel = _editRouteDirection == 'aller' ? 'Aller' : 'Retour';
+    final isRetour = _editRouteDirection == 'retour';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildEditHeader(group, color, 'Affiner $dirLabel', onBack: () {
+          setState(() {
+            _editRouteInitialComputed = false;
+            _editWaypoints = [];
+            _editRouteCoords = [];
+          });
+        }),
+
+        const SizedBox(height: 12),
+
+        // Direction badge
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: isRetour
+                ? const Color(0xFFFF9800).withOpacity(0.1)
+                : const Color(0xFF2196F3).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                isRetour ? Icons.arrow_back : Icons.arrow_forward,
+                size: 14,
+                color: isRetour ? const Color(0xFFFF9800) : const Color(0xFF2196F3),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Sens $dirLabel',
+                style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600,
+                  color: isRetour ? const Color(0xFFFF9800) : const Color(0xFF2196F3),
+                ),
+              ),
+              if (_editAllerRouteCoords.isNotEmpty) ...[
+                const Spacer(),
+                const Icon(Icons.check_circle, size: 14, color: Colors.green),
+                const SizedBox(width: 4),
+                const Text('Aller OK', style: TextStyle(fontSize: 11, color: Colors.green)),
+              ],
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        // Info primus → terminus
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _editPrimusName.isNotEmpty ? _editPrimusName : 'Primus',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _editTerminusName.isNotEmpty ? _editTerminusName : 'Terminus',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        // === GUIDE — instructions pour glisser le tracé ===
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFF5357).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFFF5357).withOpacity(0.3), width: 1.5),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.open_with, size: 18, color: Color(0xFFFF5357)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _editWaypoints.isEmpty
+                          ? 'GLISSEZ les petits cercles sur le tracé pour modifier le parcours'
+                          : '${_editWaypoints.length} point${_editWaypoints.length > 1 ? 's' : ''} — glissez pour affiner, tapez un point pour le supprimer',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFFF5357), height: 1.3),
+                    ),
+                  ),
+                ],
+              ),
+              if (_editWaypoints.isEmpty) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Container(
+                      width: 18, height: 18,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.grey.shade400, width: 1.5),
+                      ),
+                      child: Icon(Icons.add, size: 10, color: Colors.grey.shade500),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Attrapez un cercle blanc et tirez-le vers la route correcte',
+                        style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        if (_isComputingEditRoute)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: LinearProgressIndicator(color: Color(0xFFFF5357)),
+          ),
+
+        const SizedBox(height: 12),
+
+        const Spacer(),
+
+        // Boutons
+        if (!isRetour) ...[
+          // Aller : bouton "Valider Aller →"
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _editRouteCoords.isNotEmpty ? _validateAllerAndStartRetour : null,
+              icon: const Icon(Icons.arrow_forward, size: 18),
+              label: const Text('Valider Aller et tracer Retour', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2196F3),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+        ] else ...[
+          // Retour : bouton "Envoyer"
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _editRouteCoords.isNotEmpty ? _submitCarteEdit : null,
+              icon: const Icon(Icons.send, size: 18),
+              label: const Text('Envoyer la contribution', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF5357),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 6),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: _exitCarteEditMode,
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Annuler', style: TextStyle(fontSize: 12)),
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  /// Vue d'édition d'arrêt (add_stop, move_stop, delete_stop)
+  Widget _buildStopEditorView(TransportLineGroup group, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildEditHeader(group, color,
+          _carteEditAction == EditAction.add_stop ? 'Ajouter un arret'
+              : _carteEditAction == EditAction.move_stop ? 'Deplacer un arret'
+              : 'Supprimer un arret',
+        ),
+
+        const SizedBox(height: 16),
+
+        // Instructions
+        _buildStopEditInstructions(),
+
+        const SizedBox(height: 12),
+
+        // Champ nom d'arrêt (si ajout/déplacement)
+        if (_carteEditAction == EditAction.add_stop || _carteEditAction == EditAction.move_stop) ...[
+          TextField(
+            controller: _editStopNameController,
+            style: const TextStyle(fontSize: 13),
+            decoration: InputDecoration(
+              labelText: 'Nom de l\'arret',
+              hintText: 'Ex: Shoprite Analakely',
+              prefixIcon: const Icon(Icons.place, size: 18),
+              isDense: true,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        const Spacer(),
+
+        // Boutons d'action
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _exitCarteEditMode,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Text('Annuler', style: TextStyle(fontSize: 13)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 2,
+              child: ElevatedButton(
+                onPressed: _submitCarteEdit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF5357),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Text('Envoyer', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  Widget _buildStopEditInstructions() {
+    String text;
+    IconData icon;
+    switch (_carteEditAction) {
+      case EditAction.add_stop:
+        text = _editStopPosition == null
+            ? 'Cliquez sur la carte pour positionner le nouvel arret'
+            : 'Arret positionne — glissez le marqueur pour ajuster';
+        icon = Icons.add_location;
+        break;
+      case EditAction.move_stop:
+        text = _editStopPosition == null
+            ? 'Cliquez sur la carte pour indiquer la nouvelle position'
+            : 'Nouvelle position definie — glissez le marqueur pour ajuster';
+        icon = Icons.open_with;
+        break;
+      case EditAction.delete_stop:
+        text = 'Indiquez dans la description quel arret supprimer';
+        icon = Icons.remove_circle_outline;
+        break;
+      case EditAction.modify_route:
+        text = '';
+        icon = Icons.timeline;
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFF5357).withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: const Color(0xFFFF5357)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text, style: const TextStyle(fontSize: 11, color: Color(0xFF1D1D1F))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _loadCarteData() async {
+    if (!_transportLinesLoaded) {
+      await _loadTransportLines();
+    }
+    _updateCarteMapDisplay();
+  }
+
+  void _updateCarteMapDisplay() {
+    final isolatedLine = _carteIsolatedLine.value;
+
+    if (isolatedLine != null) {
+      _updateCarteIsolatedDisplay(isolatedLine);
+      return;
+    }
+
+    final Set<Polyline> newPolylines = {};
+
+    for (final group in _transportLines) {
+      final color = Color(TransportLineColors.getLineColor(
+          group.lineNumber, group.transportType));
+      final bool isRailType = group.transportType == TransportType.urbanTrain ||
+          group.transportType == TransportType.telepherique;
+      final int lineWidth = isRailType ? 7 : 6;
+
+      if (group.aller != null) {
+        // Bordure blanche (plus large, en dessous)
+        newPolylines.add(Polyline(
+          polylineId: PolylineId('carte_${group.lineNumber}_aller_border'),
+          points: group.aller!.coordinates,
+          color: Colors.white,
+          width: lineWidth + 3,
+          zIndex: 0,
+        ));
+        // Trait coloré par-dessus
+        newPolylines.add(Polyline(
+          polylineId: PolylineId('carte_${group.lineNumber}_aller'),
+          points: group.aller!.coordinates,
+          color: color,
+          width: lineWidth,
+          zIndex: 1,
+        ));
+      }
+
+      if (group.retour != null) {
+        newPolylines.add(Polyline(
+          polylineId: PolylineId('carte_${group.lineNumber}_retour_border'),
+          points: group.retour!.coordinates,
+          color: Colors.white.withOpacity(0.7),
+          width: lineWidth + 2,
+          zIndex: 0,
+        ));
+        newPolylines.add(Polyline(
+          polylineId: PolylineId('carte_${group.lineNumber}_retour'),
+          points: group.retour!.coordinates,
+          color: color.withOpacity(0.55),
+          width: lineWidth - 1,
+          zIndex: 1,
+        ));
+      }
+    }
+
+    setState(() {
+      _cartePolylines = newPolylines;
+      _carteMarkers = {};
+    });
+  }
+
+  /// Crée une icône de marker d'arrêt : cercle coloré avec numéro
+  Future<BitmapDescriptor> _getStopIcon(Color color, int number) async {
+    final cacheKey = '${color.value}_$number';
+    if (_stopIconCache.containsKey(cacheKey)) {
+      return _stopIconCache[cacheKey]!;
+    }
+
+    const double size = 28.0;
+    final recorder = PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    // Cercle blanc (bordure)
+    final borderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(const Offset(size / 2, size / 2), size / 2, borderPaint);
+
+    // Cercle coloré
+    final fillPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(const Offset(size / 2, size / 2), size / 2 - 2, fillPaint);
+
+    // Numéro
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: '$number',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    textPainter.paint(
+      canvas,
+      Offset(
+        (size - textPainter.width) / 2,
+        (size - textPainter.height) / 2,
+      ),
+    );
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size.toInt(), size.toInt());
+    final bytes = await image.toByteData(format: ImageByteFormat.png);
+    final icon = BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+    _stopIconCache[cacheKey] = icon;
+    return icon;
+  }
+
+  /// Crée un marqueur d'arrêt avec le numéro de ligne (ex: "015", "129")
+  Future<BitmapDescriptor> _getLineStopIcon(Color color, String lineNumber) async {
+    final cacheKey = 'line_${color.value}_$lineNumber';
+    if (_stopIconCache.containsKey(cacheKey)) {
+      return _stopIconCache[cacheKey]!;
+    }
+
+    // Adapter la taille au texte
+    final label = lineNumber.replaceFirst(RegExp(r'^0+'), '');
+    final fontSize = label.length > 3 ? 7.0 : (label.length > 2 ? 8.5 : 10.0);
+    const double size = 24.0;
+
+    final recorder = PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    // Ombre légère
+    final shadowPaint = Paint()
+      ..color = Colors.black.withOpacity(0.15)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(const Offset(size / 2, size / 2 + 0.5), size / 2, shadowPaint);
+
+    // Cercle blanc (bordure)
+    final borderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(const Offset(size / 2, size / 2), size / 2, borderPaint);
+
+    // Cercle coloré
+    final fillPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(const Offset(size / 2, size / 2), size / 2 - 1.5, fillPaint);
+
+    // Numéro de ligne
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: fontSize,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    textPainter.paint(
+      canvas,
+      Offset(
+        (size - textPainter.width) / 2,
+        (size - textPainter.height) / 2,
+      ),
+    );
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size.toInt(), size.toInt());
+    final bytes = await image.toByteData(format: ImageByteFormat.png);
+    final icon = BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+    _stopIconCache[cacheKey] = icon;
+    return icon;
+  }
+
+  /// Clé de position arrondie pour déduplication des arrêts aller/retour
+  String _stopPosKey(LatLng pos) {
+    // Arrondir à ~10m de précision pour considérer comme même arrêt
+    return '${(pos.latitude * 10000).round()}_${(pos.longitude * 10000).round()}';
+  }
+
+  Future<void> _updateCarteIsolatedDisplay(TransportLineGroup group) async {
+    final Set<Polyline> newPolylines = {};
+    final Set<Marker> newMarkers = {};
+    final color = Color(TransportLineColors.getLineColor(
+        group.lineNumber, group.transportType));
+
+    if (group.aller != null) {
+      newPolylines.add(Polyline(
+        polylineId: PolylineId('carte_iso_${group.lineNumber}_aller_border'),
+        points: group.aller!.coordinates,
+        color: Colors.white,
+        width: 10,
+        zIndex: 0,
+      ));
+      newPolylines.add(Polyline(
+        polylineId: PolylineId('carte_iso_${group.lineNumber}_aller'),
+        points: group.aller!.coordinates,
+        color: color,
+        width: 7,
+        zIndex: 1,
+      ));
+    }
+
+    if (group.retour != null) {
+      newPolylines.add(Polyline(
+        polylineId: PolylineId('carte_iso_${group.lineNumber}_retour_border'),
+        points: group.retour!.coordinates,
+        color: Colors.white.withOpacity(0.7),
+        width: 9,
+        zIndex: 0,
+      ));
+      newPolylines.add(Polyline(
+        polylineId: PolylineId('carte_iso_${group.lineNumber}_retour'),
+        points: group.retour!.coordinates,
+        color: color.withOpacity(0.65),
+        width: 6,
+        zIndex: 1,
+      ));
+    }
+
+    // Arrêts dédupliqués aller/retour — un seul marker par position
+    final icon = await _getLineStopIcon(color, group.lineNumber);
+    final Set<String> placedPositions = {};
+
+    void addStops(List<TransportStop> stops, String dir) {
+      for (int i = 0; i < stops.length; i++) {
+        final stop = stops[i];
+        final key = _stopPosKey(stop.position);
+        if (placedPositions.contains(key)) continue;
+        placedPositions.add(key);
+        newMarkers.add(Marker(
+          markerId: MarkerId('carte_stop_${group.lineNumber}_$key'),
+          position: stop.position,
+          anchor: const Offset(0.5, 0.5),
+          icon: icon,
+          zIndex: 2,
+          infoWindow: InfoWindow(title: stop.name, snippet: 'Ligne ${group.lineNumber}'),
+        ));
+      }
+    }
+
+    if (group.aller != null) addStops(group.aller!.stops, 'aller');
+    if (group.retour != null) addStops(group.retour!.stops, 'retour');
+
+    if (!mounted) return;
+    setState(() {
+      _cartePolylines = newPolylines;
+      _carteMarkers = newMarkers;
+    });
+
+    // Ajuster la caméra aux bounds de la ligne
+    _fitCameraToLine(group);
+  }
+
+  void _fitCameraToLine(TransportLineGroup group) {
+    final allCoords = <LatLng>[
+      if (group.aller != null) ...group.aller!.coordinates,
+      if (group.retour != null) ...group.retour!.coordinates,
+    ];
+    if (allCoords.isEmpty || _mapController == null) return;
+
+    double minLat = allCoords.first.latitude;
+    double maxLat = allCoords.first.latitude;
+    double minLng = allCoords.first.longitude;
+    double maxLng = allCoords.first.longitude;
+    for (final c in allCoords) {
+      if (c.latitude < minLat) minLat = c.latitude;
+      if (c.latitude > maxLat) maxLat = c.latitude;
+      if (c.longitude < minLng) minLng = c.longitude;
+      if (c.longitude > maxLng) maxLng = c.longitude;
+    }
+
+    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(
+      LatLngBounds(
+        southwest: LatLng(minLat, minLng),
+        northeast: LatLng(maxLat, maxLng),
+      ),
+      60,
+    ));
+  }
+
+  void _openCarteEditorSheet(TransportLineGroup group) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.7,
+        child: TransportEditorSheet(
+          lineNumber: group.lineNumber,
+          initialLocation: _defaultPosition,
+          onEditConfirmed: (editData) {
+            // Contribution envoyée via le sheet
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showProposerLigneSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.7,
+        child: TransportEditorSheet(
+          lineNumber: 'NOUVELLE',
+          initialLocation: _defaultPosition,
+          onEditConfirmed: (editData) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Proposition envoyée ! Merci pour votre contribution.'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          },
+        ),
+      ),
+    );
   }
 
   Widget _buildLocationInputs() {

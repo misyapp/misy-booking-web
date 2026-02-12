@@ -17,17 +17,14 @@ class TransportContributionService {
     required LatLng location,
     EditData? editData,
     List<String>? attachmentUrls,
+    String? contributorName,
   }) async {
     try {
       final user = userData.value;
-      if (user == null) {
-        myCustomPrintStatement('Contribution: utilisateur non connecté');
-        return false;
-      }
 
       final Map<String, dynamic> data = {
-        'user_id': user.id,
-        'user_name': user.fullName ?? 'Utilisateur',
+        'user_id': user?.id ?? 'anonymous',
+        'user_name': contributorName ?? user?.fullName ?? 'Utilisateur',
         'line_number': lineNumber,
         'contribution_type': contributionType.name,
         'description': description,

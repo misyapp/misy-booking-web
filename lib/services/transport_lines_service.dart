@@ -125,36 +125,42 @@ class TransportLinesService {
     }
   }
 
-  /// Charge toutes les lignes de transport embarquées (core)
-  /// Les lignes remote ne sont pas chargées ici pour performance
+  /// Charge toutes les lignes de transport (bundled + remote)
   Future<List<TransportLineGroup>> loadAllLines() async {
-    // Retourner le cache complet si déjà rempli
-    if (_linesCache.isNotEmpty) {
-      myCustomPrintStatement('Lignes de transport chargées depuis le cache');
+    // Retourner le cache complet si déjà rempli avec toutes les lignes
+    if (_linesCache.isNotEmpty && _manifest != null && _linesCache.length >= _manifest!.length) {
+      myCustomPrintStatement('Lignes de transport chargées depuis le cache (${_linesCache.length})');
       return _linesCache.values.toList();
     }
 
     await _loadManifest();
     if (_manifest == null || _manifest!.isEmpty) return [];
 
-    myCustomPrintStatement('Chargement des lignes de transport...');
+    myCustomPrintStatement('Chargement de ${_manifest!.length} lignes de transport...');
 
-    // Charger toutes les lignes bundled (core)
-    for (final metadata in _manifest!.values.where((m) => m.isBundled)) {
-      try {
-        final lineGroup = await _loadLineFromMetadata(metadata);
-        if (lineGroup != null) {
-          _linesCache[metadata.lineNumber] = lineGroup;
-        }
-      } catch (e) {
-        myCustomPrintStatement(
-          'Erreur chargement ligne ${metadata.lineNumber}: $e',
-        );
-      }
+    // Charger toutes les lignes (bundled + remote) en parallèle
+    final futures = <Future<void>>[];
+    for (final metadata in _manifest!.values) {
+      if (_linesCache.containsKey(metadata.lineNumber)) continue;
+      futures.add(_loadAndCacheLine(metadata));
     }
+    await Future.wait(futures);
 
-    myCustomPrintStatement('${_linesCache.length} lignes core chargées');
+    myCustomPrintStatement('${_linesCache.length}/${_manifest!.length} lignes chargées');
     return _linesCache.values.toList();
+  }
+
+  Future<void> _loadAndCacheLine(LineMetadata metadata) async {
+    try {
+      final lineGroup = await _loadLineFromMetadata(metadata);
+      if (lineGroup != null) {
+        _linesCache[metadata.lineNumber] = lineGroup;
+      }
+    } catch (e) {
+      myCustomPrintStatement(
+        'Erreur chargement ligne ${metadata.lineNumber}: $e',
+      );
+    }
   }
 
   /// Charge une ligne spécifique (avec lazy loading pour les remote)

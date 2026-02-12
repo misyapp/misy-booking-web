@@ -34,6 +34,11 @@ class EditData {
   final LatLng? oldCoordinates;
   final LatLng? newCoordinates;
   final List<LatLng>? routeSegment;
+  final List<LatLng>? routeAllerSegment;
+  final LatLng? primus;
+  final LatLng? terminus;
+  final String? primusName;
+  final String? terminusName;
 
   const EditData({
     required this.action,
@@ -42,6 +47,11 @@ class EditData {
     this.oldCoordinates,
     this.newCoordinates,
     this.routeSegment,
+    this.routeAllerSegment,
+    this.primus,
+    this.terminus,
+    this.primusName,
+    this.terminusName,
   });
 
   Map<String, dynamic> toJson() {
@@ -57,6 +67,16 @@ class EditData {
           : null,
       'route_segment':
           routeSegment?.map((p) => [p.longitude, p.latitude]).toList(),
+      'route_aller_segment':
+          routeAllerSegment?.map((p) => [p.longitude, p.latitude]).toList(),
+      'primus': primus != null
+          ? {'lat': primus!.latitude, 'lng': primus!.longitude}
+          : null,
+      'terminus': terminus != null
+          ? {'lat': terminus!.latitude, 'lng': terminus!.longitude}
+          : null,
+      'primus_name': primusName,
+      'terminus_name': terminusName,
     };
   }
 
@@ -85,6 +105,25 @@ class EditData {
               .map((p) => LatLng((p[1] as num).toDouble(), (p[0] as num).toDouble()))
               .toList()
           : null,
+      routeAllerSegment: json['route_aller_segment'] != null
+          ? (json['route_aller_segment'] as List)
+              .map((p) => LatLng((p[1] as num).toDouble(), (p[0] as num).toDouble()))
+              .toList()
+          : null,
+      primus: json['primus'] != null
+          ? LatLng(
+              (json['primus']['lat'] as num).toDouble(),
+              (json['primus']['lng'] as num).toDouble(),
+            )
+          : null,
+      terminus: json['terminus'] != null
+          ? LatLng(
+              (json['terminus']['lat'] as num).toDouble(),
+              (json['terminus']['lng'] as num).toDouble(),
+            )
+          : null,
+      primusName: json['primus_name'],
+      terminusName: json['terminus_name'],
     );
   }
 }

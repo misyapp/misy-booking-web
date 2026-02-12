@@ -33,32 +33,133 @@ extension TransportTypeExtension on TransportType {
   }
 }
 
-/// Couleurs spécifiques pour chaque ligne de bus (style IDFM)
+/// Couleurs des lignes de taxi-be d'Antananarivo
+///
+/// Sources :
+/// - Taxi-Boky (Agence des Transports Terrestres, 2013)
+/// - Moovit : variantes BLEU/ROUGE/VERT des lignes
+/// - OpenStreetMap : tags Manga (bleu) / Mena (rouge)
+/// - voyage-madagascar.org : bandes de couleur
+///
+/// Convention : quand une ligne a plusieurs variantes de couleur
+/// (ex: 147 Manga/Mena), on utilise la couleur dominante (Manga=bleu).
+/// Les sous-variantes (A, B, C) héritent d'une nuance proche du parent.
 class TransportLineColors {
-  // Couleurs manuelles — palette transport public (tons mats, professionnels)
   static const Map<String, int> _fixedColors = {
-    '015': 0xFF1A73C7, // Bleu IDFM
-    '017': 0xFF7B3FA0, // Violet
-    '17': 0xFF7B3FA0,  // Violet (alias)
-    '129': 0xFFC2185B, // Rose foncé
-    'TRAIN_TCE': 0xFF2E7D32, // Vert foncé
-    'TELEPHERIQUE_Orange': 0xFFE65100, // Orange foncé
+    // === Lignes principales (chaque couleur est UNIQUE) ===
+    '009':  0xFF00897B, // Sarcelle foncé
+    '015':  0xFF1565C0, // Bleu cobalt
+    '017':  0xFF7B1FA2, // Violet
+    '17':   0xFF7B1FA2, // Violet (alias de 017)
+    '103':  0xFF2E7D32, // Vert forêt
+    '104':  0xFF880E4F, // Bordeaux
+    '105':  0xFFD32F2F, // Rouge (bande rouge confirmée)
+    '106':  0xFFE65100, // Orange brûlé
+    '107':  0xFF00838F, // Cyan foncé
+    '109':  0xFF1976D2, // Bleu (variante Manga)
+    '110':  0xFF6A1B9A, // Violet foncé
+    '112':  0xFF558B2F, // Vert olive
+    '113':  0xFFD84315, // Vermillon
+    '114':  0xFF388E3C, // Vert (bande verte confirmée)
+    '115':  0xFF4527A0, // Indigo foncé
+    '116':  0xFFE91E63, // Rose framboise
+    '117':  0xFF00695C, // Sarcelle profond
+    '119':  0xFFFF8F00, // Ambre
+    '120':  0xFF283593, // Bleu nuit
+    '122':  0xFF6D4C41, // Brun café
+    '123':  0xFF0D47A1, // Bleu marine (Manga)
+    '125':  0xFFB71C1C, // Rouge foncé
+    '126':  0xFF00796B, // Vert émeraude
+    '128':  0xFF8E24AA, // Orchidée foncé
+    '129':  0xFFC2185B, // Rose foncé
+    '133':  0xFF5D4037, // Chocolat
+    '134':  0xFFAD1457, // Magenta foncé
+    '135':  0xFFE53935, // Rouge vif (variante ROUGE)
+    '136':  0xFF0097A7, // Cyan
+    '137':  0xFF827717, // Vert kaki foncé
+    '138':  0xFF43A047, // Vert prairie
+    '139':  0xFFF57F17, // Jaune moutarde
+    '140':  0xFF546E7A, // Bleu-gris
+    '141':  0xFF1E88E5, // Bleu royal (Manga)
+    '142':  0xFF33691E, // Vert mousse
+    '143':  0xFFEF6C00, // Orange vif
+    '144':  0xFF512DA8, // Violet profond
+    '146':  0xFF0277BD, // Bleu azur (Manga)
+    '147':  0xFF0D47A9, // Bleu marine profond (Manga)
+    '150':  0xFFD81B60, // Rose vif
+    '151':  0xFF26A69A, // Turquoise
+    '153':  0xFF795548, // Brun terreux
+    '154':  0xFF00ACC1, // Turquoise clair
+    '159':  0xFF9C27B0, // Mauve
+    '160':  0xFF37474F, // Gris ardoise
+    '161':  0xFF009688, // Vert d'eau
+    '162':  0xFF7E57C2, // Lavande foncé
+    '163':  0xFF1B5E20, // Vert foncé
+    '164':  0xFF4E342E, // Brun foncé
+    '165':  0xFF8D6E63, // Brun clair
+    '166':  0xFFEC407A, // Rose bonbon
+    '172':  0xFF0288D1, // Bleu ciel foncé
+    '178':  0xFF2979FF, // Bleu électrique (Manga)
+    '182':  0xFFBF360C, // Roux
+    '184':  0xFF00BFA5, // Vert marin clair
+    '187':  0xFF9C27B8, // Aubergine
+    '190':  0xFF3E2723, // Brun très foncé
+    '191':  0xFF039BE5, // Bleu ciel
+    '192':  0xFF42A5F5, // Bleu pervenche (variante Bleue)
+    '194':  0xFF0B3D91, // Bleu encre (variante BLEU)
+    '196':  0xFFC62828, // Rouge cramoisi
+    '199':  0xFF4A148C, // Violet nuit
+
+    // === Sous-variantes (nuance proche du parent) ===
+    '127A': 0xFFE64A19, // Orange terre cuite
+    '133A': 0xFF6F5744, // Chocolat moyen
+    '133B': 0xFF7D5F51, // Brun moyen
+    '133C': 0xFF9E8E82, // Brun sable
+    '135A': 0xFFC62838, // Rouge profond
+    '135_': 0xFFEF5350, // Rouge corail (ROUGE)
+    '150B': 0xFFF06292, // Rose clair
+    '154A': 0xFF00869B, // Cyan foncé
+    '154B': 0xFF00B8D4, // Cyan moyen
+    '154C': 0xFF00BCD4, // Cyan clair
+    '157A': 0xFFAB47BC, // Violet clair
+    '157B': 0xFF9B30A8, // Violet moyen
+    '163B': 0xFF4CAF50, // Vert pomme
+    '180A': 0xFFFFA000, // Or
+    '180B': 0xFFFFB300, // Or clair
+    '183A': 0xFF455A64, // Gris bleuté
+    '183B': 0xFF607D8B, // Gris bleuté clair
+    '186A': 0xFF9E9D24, // Vert lime foncé
+    '192A': 0xFF5C6BC0, // Indigo moyen
+    '192B': 0xFF3F51B5, // Indigo
+    '193A': 0xFF66BB6A, // Vert clair
+    '147BIS': 0xFF1A5FC7, // Bleu (Manga)
+
+    // === Lignes suburbaines (lettres) ===
+    'A':    0xFFFF5252, // Rouge vif
+    'D':    0xFFF4511E, // Orange rouge
+    'E':    0xFF2E8B57, // Vert mer
+    'G':    0xFF6B18A1, // Pourpre
+    'H':    0xFF008C8C, // Sarcelle sombre
+    'J':    0xFFD50071, // Fuchsia
+    'KOFIMI':             0xFF6B4226, // Brun acajou
+    'MAHITSY':            0xFF357A38, // Vert sapin
+    'AMBOHIDRATRIMO':     0xFF1A3F7A, // Bleu nuit profond
+    'AMBOHITRIMANJAKA':   0xFF5B148C, // Violet profond
+
+    // === Transports spéciaux ===
+    'TRAIN_TCE':          0xFF1B8C32, // Vert rail
+    'TELEPHERIQUE_Orange': 0xFFE65108, // Orange câble
   };
 
-  /// Génère une couleur unique déterministe (tons mats, style transport public)
+  /// Couleur de repli pour les lignes non répertoriées
   static int _generateColor(String lineNumber) {
     int hash = 0;
     for (int i = 0; i < lineNumber.length; i++) {
       hash = lineNumber.codeUnitAt(i) + ((hash << 5) - hash);
     }
-
-    // Hue : 0-360, bien distribué
     final hue = (hash.abs() % 360).toDouble();
-    // Saturation : 45-60% — couleurs douces, pas criardes
-    final saturation = 0.45 + (hash.abs() % 15) / 100.0;
-    // Lightness : 35-45% — assez foncé pour lisibilité sur carte claire
-    final lightness = 0.35 + (hash.abs() % 10) / 100.0;
-
+    final saturation = 0.50 + (hash.abs() % 15) / 100.0;
+    final lightness = 0.38 + (hash.abs() % 8) / 100.0;
     return HSLColor.fromAHSL(1.0, hue, saturation, lightness)
         .toColor()
         .value;
