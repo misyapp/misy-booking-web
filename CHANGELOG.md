@@ -1,5 +1,39 @@
 # Historique des modifications - MISY Booking Web
 
+## 2026-02-10 - 95/95 lignes transport avec tracés routiers + mode édition
+
+### Transport : couverture 100%
+- **38 lignes extraites d'OpenStreetMap** via Overpass API (script `fetch_osm_transport_lines.py`)
+- **36 lignes générées par géocodage** des quartiers Antananarivo + routage OSRM (script `generate_missing_routes.py`)
+- **188 fichiers GeoJSON** tous recalés sur le réseau routier (script `snap_routes_to_roads.py`)
+- **96 couleurs uniques** par ligne dans `_fixedColors` (recherche web couleurs taxi-be)
+- **Manifest synchronisé** : 95 lignes bundled à 100%
+
+### Mode édition collaboratif ("Modifier le tracé")
+- Flow Primus/Terminus avec Google Places Autocomplete
+- Auto-calcul OSRM du tracé (plus de bouton "Calculer")
+- Waypoints draggables + tap-to-delete + midpoint drag handles
+- Aller/Retour avec reset complet
+- Popup contribution (prénom requis + description optionnelle)
+- Popup confirmation sortie si travail en cours
+
+### Arrêts sur la carte
+- Marqueurs avec numéro de ligne + couleur
+- Déduplication aller/retour (precision ~10m)
+
+### Fichiers modifiés
+- `assets/transport_lines/core/*.geojson` — 188 fichiers
+- `assets/transport_lines/manifest.json` — 95 lignes bundled
+- `lib/models/transport_line.dart` — couleurs uniques
+- `lib/models/transport_contribution.dart` — modèle EditData
+- `lib/pages/view_module/home_screen_web.dart` — mode édition + arrêts
+- `lib/services/transport_contribution_service.dart` — contributorName
+- `scripts/fetch_osm_transport_lines.py` — NEW
+- `scripts/generate_missing_routes.py` — NEW
+- `scripts/snap_routes_to_roads.py` — NEW
+
+---
+
 ## 2026-01-17 (15:45) - Ajout du guide de déploiement et scripts SSH
 
 ### Nouveaux fichiers ajoutés

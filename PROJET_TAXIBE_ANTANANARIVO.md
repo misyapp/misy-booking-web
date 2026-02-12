@@ -3,7 +3,7 @@
 ## Objectif
 Créer une cartographie complète des lignes de taxi-be (bus urbains et suburbains) d'Antananarivo, Madagascar, avec pour finalité le développement d'une application de calcul d'itinéraire type "IDF Mobilités".
 
-## État du projet : INTÉGRÉ DANS MISY APP (95 lignes)
+## État du projet : 95/95 LIGNES AVEC TRACÉS ROUTIERS (100%)
 
 ---
 
@@ -212,8 +212,8 @@ Créer une cartographie complète des lignes de taxi-be (bus urbains et suburbai
 - [x] ~~Développer l'application de calcul d'itinéraire~~ → Intégré dans Misy (écran Transport)
 - [x] ~~Créer une interface utilisateur (web/mobile)~~ → TransportMapScreen avec carte + panneau latéral
 - [x] ~~Implémenter l'algorithme de routing (Dijkstra ou A*)~~ → Calcul d'itinéraire multi-modal fonctionnel
+- [x] ~~Améliorer les données des lignes non-bundled~~ → 95/95 lignes bundled avec tracés routiers
 - [ ] Affiner l'UX du calcul d'itinéraire (suggestions d'arrêts, favoris)
-- [ ] Améliorer les données des lignes non-bundled (61 lignes restantes à intégrer en local)
 
 ### Priorité moyenne
 - [ ] Nommer les 823 arrêts sans nom (format FOKONTANY + POI)
@@ -223,8 +223,8 @@ Créer une cartographie complète des lignes de taxi-be (bus urbains et suburbai
 
 ### Priorité basse
 - [ ] Créer un système de mise à jour automatique depuis OSM
-- [ ] Ajouter les lignes manquantes non présentes dans OSM
-- [ ] Système de contribution communautaire (éditeur d'arrêts/tracés)
+- [x] ~~Ajouter les lignes manquantes non présentes dans OSM~~ → Géocodage quartiers + OSRM routing
+- [x] ~~Système de contribution communautaire (éditeur d'arrêts/tracés)~~ → Mode "Modifier le tracé" avec Primus/Terminus + waypoints
 
 ---
 
@@ -410,5 +410,80 @@ Créer une cartographie complète des lignes de taxi-be (bus urbains et suburbai
 - `assets/transport_lines/manifest.json` — couleurs uniques pour 95 lignes
 - `lib/models/transport_line.dart` — `_generateColor()` + palette IDFM
 - `lib/pages/view_module/transport_map_screen.dart` — refonte visuelle (~500 lignes)
+
+---
+
+### 10 février 2026 - 95/95 lignes avec tracés routiers + mode édition collaboratif
+
+**Objectif** : Passer de 21 à 95 lignes bundled (100%) + ajouter un éditeur de tracé collaboratif.
+
+**Travail réalisé** :
+
+#### 1. Extraction OSM (38 nouvelles lignes)
+- Script `fetch_osm_transport_lines.py` : extraction via Overpass API (serveur miroir mail.ru)
+- Requête bbox `(-19.1,47.3,-18.7,47.7)` → 148 relations trouvées
+- Matching intelligent : base line, case-insensitive, sous-variantes (ex: `194` → `194-Ambohimangakely`)
+- Fetch geometry par batch de 5 relations pour éviter les timeouts
+- **Résultat** : 76 fichiers GeoJSON générés (38 lignes aller + retour)
+
+#### 2. Géocodage + OSRM (36 lignes restantes)
+- Script `generate_missing_routes.py` : dictionnaire de ~50 quartiers d'Antananarivo
+- Géocodage des noms de direction (ex: "67HA" → (-18.9137, 47.5225))
+- Routage OSRM entre endpoints → tracés qui suivent les vraies routes
+- Correction des 5 lignes circulaires (128, 153, 191, 186A, 127A) avec points intermédiaires
+- Fallback Nominatim pour les quartiers non répertoriés
+- **Résultat** : 70 fichiers GeoJSON générés (36 lignes)
+
+#### 3. Road-snapping OSRM (tous les tracés)
+- Script `snap_routes_to_roads.py` : recalage de tous les 188 fichiers sur le réseau routier
+- Sampling des coords à 80 waypoints max → appel OSRM route API
+- Train TCE et Téléphérique exclus du snapping (rail/câble)
+- **Résultat** : 115/118 fichiers snappés, 3 retours vides corrigés par inversion aller
+
+#### 4. Couleurs uniques (96 entrées)
+- Map `_fixedColors` : 96 couleurs hex uniques (vérifiées sans doublon)
+- Recherche web des couleurs taxi-be : Manga=bleu, Mena=rouge (variantes de route)
+- Synchronisation manifest.json ↔ code Dart (94 couleurs mises à jour)
+
+#### 5. Arrêts sur la carte
+- Marqueurs d'arrêts avec numéro de ligne + couleur
+- Déduplication aller/retour via `_stopPosKey()` (precision ~10m)
+- Affichage sur les onglets Transport et Carte
+
+#### 6. Mode édition collaboratif ("Modifier le tracé")
+- Flow Primus → Terminus avec Google Places Autocomplete
+- Auto-calcul du tracé OSRM (suppression du bouton "Calculer")
+- Phase affinage : midpoint drag handles + waypoints draggables/supprimables
+- Aller/Retour : reset complet (pas de swap)
+- Popup contribution : prénom (requis) + description (optionnel)
+- Popup confirmation sortie si travail en cours
+- Persistance Firestore via `TransportContributionService`
+
+**Statistiques finales** :
+| Métrique | Valeur |
+|----------|--------|
+| **Lignes totales** | **95** (93 bus + 1 train + 1 téléphérique) |
+| **Lignes bundled** | **95/95 (100%)** |
+| **Fichiers GeoJSON** | **188** (95 aller + 93 retour) |
+| **Source: originaux** | 42 fichiers |
+| **Source: OpenStreetMap** | 76 fichiers |
+| **Source: géocodés + OSRM** | 70 fichiers |
+| **Tous road-snapped** | Oui (sauf train/téléphérique) |
+
+**Scripts créés** :
+| Script | Description |
+|--------|-------------|
+| `scripts/fetch_osm_transport_lines.py` | Extraction OSM via Overpass API (bbox + batches) |
+| `scripts/generate_missing_routes.py` | Géocodage quartiers Tana + routage OSRM |
+| `scripts/snap_routes_to_roads.py` | Recalage de tous les GeoJSON sur routes réelles |
+
+**Fichiers modifiés** :
+- `assets/transport_lines/core/*.geojson` — 188 fichiers (42 modifiés + 146 créés)
+- `assets/transport_lines/manifest.json` — 95 lignes bundled, couleurs synchronisées
+- `lib/models/transport_line.dart` — `_fixedColors` 96 couleurs uniques
+- `lib/models/transport_contribution.dart` — modèle EditData
+- `lib/pages/view_module/home_screen_web.dart` — mode édition + arrêts carte
+- `lib/services/transport_contribution_service.dart` — paramètre contributorName
+- `lib/services/transport_lines_service.dart` — chargement bundled
 
 ---

@@ -171,6 +171,41 @@ Gère la géolocalisation avec :
 - Topics : `all_devices`, `all_customers`
 - Notifications locales pour les alertes in-app
 
+## Transport en Commun (95 lignes taxi-be)
+
+### Architecture des données
+```
+assets/transport_lines/
+├── manifest.json              # Index des 95 lignes (couleurs, endpoints, asset_paths)
+└── core/                      # 188 fichiers GeoJSON (aller + retour)
+    ├── {line}_aller.geojson   # Tracé + arrêts direction aller
+    └── {line}_retour.geojson  # Tracé + arrêts direction retour
+```
+
+### Sources des tracés
+| Source | Fichiers | Méthode |
+|--------|----------|---------|
+| Originaux (bundled) | 42 | Données existantes road-snappées OSRM |
+| OpenStreetMap | 76 | Overpass API → extraction géométrie → OSRM snap |
+| Géocodés | 70 | Quartiers Antananarivo → OSRM routing |
+
+### Services transport
+- **`TransportLinesService`** — Chargement manifest + GeoJSON bundled
+- **`TransportContributionService`** — Contributions utilisateur (Firestore)
+- **`TransportLineColors._fixedColors`** — 96 couleurs hex uniques par ligne
+
+### Mode édition collaboratif
+- Flow Primus → Terminus (Google Places)
+- Auto-calcul OSRM + phase affinage (midpoint handles + waypoints)
+- Soumission anonyme avec prénom + description
+
+### Scripts de données
+| Script | Description |
+|--------|-------------|
+| `scripts/fetch_osm_transport_lines.py` | Extraction OSM Overpass API |
+| `scripts/generate_missing_routes.py` | Géocodage + routage OSRM |
+| `scripts/snap_routes_to_roads.py` | Recalage sur réseau routier |
+
 ## Composants UI Réutilisables
 
 ### Design System
