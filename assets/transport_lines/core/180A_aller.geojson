@@ -3,9 +3,9 @@
   "properties": {
     "line": "180A",
     "direction": "Alarobia",
-    "num_stops": 0,
-    "num_coordinates": 96,
-    "source": "geocoded_osrm",
+    "num_stops": 15,
+    "num_coordinates": 163,
+    "source": "osm_stops_osrm",
     "road_snapped": true
   },
   "features": [
@@ -45,6 +45,10 @@
           [
             47.542795,
             -18.901767
+          ],
+          [
+            47.54258,
+            -18.901726
           ],
           [
             47.542574,
@@ -107,6 +111,10 @@
             -18.901576
           ],
           [
+            47.53842,
+            -18.90158
+          ],
+          [
             47.538416,
             -18.90158
           ],
@@ -125,6 +133,10 @@
           [
             47.536651,
             -18.901632
+          ],
+          [
+            47.536459,
+            -18.901644
           ],
           [
             47.536447,
@@ -149,6 +161,14 @@
           [
             47.535125,
             -18.901694
+          ],
+          [
+            47.535092,
+            -18.901695
+          ],
+          [
+            47.535077,
+            -18.90141
           ],
           [
             47.535092,
@@ -199,6 +219,10 @@
             -18.902264
           ],
           [
+            47.532757,
+            -18.902278
+          ],
+          [
             47.532762,
             -18.902436
           ],
@@ -235,12 +259,20 @@
             -18.903677
           ],
           [
+            47.533734,
+            -18.903677
+          ],
+          [
             47.53378,
             -18.903835
           ],
           [
             47.5338,
             -18.903975
+          ],
+          [
+            47.533815,
+            -18.9042
           ],
           [
             47.533815,
@@ -303,6 +335,210 @@
             -18.907168
           ],
           [
+            47.533778,
+            -18.907538
+          ],
+          [
+            47.533735,
+            -18.907621
+          ],
+          [
+            47.533705,
+            -18.907681
+          ],
+          [
+            47.533669,
+            -18.908177
+          ],
+          [
+            47.533619,
+            -18.908284
+          ],
+          [
+            47.533582,
+            -18.908342
+          ],
+          [
+            47.53347,
+            -18.908388
+          ],
+          [
+            47.533326,
+            -18.908397
+          ],
+          [
+            47.532762,
+            -18.908203
+          ],
+          [
+            47.532563,
+            -18.908203
+          ],
+          [
+            47.532537,
+            -18.907954
+          ],
+          [
+            47.532577,
+            -18.907761
+          ],
+          [
+            47.532619,
+            -18.907632
+          ],
+          [
+            47.532702,
+            -18.90739
+          ],
+          [
+            47.532745,
+            -18.907262
+          ],
+          [
+            47.532802,
+            -18.907076
+          ],
+          [
+            47.532933,
+            -18.906646
+          ],
+          [
+            47.53301,
+            -18.906497
+          ],
+          [
+            47.533018,
+            -18.906482
+          ],
+          [
+            47.533068,
+            -18.906456
+          ],
+          [
+            47.533146,
+            -18.906413
+          ],
+          [
+            47.533269,
+            -18.906501
+          ],
+          [
+            47.533269,
+            -18.906501
+          ],
+          [
+            47.533692,
+            -18.906838
+          ],
+          [
+            47.534099,
+            -18.907168
+          ],
+          [
+            47.533778,
+            -18.907538
+          ],
+          [
+            47.533735,
+            -18.907621
+          ],
+          [
+            47.533705,
+            -18.907681
+          ],
+          [
+            47.533669,
+            -18.908177
+          ],
+          [
+            47.533619,
+            -18.908284
+          ],
+          [
+            47.533582,
+            -18.908342
+          ],
+          [
+            47.53347,
+            -18.908388
+          ],
+          [
+            47.533326,
+            -18.908397
+          ],
+          [
+            47.532762,
+            -18.908203
+          ],
+          [
+            47.532563,
+            -18.908203
+          ],
+          [
+            47.532537,
+            -18.907954
+          ],
+          [
+            47.532577,
+            -18.907761
+          ],
+          [
+            47.532619,
+            -18.907632
+          ],
+          [
+            47.532702,
+            -18.90739
+          ],
+          [
+            47.532744,
+            -18.907265
+          ],
+          [
+            47.532745,
+            -18.907262
+          ],
+          [
+            47.532802,
+            -18.907076
+          ],
+          [
+            47.532933,
+            -18.906646
+          ],
+          [
+            47.533018,
+            -18.906482
+          ],
+          [
+            47.533068,
+            -18.906456
+          ],
+          [
+            47.533146,
+            -18.906413
+          ],
+          [
+            47.533269,
+            -18.906501
+          ],
+          [
+            47.533692,
+            -18.906838
+          ],
+          [
+            47.533692,
+            -18.906838
+          ],
+          [
+            47.534099,
+            -18.907168
+          ],
+          [
+            47.534525,
+            -18.907493
+          ],
+          [
             47.534531,
             -18.907497
           ],
@@ -313,6 +549,10 @@
           [
             47.534948,
             -18.907822
+          ],
+          [
+            47.535118,
+            -18.907951
           ],
           [
             47.535142,
@@ -341,6 +581,34 @@
           [
             47.53631,
             -18.909516
+          ],
+          [
+            47.53631,
+            -18.909516
+          ],
+          [
+            47.536457,
+            -18.909854
+          ],
+          [
+            47.536464,
+            -18.910489
+          ],
+          [
+            47.536483,
+            -18.910699
+          ],
+          [
+            47.536483,
+            -18.910702
+          ],
+          [
+            47.536483,
+            -18.910699
+          ],
+          [
+            47.536464,
+            -18.910489
           ],
           [
             47.536457,
@@ -402,6 +670,261 @@
       },
       "properties": {
         "type": "route"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5425713,
+          -18.9017668
+        ]
+      },
+      "properties": {
+        "name": "Avaradoha",
+        "stop_id": 5447676156,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 4.6
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5384211,
+          -18.9016155
+        ]
+      },
+      "properties": {
+        "name": "Besarety Ambodimanga",
+        "stop_id": 5424321892,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 3.9
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5364578,
+          -18.901625
+        ]
+      },
+      "properties": {
+        "name": "Besarety Tsena",
+        "stop_id": 5424321889,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 2.1
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5351074,
+          -18.9014085
+        ]
+      },
+      "properties": {
+        "name": "Mahavoky La Rotonde",
+        "stop_id": 5445640394,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 31.7
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5327075,
+          -18.9022792
+        ]
+      },
+      "properties": {
+        "name": "Ampandrana Rasalama",
+        "stop_id": 5637103414,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 5.3
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5337338,
+          -18.9036769
+        ]
+      },
+      "properties": {
+        "name": "Arret 6",
+        "stop_id": 3566783041,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 0.0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5337616,
+          -18.9041999
+        ]
+      },
+      "properties": {
+        "name": "Ampandrana Trano Be",
+        "stop_id": 5424321888,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 5.6
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5329536,
+          -18.9064712
+        ]
+      },
+      "properties": {
+        "name": "Ampandrana Bel air",
+        "stop_id": 5552404252,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 21.3
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5332691,
+          -18.9065012
+        ]
+      },
+      "properties": {
+        "name": "Arret 9",
+        "stop_id": 5424321884,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 0.0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5327735,
+          -18.9072744
+        ]
+      },
+      "properties": {
+        "name": "Ankadivato NANE",
+        "stop_id": 5549917230,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 99.4
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5336918,
+          -18.9068383
+        ]
+      },
+      "properties": {
+        "name": "Arret 11",
+        "stop_id": 5424321883,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 0.0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.534506,
+          -18.9075153
+        ]
+      },
+      "properties": {
+        "name": "Bel Air Lasantsy",
+        "stop_id": 5553116169,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 3.2
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5351059,
+          -18.907965
+        ]
+      },
+      "properties": {
+        "name": "Antsakaviro Total",
+        "stop_id": 5424321882,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 2.0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5363098,
+          -18.9095158
+        ]
+      },
+      "properties": {
+        "name": "Arret 14",
+        "stop_id": 5445556412,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 0.0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5364417,
+          -18.9107042
+        ]
+      },
+      "properties": {
+        "name": "Antsakaviro Fivondronana",
+        "stop_id": 5424321880,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 94.4
       }
     }
   ]

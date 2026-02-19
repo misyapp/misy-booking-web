@@ -3,9 +3,9 @@
   "properties": {
     "line": "199",
     "direction": "Alarobia",
-    "num_stops": 0,
-    "num_coordinates": 59,
-    "source": "geocoded_osrm",
+    "num_stops": 5,
+    "num_coordinates": 65,
+    "source": "osm_stops_osrm",
     "road_snapped": true
   },
   "features": [
@@ -45,6 +45,10 @@
           [
             47.542795,
             -18.901767
+          ],
+          [
+            47.54258,
+            -18.901726
           ],
           [
             47.542574,
@@ -107,6 +111,10 @@
             -18.901576
           ],
           [
+            47.53842,
+            -18.90158
+          ],
+          [
             47.538416,
             -18.90158
           ],
@@ -125,6 +133,10 @@
           [
             47.536651,
             -18.901632
+          ],
+          [
+            47.536459,
+            -18.901644
           ],
           [
             47.536447,
@@ -149,6 +161,14 @@
           [
             47.535125,
             -18.901694
+          ],
+          [
+            47.535092,
+            -18.901695
+          ],
+          [
+            47.535077,
+            -18.90141
           ],
           [
             47.535092,
@@ -211,6 +231,10 @@
             -18.901084
           ],
           [
+            47.531438,
+            -18.901076
+          ],
+          [
             47.531409,
             -18.901058
           ],
@@ -254,6 +278,91 @@
       },
       "properties": {
         "type": "route"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5425713,
+          -18.9017668
+        ]
+      },
+      "properties": {
+        "name": "Avaradoha",
+        "stop_id": 5447676156,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 4.6
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5384211,
+          -18.9016155
+        ]
+      },
+      "properties": {
+        "name": "Besarety Ambodimanga",
+        "stop_id": 5424321892,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 3.9
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5364578,
+          -18.901625
+        ]
+      },
+      "properties": {
+        "name": "Besarety Tsena",
+        "stop_id": 5424321889,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 2.1
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5351074,
+          -18.9014085
+        ]
+      },
+      "properties": {
+        "name": "Mahavoky La Rotonde",
+        "stop_id": 5445640394,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 31.7
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5314545,
+          -18.9010518
+        ]
+      },
+      "properties": {
+        "name": "Andravoahangy Ambony",
+        "stop_id": 5444782169,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 3.2
       }
     }
   ]

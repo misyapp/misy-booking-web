@@ -3,9 +3,9 @@
   "properties": {
     "line": "191",
     "direction": "aller",
-    "num_stops": 0,
-    "num_coordinates": 140,
-    "source": "geocoded_osrm",
+    "num_stops": 4,
+    "num_coordinates": 149,
+    "source": "osm_stops_osrm",
     "road_snapped": true
   },
   "features": [
@@ -243,8 +243,8 @@
             -18.915516
           ],
           [
-            47.51887,
-            -18.915647
+            47.51877,
+            -18.915529
           ],
           [
             47.519833,
@@ -279,20 +279,48 @@
             -18.918456
           ],
           [
-            47.521198,
-            -18.918542
+            47.521134,
+            -18.918571
           ],
           [
-            47.521224,
-            -18.918592
+            47.521093,
+            -18.918654
           ],
           [
-            47.521272,
-            -18.918638
+            47.521038,
+            -18.918734
           ],
           [
-            47.521321,
-            -18.918675
+            47.520964,
+            -18.918803
+          ],
+          [
+            47.520959,
+            -18.918807
+          ],
+          [
+            47.520761,
+            -18.918993
+          ],
+          [
+            47.520379,
+            -18.919352
+          ],
+          [
+            47.520469,
+            -18.919433
+          ],
+          [
+            47.520524,
+            -18.919381
+          ],
+          [
+            47.521145,
+            -18.918799
+          ],
+          [
+            47.521262,
+            -18.918738
           ],
           [
             47.521403,
@@ -331,12 +359,20 @@
             -18.918164
           ],
           [
+            47.522078,
+            -18.91812
+          ],
+          [
             47.522115,
             -18.918099
           ],
           [
             47.522311,
             -18.917993
+          ],
+          [
+            47.522375,
+            -18.91796
           ],
           [
             47.522375,
@@ -578,6 +614,74 @@
       },
       "properties": {
         "type": "route"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5187552,
+          -18.9155405
+        ]
+      },
+      "properties": {
+        "name": "Anosy Radio",
+        "stop_id": 5442019684,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 2.0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5209204,
+          -18.9187701
+        ]
+      },
+      "properties": {
+        "name": "Anosy Voninkazo",
+        "stop_id": 5547921973,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 37.7
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5220874,
+          -18.9181336
+        ]
+      },
+      "properties": {
+        "name": "Anosy 1",
+        "stop_id": 5649258124,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 1.8
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5223896,
+          -18.9179865
+        ]
+      },
+      "properties": {
+        "name": "Anosy 2",
+        "stop_id": 5528481977,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 3.3
       }
     }
   ]

@@ -3,9 +3,9 @@
   "properties": {
     "line": "139",
     "direction": "Ambatoroka",
-    "num_stops": 0,
-    "num_coordinates": 46,
-    "source": "geocoded_osrm",
+    "num_stops": 8,
+    "num_coordinates": 58,
+    "source": "osm_stops_osrm",
     "road_snapped": true
   },
   "features": [
@@ -17,6 +17,14 @@
           [
             47.535549,
             -18.909463
+          ],
+          [
+            47.536171,
+            -18.909194
+          ],
+          [
+            47.536304,
+            -18.909502
           ],
           [
             47.536171,
@@ -43,6 +51,10 @@
             -18.90797
           ],
           [
+            47.535118,
+            -18.907951
+          ],
+          [
             47.534948,
             -18.907822
           ],
@@ -55,12 +67,24 @@
             -18.907497
           ],
           [
+            47.534525,
+            -18.907493
+          ],
+          [
             47.534099,
             -18.907168
           ],
           [
+            47.533708,
+            -18.906851
+          ],
+          [
             47.533692,
             -18.906838
+          ],
+          [
+            47.533269,
+            -18.906501
           ],
           [
             47.533269,
@@ -115,6 +139,10 @@
             -18.9042
           ],
           [
+            47.533815,
+            -18.9042
+          ],
+          [
             47.5338,
             -18.903975
           ],
@@ -125,6 +153,10 @@
           [
             47.533734,
             -18.903677
+          ],
+          [
+            47.53373,
+            -18.903667
           ],
           [
             47.533608,
@@ -149,6 +181,22 @@
           [
             47.532808,
             -18.902636
+          ],
+          [
+            47.532772,
+            -18.902534
+          ],
+          [
+            47.532762,
+            -18.902436
+          ],
+          [
+            47.532757,
+            -18.902278
+          ],
+          [
+            47.532762,
+            -18.902436
           ],
           [
             47.532772,
@@ -202,6 +250,142 @@
       },
       "properties": {
         "type": "route"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5363827,
+          -18.9094723
+        ]
+      },
+      "properties": {
+        "name": "Antsakaviro STOP",
+        "stop_id": 5445556413,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 38.1
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5351059,
+          -18.907965
+        ]
+      },
+      "properties": {
+        "name": "Antsakaviro Total",
+        "stop_id": 5424321882,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 2.0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.534506,
+          -18.9075153
+        ]
+      },
+      "properties": {
+        "name": "Bel Air Lasantsy",
+        "stop_id": 5553116169,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 3.2
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5337434,
+          -18.9068118
+        ]
+      },
+      "properties": {
+        "name": "Ampandrana Bel air",
+        "stop_id": 5424321885,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 5.7
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5332691,
+          -18.9065012
+        ]
+      },
+      "properties": {
+        "name": "Arret 5",
+        "stop_id": 5424321884,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 0.0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5338154,
+          -18.9042002
+        ]
+      },
+      "properties": {
+        "name": "Arret 6",
+        "stop_id": 5424321887,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 0.0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5337782,
+          -18.90365
+        ]
+      },
+      "properties": {
+        "name": "Ampandrana Rasalama / Tranobe",
+        "stop_id": 5445205419,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 5.4
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5327075,
+          -18.9022792
+        ]
+      },
+      "properties": {
+        "name": "Ampandrana Rasalama",
+        "stop_id": 5637103414,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 29.1
       }
     }
   ]

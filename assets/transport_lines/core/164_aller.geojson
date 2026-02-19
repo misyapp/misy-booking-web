@@ -3,9 +3,9 @@
   "properties": {
     "line": "164",
     "direction": "Ambohipo",
-    "num_stops": 0,
-    "num_coordinates": 105,
-    "source": "geocoded_osrm",
+    "num_stops": 3,
+    "num_coordinates": 108,
+    "source": "osm_stops_osrm",
     "road_snapped": true
   },
   "features": [
@@ -103,6 +103,10 @@
             -18.92144
           ],
           [
+            47.527675,
+            -18.921401
+          ],
+          [
             47.527768,
             -18.921356
           ],
@@ -163,6 +167,10 @@
             -18.917731
           ],
           [
+            47.528012,
+            -18.917725
+          ],
+          [
             47.527836,
             -18.917586
           ],
@@ -213,6 +221,10 @@
           [
             47.525493,
             -18.917805
+          ],
+          [
+            47.525156,
+            -18.917911
           ],
           [
             47.525077,
@@ -438,6 +450,57 @@
       },
       "properties": {
         "type": "route"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5277091,
+          -18.9214652
+        ]
+      },
+      "properties": {
+        "name": "Mahamasina Ecole Normale",
+        "stop_id": 5550689146,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 8.0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5280512,
+          -18.9176811
+        ]
+      },
+      "properties": {
+        "name": "Mahamasina Saint Joseph",
+        "stop_id": 5550689147,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 6.4
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5251422,
+          -18.9178723
+        ]
+      },
+      "properties": {
+        "name": "CEG Antanimbarinandriana",
+        "stop_id": 5553116166,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 4.5
       }
     }
   ]

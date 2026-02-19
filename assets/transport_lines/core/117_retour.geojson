@@ -3,9 +3,9 @@
   "properties": {
     "line": "117",
     "direction": "Ambohitsoa",
-    "num_stops": 0,
-    "num_coordinates": 92,
-    "source": "geocoded_osrm",
+    "num_stops": 4,
+    "num_coordinates": 98,
+    "source": "osm_stops_osrm",
     "road_snapped": true
   },
   "features": [
@@ -15,7 +15,7 @@
         "type": "LineString",
         "coordinates": [
           [
-            47.543091,
+            47.543092,
             -18.899499
           ],
           [
@@ -123,6 +123,10 @@
             -18.901699
           ],
           [
+            47.542337,
+            -18.901635
+          ],
+          [
             47.542332,
             -18.901633
           ],
@@ -175,6 +179,10 @@
             -18.901576
           ],
           [
+            47.53842,
+            -18.90158
+          ],
+          [
             47.538416,
             -18.90158
           ],
@@ -193,6 +201,10 @@
           [
             47.536651,
             -18.901632
+          ],
+          [
+            47.536459,
+            -18.901644
           ],
           [
             47.536447,
@@ -243,16 +255,28 @@
             -18.901764
           ],
           [
-            47.532822,
-            -18.901827
+            47.532746,
+            -18.901751
           ],
           [
-            47.532795,
-            -18.901878
+            47.532749,
+            -18.901787
+          ],
+          [
+            47.532749,
+            -18.901824
+          ],
+          [
+            47.53275,
+            -18.901863
           ],
           [
             47.532762,
             -18.901974
+          ],
+          [
+            47.532757,
+            -18.902264
           ],
           [
             47.532757,
@@ -386,6 +410,74 @@
       },
       "properties": {
         "type": "route"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.542346,
+          -18.9016134
+        ]
+      },
+      "properties": {
+        "name": "Avaradoha",
+        "stop_id": 5445640392,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 2.6
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5384211,
+          -18.9016155
+        ]
+      },
+      "properties": {
+        "name": "Besarety Ambodimanga",
+        "stop_id": 5424321892,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 3.9
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5364578,
+          -18.901625
+        ]
+      },
+      "properties": {
+        "name": "Besarety Tsena",
+        "stop_id": 5424321889,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 2.1
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5327569,
+          -18.9022638
+        ]
+      },
+      "properties": {
+        "name": "Arret 4",
+        "stop_id": 5637103415,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 0.0
       }
     }
   ]

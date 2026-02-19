@@ -3,9 +3,9 @@
   "properties": {
     "line": "009",
     "direction": "67HA",
-    "num_stops": 0,
-    "num_coordinates": 98,
-    "source": "geocoded_osrm",
+    "num_stops": 6,
+    "num_coordinates": 105,
+    "source": "osm_stops_osrm",
     "road_snapped": true
   },
   "features": [
@@ -163,6 +163,10 @@
             -18.9116
           ],
           [
+            47.517999,
+            -18.911596
+          ],
+          [
             47.517608,
             -18.911159
           ],
@@ -175,12 +179,20 @@
             -18.910797
           ],
           [
+            47.517311,
+            -18.910772
+          ],
+          [
             47.517079,
             -18.91047
           ],
           [
             47.516642,
             -18.909855
+          ],
+          [
+            47.516602,
+            -18.909774
           ],
           [
             47.516592,
@@ -283,6 +295,10 @@
             -18.907586
           ],
           [
+            47.515643,
+            -18.907601
+          ],
+          [
             47.515636,
             -18.907615
           ],
@@ -293,6 +309,10 @@
           [
             47.515491,
             -18.907882
+          ],
+          [
+            47.515472,
+            -18.907913
           ],
           [
             47.515337,
@@ -323,20 +343,28 @@
             -18.907744
           ],
           [
-            47.514684,
-            -18.907726
+            47.514787,
+            -18.907503
           ],
           [
-            47.51467,
-            -18.907712
+            47.514937,
+            -18.907236
           ],
           [
-            47.514653,
-            -18.907702
+            47.514891,
+            -18.907284
           ],
           [
-            47.514633,
-            -18.907697
+            47.514829,
+            -18.90735
+          ],
+          [
+            47.514747,
+            -18.907506
+          ],
+          [
+            47.514671,
+            -18.907632
           ],
           [
             47.514612,
@@ -410,6 +438,108 @@
       },
       "properties": {
         "type": "route"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5180297,
+          -18.9115707
+        ]
+      },
+      "properties": {
+        "name": "Ampefiloha CNaPS",
+        "stop_id": 5436845080,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 4.3
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.517316,
+          -18.9107684
+        ]
+      },
+      "properties": {
+        "name": "CNaPs Ampefiloha",
+        "stop_id": 5556352659,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 0.7
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5166437,
+          -18.9097546
+        ]
+      },
+      "properties": {
+        "name": "Ambalavao Isotry MAMA",
+        "stop_id": 5436845078,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 4.9
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.515613,
+          -18.9075882
+        ]
+      },
+      "properties": {
+        "name": "Isotry",
+        "stop_id": 5476282079,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 3.4
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5154534,
+          -18.9079016
+        ]
+      },
+      "properties": {
+        "name": "Isotry",
+        "stop_id": 5454111714,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 2.4
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5148458,
+          -18.9072455
+        ]
+      },
+      "properties": {
+        "name": "Isotry",
+        "stop_id": 5592316965,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 54.6
       }
     }
   ]

@@ -11,13 +11,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "67HA",
-        "num_stops": 14,
+        "num_stops": 6,
         "asset_path": "assets/transport_lines/core/009_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/009_aller.geojson"
       },
       "retour": {
         "direction": "Antanandrano",
-        "num_stops": 13,
+        "num_stops": 6,
         "asset_path": "assets/transport_lines/core/009_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/009_retour.geojson"
       }
@@ -68,13 +68,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Petite Vitesse",
-        "num_stops": 8,
+        "num_stops": 7,
         "asset_path": "assets/transport_lines/core/103_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/103_aller.geojson"
       },
       "retour": {
         "direction": "Analakely",
-        "num_stops": 8,
+        "num_stops": 7,
         "asset_path": "assets/transport_lines/core/103_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/103_retour.geojson"
       }
@@ -87,13 +87,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Ambohijatovo - Soanierana",
-        "num_stops": 28,
+        "num_stops": 3,
         "asset_path": "assets/transport_lines/core/104_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/104_aller.geojson"
       },
       "retour": {
         "direction": "Soanierana Analakely",
-        "num_stops": 33,
+        "num_stops": 3,
         "asset_path": "assets/transport_lines/core/104_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/104_retour.geojson"
       }
@@ -125,13 +125,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Ambodifilao",
-        "num_stops": 14,
+        "num_stops": 28,
         "asset_path": "assets/transport_lines/core/106_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/106_aller.geojson"
       },
       "retour": {
         "direction": "Soavimasoandro",
-        "num_stops": 12,
+        "num_stops": 28,
         "asset_path": "assets/transport_lines/core/106_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/106_retour.geojson"
       }
@@ -144,13 +144,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Behoririka",
-        "num_stops": 16,
+        "num_stops": 11,
         "asset_path": "assets/transport_lines/core/107_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/107_aller.geojson"
       },
       "retour": {
         "direction": "Soavinandriana",
-        "num_stops": 16,
+        "num_stops": 11,
         "asset_path": "assets/transport_lines/core/107_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/107_retour.geojson"
       }
@@ -182,13 +182,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Ambodifilao",
-        "num_stops": 18,
+        "num_stops": 24,
         "asset_path": "assets/transport_lines/core/110_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/110_aller.geojson"
       },
       "retour": {
         "direction": "Anosizato",
-        "num_stops": 18,
+        "num_stops": 24,
         "asset_path": "assets/transport_lines/core/110_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/110_retour.geojson"
       }
@@ -258,7 +258,7 @@
       "is_bundled": true,
       "aller": {
         "direction": "Ambatomena",
-        "num_stops": 9,
+        "num_stops": 5,
         "asset_path": "assets/transport_lines/core/115_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/115_aller.geojson"
       },
@@ -277,13 +277,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Ambohijatovo",
-        "num_stops": 9,
+        "num_stops": 17,
         "asset_path": "assets/transport_lines/core/116_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/116_aller.geojson"
       },
       "retour": {
         "direction": "Mandroseza",
-        "num_stops": 9,
+        "num_stops": 17,
         "asset_path": "assets/transport_lines/core/116_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/116_retour.geojson"
       }
@@ -296,13 +296,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Ambohijatovo",
-        "num_stops": 11,
+        "num_stops": 4,
         "asset_path": "assets/transport_lines/core/117_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/117_aller.geojson"
       },
       "retour": {
         "direction": "Ambohitsoa",
-        "num_stops": 9,
+        "num_stops": 4,
         "asset_path": "assets/transport_lines/core/117_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/117_retour.geojson"
       }
@@ -315,13 +315,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "67ha",
-        "num_stops": 18,
+        "num_stops": 11,
         "asset_path": "assets/transport_lines/core/119_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/119_aller.geojson"
       },
       "retour": {
         "direction": "Ankatso",
-        "num_stops": 17,
+        "num_stops": 11,
         "asset_path": "assets/transport_lines/core/119_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/119_retour.geojson"
       }
@@ -353,13 +353,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Antanimena",
-        "num_stops": 15,
+        "num_stops": 16,
         "asset_path": "assets/transport_lines/core/122_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/122_aller.geojson"
       },
       "retour": {
         "direction": "Mahazoarivo",
-        "num_stops": 15,
+        "num_stops": 16,
         "asset_path": "assets/transport_lines/core/122_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/122_retour.geojson"
       }
@@ -391,13 +391,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Manankambahiny",
-        "num_stops": 21,
+        "num_stops": 24,
         "asset_path": "assets/transport_lines/core/125_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/125_aller.geojson"
       },
       "retour": {
         "direction": "Soarano",
-        "num_stops": 17,
+        "num_stops": 24,
         "asset_path": "assets/transport_lines/core/125_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/125_retour.geojson"
       }
@@ -410,7 +410,7 @@
       "is_bundled": true,
       "aller": {
         "direction": "Cf : 67ha - Anosy",
-        "num_stops": 40,
+        "num_stops": 79,
         "asset_path": "assets/transport_lines/core/126_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/126_aller.geojson"
       },
@@ -429,13 +429,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Ambohijatovo - Manakambahiny",
-        "num_stops": 35,
+        "num_stops": 17,
         "asset_path": "assets/transport_lines/core/128_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/128_aller.geojson"
       },
       "retour": {
         "direction": "Manakambahiny - Ambohijatovo",
-        "num_stops": 36,
+        "num_stops": 17,
         "asset_path": "assets/transport_lines/core/128_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/128_retour.geojson"
       }
@@ -486,13 +486,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Analakely",
-        "num_stops": 13,
+        "num_stops": 4,
         "asset_path": "assets/transport_lines/core/134_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/134_aller.geojson"
       },
       "retour": {
         "direction": "Manjakamiadana",
-        "num_stops": 12,
+        "num_stops": 4,
         "asset_path": "assets/transport_lines/core/134_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/134_retour.geojson"
       }
@@ -543,13 +543,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Andoharanofotsy",
-        "num_stops": 24,
+        "num_stops": 28,
         "asset_path": "assets/transport_lines/core/137_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/137_aller.geojson"
       },
       "retour": {
         "direction": "Soarano",
-        "num_stops": 20,
+        "num_stops": 28,
         "asset_path": "assets/transport_lines/core/137_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/137_retour.geojson"
       }
@@ -562,13 +562,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Anosibe",
-        "num_stops": 7,
+        "num_stops": 14,
         "asset_path": "assets/transport_lines/core/138_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/138_aller.geojson"
       },
       "retour": {
         "direction": "Anosipatrana",
-        "num_stops": 9,
+        "num_stops": 14,
         "asset_path": "assets/transport_lines/core/138_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/138_retour.geojson"
       }
@@ -581,13 +581,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Ambatoroka",
-        "num_stops": 12,
+        "num_stops": 8,
         "asset_path": "assets/transport_lines/core/139_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/139_aller.geojson"
       },
       "retour": {
         "direction": "Antanimena",
-        "num_stops": 11,
+        "num_stops": 8,
         "asset_path": "assets/transport_lines/core/139_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/139_retour.geojson"
       }
@@ -600,13 +600,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Ampitatafika",
-        "num_stops": 22,
+        "num_stops": 62,
         "asset_path": "assets/transport_lines/core/140_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/140_aller.geojson"
       },
       "retour": {
-        "direction": "Tsaralalàna",
-        "num_stops": 20,
+        "direction": "Tsaralal\u00e0na",
+        "num_stops": 62,
         "asset_path": "assets/transport_lines/core/140_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/140_retour.geojson"
       }
@@ -638,13 +638,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Ambatomena",
-        "num_stops": 8,
+        "num_stops": 9,
         "asset_path": "assets/transport_lines/core/142_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/142_aller.geojson"
       },
       "retour": {
         "direction": "Soanierana",
-        "num_stops": 11,
+        "num_stops": 9,
         "asset_path": "assets/transport_lines/core/142_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/142_retour.geojson"
       }
@@ -662,7 +662,7 @@
         "remote_url": null
       },
       "retour": {
-        "direction": "Itaosy Cité",
+        "direction": "Itaosy Cit\u00e9",
         "num_stops": 26,
         "asset_path": "assets/transport_lines/core/143_retour.geojson",
         "remote_url": null
@@ -733,13 +733,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Androhibe",
-        "num_stops": 17,
+        "num_stops": 44,
         "asset_path": "assets/transport_lines/core/150_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/150_aller.geojson"
       },
       "retour": {
         "direction": "Imamba",
-        "num_stops": 19,
+        "num_stops": 44,
         "asset_path": "assets/transport_lines/core/150_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/150_retour.geojson"
       }
@@ -752,13 +752,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "67ha",
-        "num_stops": 23,
+        "num_stops": 17,
         "asset_path": "assets/transport_lines/core/151_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/151_aller.geojson"
       },
       "retour": {
         "direction": "Ambohitsoa",
-        "num_stops": 22,
+        "num_stops": 17,
         "asset_path": "assets/transport_lines/core/151_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/151_retour.geojson"
       }
@@ -771,13 +771,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "A - Antanimena Rasalama",
-        "num_stops": 33,
+        "num_stops": 25,
         "asset_path": "assets/transport_lines/core/153_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/153_aller.geojson"
       },
       "retour": {
         "direction": "B - Antanimena Mahamasina",
-        "num_stops": 31,
+        "num_stops": 25,
         "asset_path": "assets/transport_lines/core/153_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/153_retour.geojson"
       }
@@ -809,13 +809,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Andranomena",
-        "num_stops": 28,
+        "num_stops": 17,
         "asset_path": "assets/transport_lines/core/159_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/159_aller.geojson"
       },
       "retour": {
         "direction": "Tanjombato",
-        "num_stops": 25,
+        "num_stops": 17,
         "asset_path": "assets/transport_lines/core/159_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/159_retour.geojson"
       }
@@ -847,7 +847,7 @@
       "is_bundled": true,
       "aller": {
         "direction": "Ambatobe",
-        "num_stops": 32,
+        "num_stops": 43,
         "asset_path": "assets/transport_lines/core/161_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/161_aller.geojson"
       }
@@ -860,13 +860,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Ambohijatovo - Anosibe",
-        "num_stops": 24,
+        "num_stops": 52,
         "asset_path": "assets/transport_lines/core/162_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/162_aller.geojson"
       },
       "retour": {
         "direction": "Andraharo - Anosibe",
-        "num_stops": 29,
+        "num_stops": 52,
         "asset_path": "assets/transport_lines/core/162_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/162_retour.geojson"
       }
@@ -898,13 +898,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Ambohipo",
-        "num_stops": 12,
+        "num_stops": 3,
         "asset_path": "assets/transport_lines/core/164_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/164_aller.geojson"
       },
       "retour": {
         "direction": "Analakely",
-        "num_stops": 13,
+        "num_stops": 3,
         "asset_path": "assets/transport_lines/core/164_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/164_retour.geojson"
       }
@@ -917,13 +917,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Androhibe",
-        "num_stops": 18,
+        "num_stops": 34,
         "asset_path": "assets/transport_lines/core/165_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/165_aller.geojson"
       },
       "retour": {
         "direction": "Anosy",
-        "num_stops": 21,
+        "num_stops": 34,
         "asset_path": "assets/transport_lines/core/165_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/165_retour.geojson"
       }
@@ -955,13 +955,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "67ha",
-        "num_stops": 26,
+        "num_stops": 37,
         "asset_path": "assets/transport_lines/core/172_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/172_aller.geojson"
       },
       "retour": {
         "direction": "Andoharanofotsy",
-        "num_stops": 27,
+        "num_stops": 37,
         "asset_path": "assets/transport_lines/core/172_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/172_retour.geojson"
       }
@@ -993,13 +993,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Ambohijatovo",
-        "num_stops": 12,
+        "num_stops": 14,
         "asset_path": "assets/transport_lines/core/182_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/182_aller.geojson"
       },
       "retour": {
         "direction": "Antsobolo",
-        "num_stops": 10,
+        "num_stops": 14,
         "asset_path": "assets/transport_lines/core/182_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/182_retour.geojson"
       }
@@ -1012,13 +1012,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Ambanidia",
-        "num_stops": 11,
+        "num_stops": 7,
         "asset_path": "assets/transport_lines/core/184_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/184_aller.geojson"
       },
       "retour": {
         "direction": "Mahamasina",
-        "num_stops": 14,
+        "num_stops": 7,
         "asset_path": "assets/transport_lines/core/184_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/184_retour.geojson"
       }
@@ -1056,7 +1056,7 @@
       },
       "retour": {
         "direction": "Analakely",
-        "num_stops": 17,
+        "num_stops": 15,
         "asset_path": "assets/transport_lines/core/190_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/190_retour.geojson"
       }
@@ -1069,13 +1069,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "67ha - Anosy",
-        "num_stops": 37,
+        "num_stops": 4,
         "asset_path": "assets/transport_lines/core/191_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/191_aller.geojson"
       },
       "retour": {
         "direction": "Anosy - 67ha",
-        "num_stops": 41,
+        "num_stops": 4,
         "asset_path": "assets/transport_lines/core/191_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/191_retour.geojson"
       }
@@ -1126,13 +1126,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Ambolokandrina",
-        "num_stops": 15,
+        "num_stops": 14,
         "asset_path": "assets/transport_lines/core/196_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/196_aller.geojson"
       },
       "retour": {
         "direction": "Soarano",
-        "num_stops": 13,
+        "num_stops": 14,
         "asset_path": "assets/transport_lines/core/196_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/196_retour.geojson"
       }
@@ -1145,13 +1145,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Alarobia",
-        "num_stops": 29,
+        "num_stops": 5,
         "asset_path": "assets/transport_lines/core/199_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/199_aller.geojson"
       },
       "retour": {
         "direction": "Soavina",
-        "num_stops": 26,
+        "num_stops": 5,
         "asset_path": "assets/transport_lines/core/199_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/199_retour.geojson"
       }
@@ -1164,13 +1164,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Mahamasina - Manakambahiny",
-        "num_stops": 28,
+        "num_stops": 42,
         "asset_path": "assets/transport_lines/core/127A_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/127A_aller.geojson"
       },
       "retour": {
         "direction": "Manakambahiny - Mahamasina",
-        "num_stops": 30,
+        "num_stops": 42,
         "asset_path": "assets/transport_lines/core/127A_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/127A_retour.geojson"
       }
@@ -1207,7 +1207,7 @@
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/133B_aller.geojson"
       },
       "retour": {
-        "direction": "Itaosy Cité",
+        "direction": "Itaosy Cit\u00e9",
         "num_stops": 25,
         "asset_path": "assets/transport_lines/core/133B_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/133B_retour.geojson"
@@ -1259,7 +1259,7 @@
       "is_bundled": true,
       "aller": {
         "direction": "Manakambahiny - Soarano",
-        "num_stops": 42,
+        "num_stops": 26,
         "asset_path": "assets/transport_lines/core/135__aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/135_ROUGE_aller.geojson"
       }
@@ -1272,13 +1272,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Anosibe",
-        "num_stops": 15,
+        "num_stops": 44,
         "asset_path": "assets/transport_lines/core/150B_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/150B_aller.geojson"
       },
       "retour": {
         "direction": "Mahatony",
-        "num_stops": 14,
+        "num_stops": 44,
         "asset_path": "assets/transport_lines/core/150B_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/150B_retour.geojson"
       }
@@ -1348,13 +1348,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Anosibe",
-        "num_stops": 14,
+        "num_stops": 23,
         "asset_path": "assets/transport_lines/core/157A_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/157A_aller.geojson"
       },
       "retour": {
         "direction": "Manjakaray",
-        "num_stops": 16,
+        "num_stops": 23,
         "asset_path": "assets/transport_lines/core/157A_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/157A_retour.geojson"
       }
@@ -1367,13 +1367,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Anosibe",
-        "num_stops": 15,
+        "num_stops": 23,
         "asset_path": "assets/transport_lines/core/157B_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/157B_aller.geojson"
       },
       "retour": {
         "direction": "Manjakaray",
-        "num_stops": 19,
+        "num_stops": 23,
         "asset_path": "assets/transport_lines/core/157B_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/157B_retour.geojson"
       }
@@ -1405,13 +1405,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Alarobia",
-        "num_stops": 28,
+        "num_stops": 15,
         "asset_path": "assets/transport_lines/core/180A_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/180A_aller.geojson"
       },
       "retour": {
         "direction": "Ambolokandrina",
-        "num_stops": 28,
+        "num_stops": 15,
         "asset_path": "assets/transport_lines/core/180A_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/180A_retour.geojson"
       }
@@ -1424,7 +1424,7 @@
       "is_bundled": true,
       "aller": {
         "direction": "Belair",
-        "num_stops": 31,
+        "num_stops": 27,
         "asset_path": "assets/transport_lines/core/180B_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/180B_aller.geojson"
       }
@@ -1437,7 +1437,7 @@
       "is_bundled": true,
       "aller": {
         "direction": "67ha - Anosy",
-        "num_stops": 33,
+        "num_stops": 47,
         "asset_path": "assets/transport_lines/core/183A_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/183A_aller.geojson"
       }
@@ -1450,7 +1450,7 @@
       "is_bundled": true,
       "aller": {
         "direction": "Anosy - 67ha",
-        "num_stops": 45,
+        "num_stops": 47,
         "asset_path": "assets/transport_lines/core/183B_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/183B_aller.geojson"
       }
@@ -1463,13 +1463,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "A : Cf :  Anosy > 67ha",
-        "num_stops": 37,
+        "num_stops": 4,
         "asset_path": "assets/transport_lines/core/186A_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/186A_aller.geojson"
       },
       "retour": {
         "direction": "B : Cf 67ha > Anosy",
-        "num_stops": 37,
+        "num_stops": 4,
         "asset_path": "assets/transport_lines/core/186A_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/186A_retour.geojson"
       }
@@ -1514,13 +1514,13 @@
       "is_bundled": true,
       "aller": {
         "direction": "Ambohitrakely",
-        "num_stops": 19,
+        "num_stops": 59,
         "asset_path": "assets/transport_lines/core/193A_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/193A_aller.geojson"
       },
       "retour": {
         "direction": "Ampasika",
-        "num_stops": 18,
+        "num_stops": 59,
         "asset_path": "assets/transport_lines/core/193A_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/193A_retour.geojson"
       }
@@ -1691,7 +1691,7 @@
       },
       "retour": {
         "direction": "",
-        "num_stops": 8,
+        "num_stops": 20,
         "asset_path": "assets/transport_lines/core/J_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_J_retour.geojson"
       }
@@ -1723,20 +1723,20 @@
       "is_bundled": true,
       "aller": {
         "direction": "",
-        "num_stops": 10,
+        "num_stops": 47,
         "asset_path": "assets/transport_lines/core/MAHITSY_aller.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_MAHITSY_aller.geojson"
       },
       "retour": {
         "direction": "",
-        "num_stops": 10,
+        "num_stops": 47,
         "asset_path": "assets/transport_lines/core/MAHITSY_retour.geojson",
         "remote_url": "https://storage.googleapis.com/misy-transport-prod/ligne_MAHITSY_retour.geojson"
       }
     },
     {
       "line_number": "TELEPHERIQUE_Orange",
-      "display_name": "Téléphérique Orange",
+      "display_name": "T\u00e9l\u00e9ph\u00e9rique Orange",
       "transport_type": "cable_car",
       "color": "0xFFE65108",
       "is_bundled": true,

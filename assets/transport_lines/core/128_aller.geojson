@@ -3,9 +3,9 @@
   "properties": {
     "line": "128",
     "direction": "aller",
-    "num_stops": 0,
-    "num_coordinates": 224,
-    "source": "geocoded_osrm",
+    "num_stops": 17,
+    "num_coordinates": 277,
+    "source": "osm_stops_osrm",
     "road_snapped": true
   },
   "features": [
@@ -203,6 +203,10 @@
             -18.901598
           ],
           [
+            47.530487,
+            -18.901546
+          ],
+          [
             47.530521,
             -18.901475
           ],
@@ -243,24 +247,132 @@
             -18.901
           ],
           [
-            47.530687,
-            -18.900966
+            47.530696,
+            -18.900985
           ],
           [
-            47.530716,
-            -18.900944
+            47.530726,
+            -18.900987
           ],
           [
             47.530752,
-            -18.900923
+            -18.900994
           ],
           [
-            47.530787,
+            47.530797,
+            -18.901011
+          ],
+          [
+            47.530832,
+            -18.901036
+          ],
+          [
+            47.530857,
+            -18.901071
+          ],
+          [
+            47.530855,
+            -18.901102
+          ],
+          [
+            47.530844,
+            -18.901145
+          ],
+          [
+            47.530804,
+            -18.901256
+          ],
+          [
+            47.530701,
+            -18.901557
+          ],
+          [
+            47.530477,
+            -18.902036
+          ],
+          [
+            47.530473,
+            -18.90214
+          ],
+          [
+            47.530688,
+            -18.902237
+          ],
+          [
+            47.530867,
+            -18.902293
+          ],
+          [
+            47.530926,
+            -18.902284
+          ],
+          [
+            47.531042,
+            -18.902241
+          ],
+          [
+            47.531194,
+            -18.902167
+          ],
+          [
+            47.531498,
+            -18.902025
+          ],
+          [
+            47.532292,
+            -18.901733
+          ],
+          [
+            47.532284,
+            -18.901676
+          ],
+          [
+            47.532321,
+            -18.901597
+          ],
+          [
+            47.531853,
+            -18.90137
+          ],
+          [
+            47.531501,
+            -18.901114
+          ],
+          [
+            47.53145,
+            -18.901084
+          ],
+          [
+            47.531438,
+            -18.901076
+          ],
+          [
+            47.531409,
+            -18.901058
+          ],
+          [
+            47.531333,
+            -18.901025
+          ],
+          [
+            47.531224,
+            -18.90098
+          ],
+          [
+            47.531104,
+            -18.900946
+          ],
+          [
+            47.531031,
+            -18.900922
+          ],
+          [
+            47.530969,
             -18.900905
           ],
           [
-            47.530828,
-            -18.900892
+            47.530911,
+            -18.900897
           ],
           [
             47.530867,
@@ -289,6 +401,50 @@
           [
             47.531192,
             -18.898493
+          ],
+          [
+            47.531202,
+            -18.898482
+          ],
+          [
+            47.531276,
+            -18.898514
+          ],
+          [
+            47.531299,
+            -18.898525
+          ],
+          [
+            47.53149,
+            -18.898618
+          ],
+          [
+            47.531877,
+            -18.898822
+          ],
+          [
+            47.53188,
+            -18.898824
+          ],
+          [
+            47.531877,
+            -18.898822
+          ],
+          [
+            47.53149,
+            -18.898618
+          ],
+          [
+            47.531329,
+            -18.898539
+          ],
+          [
+            47.531299,
+            -18.898525
+          ],
+          [
+            47.531276,
+            -18.898514
           ],
           [
             47.531202,
@@ -345,6 +501,10 @@
           [
             47.533029,
             -18.896756
+          ],
+          [
+            47.53318,
+            -18.896719
           ],
           [
             47.533225,
@@ -411,6 +571,10 @@
             -18.89797
           ],
           [
+            47.535944,
+            -18.897939
+          ],
+          [
             47.535943,
             -18.897923
           ],
@@ -431,10 +595,6 @@
             -18.896764
           ],
           [
-            47.536536,
-            -18.896244
-          ],
-          [
             47.536758,
             -18.895693
           ],
@@ -445,6 +605,10 @@
           [
             47.537921,
             -18.895018
+          ],
+          [
+            47.537933,
+            -18.895015
           ],
           [
             47.539253,
@@ -465,6 +629,10 @@
           [
             47.54268,
             -18.894735
+          ],
+          [
+            47.542771,
+            -18.894733
           ],
           [
             47.543081,
@@ -495,12 +663,24 @@
             -18.89622
           ],
           [
+            47.544867,
+            -18.896302
+          ],
+          [
+            47.544924,
+            -18.89622
+          ],
+          [
             47.545,
             -18.896253
           ],
           [
             47.545223,
             -18.896336
+          ],
+          [
+            47.545226,
+            -18.896338
           ],
           [
             47.545403,
@@ -531,6 +711,10 @@
             -18.897334
           ],
           [
+            47.545568,
+            -18.897596
+          ],
+          [
             47.545526,
             -18.89775
           ],
@@ -549,6 +733,10 @@
           [
             47.54535,
             -18.898567
+          ],
+          [
+            47.545315,
+            -18.898844
           ],
           [
             47.545302,
@@ -635,6 +823,10 @@
             -18.901767
           ],
           [
+            47.54258,
+            -18.901726
+          ],
+          [
             47.542574,
             -18.901725
           ],
@@ -695,6 +887,10 @@
             -18.901576
           ],
           [
+            47.53842,
+            -18.90158
+          ],
+          [
             47.538416,
             -18.90158
           ],
@@ -713,6 +909,10 @@
           [
             47.536651,
             -18.901632
+          ],
+          [
+            47.536459,
+            -18.901644
           ],
           [
             47.536447,
@@ -737,6 +937,14 @@
           [
             47.535125,
             -18.901694
+          ],
+          [
+            47.535092,
+            -18.901695
+          ],
+          [
+            47.535077,
+            -18.90141
           ],
           [
             47.535092,
@@ -785,6 +993,10 @@
           [
             47.532757,
             -18.902264
+          ],
+          [
+            47.532757,
+            -18.902278
           ],
           [
             47.532762,
@@ -914,6 +1126,295 @@
       },
       "properties": {
         "type": "route"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5305093,
+          -18.9015559
+        ]
+      },
+      "properties": {
+        "name": "Andravoahangy Ambony vers Ampandrana",
+        "stop_id": 5450895717,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 2.6
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5314545,
+          -18.9010518
+        ]
+      },
+      "properties": {
+        "name": "Andravoahangy Ambony",
+        "stop_id": 5444782169,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 64.6
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5318919,
+          -18.8988039
+        ]
+      },
+      "properties": {
+        "name": "Andravoahangy Ambany",
+        "stop_id": 5445640396,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 75.4
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5313259,
+          -18.8985436
+        ]
+      },
+      "properties": {
+        "name": "Andravoahangy Ambany",
+        "stop_id": 5527202940,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 14.5
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5331775,
+          -18.896712
+        ]
+      },
+      "properties": {
+        "name": "Andravoahangy Mascar",
+        "stop_id": 4036290706,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 0.8
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5359943,
+          -18.8979352
+        ]
+      },
+      "properties": {
+        "name": "Anjanahary Gerichard",
+        "stop_id": 5482049328,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 5.3
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5379444,
+          -18.895052
+        ]
+      },
+      "properties": {
+        "name": "Anjanahary Fasana / Fiangonana",
+        "stop_id": 5482049330,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 4.3
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5427718,
+          -18.8947542
+        ]
+      },
+      "properties": {
+        "name": "Soavimbahoaka Ampasampito GAMO",
+        "stop_id": 5482049332,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 2.4
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.544833,
+          -18.8962808
+        ]
+      },
+      "properties": {
+        "name": "Ampasampito 23",
+        "stop_id": 5424321902,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 10.1
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5452449,
+          -18.8963059
+        ]
+      },
+      "properties": {
+        "name": "Ampasampito Meteo / 23",
+        "stop_id": 4036397858,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 4.0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5455674,
+          -18.8975964
+        ]
+      },
+      "properties": {
+        "name": "Ampasampito 23 Ambany",
+        "stop_id": 5415736293,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 0.1
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5452662,
+          -18.8988382
+        ]
+      },
+      "properties": {
+        "name": "Avaradoha Centre",
+        "stop_id": 5415736292,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 5.1
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5425713,
+          -18.9017668
+        ]
+      },
+      "properties": {
+        "name": "Avaradoha",
+        "stop_id": 5447676156,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 4.6
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5384211,
+          -18.9016155
+        ]
+      },
+      "properties": {
+        "name": "Besarety Ambodimanga",
+        "stop_id": 5424321892,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 3.9
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5364578,
+          -18.901625
+        ]
+      },
+      "properties": {
+        "name": "Besarety Tsena",
+        "stop_id": 5424321889,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 2.1
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5351074,
+          -18.9014085
+        ]
+      },
+      "properties": {
+        "name": "Mahavoky La Rotonde",
+        "stop_id": 5445640394,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 31.7
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5327075,
+          -18.9022792
+        ]
+      },
+      "properties": {
+        "name": "Ampandrana Rasalama",
+        "stop_id": 5637103414,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 5.3
       }
     }
   ]

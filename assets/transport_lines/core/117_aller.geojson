@@ -3,9 +3,9 @@
   "properties": {
     "line": "117",
     "direction": "Ambohijatovo",
-    "num_stops": 0,
-    "num_coordinates": 92,
-    "source": "geocoded_osrm",
+    "num_stops": 4,
+    "num_coordinates": 96,
+    "source": "osm_stops_osrm",
     "road_snapped": true
   },
   "features": [
@@ -143,6 +143,10 @@
             -18.902264
           ],
           [
+            47.532757,
+            -18.902264
+          ],
+          [
             47.532762,
             -18.901974
           ],
@@ -203,6 +207,10 @@
             -18.901645
           ],
           [
+            47.536459,
+            -18.901644
+          ],
+          [
             47.536651,
             -18.901632
           ],
@@ -220,6 +228,10 @@
           ],
           [
             47.538416,
+            -18.90158
+          ],
+          [
+            47.53842,
             -18.90158
           ],
           [
@@ -273,6 +285,10 @@
           [
             47.542332,
             -18.901633
+          ],
+          [
+            47.542337,
+            -18.901635
           ],
           [
             47.542505,
@@ -379,13 +395,81 @@
             -18.899544
           ],
           [
-            47.543091,
+            47.543092,
             -18.899499
           ]
         ]
       },
       "properties": {
         "type": "route"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5327569,
+          -18.9022638
+        ]
+      },
+      "properties": {
+        "name": "Arret 1",
+        "stop_id": 5637103415,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 0.0
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5364578,
+          -18.901625
+        ]
+      },
+      "properties": {
+        "name": "Besarety Tsena",
+        "stop_id": 5424321889,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 2.1
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.5384211,
+          -18.9016155
+        ]
+      },
+      "properties": {
+        "name": "Besarety Ambodimanga",
+        "stop_id": 5424321892,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 3.9
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.542346,
+          -18.9016134
+        ]
+      },
+      "properties": {
+        "name": "Avaradoha",
+        "stop_id": 5445640392,
+        "type": "stop",
+        "osm_matched": true,
+        "snap_distance": 2.6
       }
     }
   ]
