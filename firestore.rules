@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ──────────────────────────────────────────────────────────────────
+    // Collections admin protégées par custom claim `transport_editor`.
+    // Option A (2026-04-19) : pose le cadre propre, mais le wildcard
+    // ouvert plus bas court-circuite l'effet protecteur tant que le
+    // durcissement global Firestore n'est pas fait (chantier séparé —
+    // cf. memory dashboard `security_firestore_2026_04_07.md`).
+    // ──────────────────────────────────────────────────────────────────
+
+    match /transport_lines_edited/{line} {
+      allow read, write: if request.auth.token.transport_editor == true;
+    }
+
+    match /transport_line_validations/{line} {
+      allow read, write: if request.auth.token.transport_editor == true;
+    }
+
+    match /transport_edits_log/{id} {
+      allow create, read: if request.auth.token.transport_editor == true;
+      allow update, delete: if false;  // logs immuables
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Règles temporaires (posées le 2025-06-09) — permettre toutes les
+    // opérations pour ne pas casser les 5 apps Misy.
+    // ⚠️ À RESSERRER — voir chantier durcissement Firestore piloté
+    //    depuis le projet dashboard.
+    // ──────────────────────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

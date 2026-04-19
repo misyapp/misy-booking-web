@@ -37,3 +37,6 @@ assets/json_files/service_account_credential.json
 
 # Exceptions to above rules
 !/packages/flutter_tools/test/data/dart_dependencies_test/**/.packages
+
+# Backups locaux des rules Firestore (conservés pour rollback rapide, non versionnés)
+firestore.rules.backup-*.txt
