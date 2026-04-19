@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:ui';
 import 'package:http/http.dart' as http;
+import 'package:rider_ride_hailing_app/services/admin_auth_service.dart';
 import 'dart:js_util' as js_util;
 import 'dart:html' as html;
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -96,6 +97,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   // Type de carte (normal ou satellite pour confirmation)
   MapType _currentMapType = MapType.normal;
+
+  // Rôle éditeur terrain transport (custom claim transport_editor)
+  bool _isTransportEditor = false;
 
   // === Transport mode data ===
   List<TransportLineGroup> _transportLines = [];
@@ -203,12 +207,21 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _initializeAndSubscribe();
     _readUrlParameters();
     _createCustomMarkers();
+    _checkTransportEditorRole();
 
     // Écouter les changements de TripProvider pour reset l'UI après course
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final tripProvider = Provider.of<TripProvider>(context, listen: false);
       tripProvider.addListener(_onTripProviderChanged);
     });
+  }
+
+  Future<void> _checkTransportEditorRole() async {
+    final ok = await AdminAuthService.instance
+        .isTransportEditor(forceRefresh: true);
+    if (mounted && ok != _isTransportEditor) {
+      setState(() => _isTransportEditor = ok);
+    }
   }
 
   /// Callback quand TripProvider change (pour gérer le reset après course terminée)
@@ -2522,6 +2535,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               if (value == 'logout') {
                 final authProvider = Provider.of<CustomAuthProvider>(context, listen: false);
                 authProvider.logout(context);
+              } else if (value == 'transport-editor') {
+                Navigator.of(context).pushNamed('/transport-editor');
               }
             },
             itemBuilder: (context) => [
@@ -2545,6 +2560,20 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                   ],
                 ),
               ),
+              if (_isTransportEditor) ...[
+                const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: 'transport-editor',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit_road, color: Color(0xFF1565C0)),
+                      SizedBox(width: 8),
+                      Text('Éditeur terrain',
+                          style: TextStyle(color: Color(0xFF1565C0))),
+                    ],
+                  ),
+                ),
+              ],
               const PopupMenuDivider(),
               const PopupMenuItem(
                 value: 'logout',

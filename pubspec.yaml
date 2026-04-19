@@ -104,6 +104,12 @@ dependencies:
     sdk: flutter
   bcrypt: ^1.1.3
 
+  # Éditeur terrain transport (cartes OSM)
+  flutter_map: ^7.0.2
+  flutter_map_dragmarker: ^7.0.0
+  latlong2: ^0.9.1
+  showcaseview: ^3.0.0
+
 dev_dependencies:
   win32: ^5.5.4
   flutter_test:

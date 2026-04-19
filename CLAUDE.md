@@ -106,3 +106,90 @@ ssh -i ~/.ssh/id_rsa_misy root@162.240.145.160
 - **URL Production**: https://book.misy.app
 - **Répertoire Web**: `/home/misyapp/booking_web/`
 - **Clé SSH**: `~/.ssh/id_rsa_misy`
+
+## Éditeur terrain transport (consultant)
+
+Outil admin pour qu'un consultant terrain valide/corrige les 95 lignes de bus
+une par une, et en crée de nouvelles. Accessible sur
+`https://book.misy.app/#/transport-editor` après connexion avec un compte ayant
+le custom claim `transport_editor: true`.
+
+### Création d'un compte consultant
+
+```bash
+node scripts/create_transport_editor_user.js consultant-transport@misyapp.com
+# → affiche uid + mot de passe temporaire (visible UNE SEULE FOIS)
+# Pour remettre un mdp :
+node scripts/create_transport_editor_user.js consultant-transport@misyapp.com --reset
+```
+
+Le consultant se connecte normalement via le flow auth Misy. L'entrée de menu
+"Éditeur terrain" apparaît dans le menu utilisateur (en haut à droite) une fois
+le claim détecté (re-login éventuellement nécessaire pour rafraîchir l'ID token).
+
+### Architecture
+
+- **UI Flutter** :
+  `lib/pages/view_module/transport_editor/` — dashboard, wizard 4 étapes
+  (tracé aller → tracé retour → arrêts aller → arrêts retour), écran nouvelle
+  ligne, widgets `flutter_map` + tiles OSM.
+- **Services** :
+  `lib/services/transport_editor_service.dart` — I/O Firestore.
+  `lib/services/admin_auth_service.dart` — gate custom claim.
+  `lib/services/transport_osrm_service.dart` — routing OSRM
+  (`router.project-osrm.org` + fallback `book.misy.app/osrm-proxy.php`).
+- **Provider** :
+  `lib/provider/transport_editor_provider.dart` — état wizard, undo/redo.
+- **Tuto onboarding** : package `showcaseview`, wrapper
+  `widgets/tutorial_helpers.dart`, déclenché à la 1ère visite de chaque écran,
+  re-playable via l'icône école 🎓 dans l'AppBar.
+
+### Collections Firestore
+
+| Collection | Rôle |
+|------------|------|
+| `transport_lines_edited/{line}` | Source de vérité des éditions en cours (FeatureCollections aller + retour). Bootstrap paresseux depuis l'asset GeoJSON au 1er toucher. |
+| `transport_line_validations/{line}` | État du wizard : `aller_route`, `retour_route`, `aller_stops`, `retour_stops` ∈ {pending, validated, modified}. |
+| `transport_edits_log/{auto}` | Audit immuable de chaque validation/modification. Jamais purgé par le CLI. |
+
+### Workflow de session terrain
+
+1. **Avant la session** : créer le compte consultant (cf. plus haut).
+2. **Pendant** : le consultant bosse sur son navigateur (book.misy.app).
+   Toutes les modifs vont dans Firestore. Zéro accès fs.
+3. **Après la session** (sur le Mac dev) :
+   ```bash
+   node scripts/transport_editor_pull_cli.js status       # vue d'ensemble
+   node scripts/transport_editor_pull_cli.js diff 017     # diff avant écrasement
+   node scripts/transport_editor_pull_cli.js pull 017     # ou pull --all
+   git diff assets/transport_lines/                       # revue
+   git add assets/transport_lines/ && git commit -m "..."
+   flutter build web --release
+   rsync -avz --delete --exclude='osrm-proxy.php' \
+     -e "ssh -i ~/.ssh/id_rsa_misy" \
+     build/web/ root@162.240.145.160:/home/misyapp/booking_web/
+   ```
+4. **Cleanup** (après validation des diff) :
+   ```bash
+   node scripts/transport_editor_pull_cli.js prune --all  # efface edited + validations
+   # les logs audit restent intacts
+   ```
+
+### Règles Firestore recommandées
+
+À ajouter dans ta console Firestore (ces 3 collections n'existent pas dans un
+`firestore.rules` versionné aujourd'hui) :
+
+```javascript
+match /transport_lines_edited/{line} {
+  allow read, write: if request.auth.token.transport_editor == true;
+}
+match /transport_line_validations/{line} {
+  allow read, write: if request.auth.token.transport_editor == true;
+}
+match /transport_edits_log/{id} {
+  allow create: if request.auth.token.transport_editor == true;
+  allow read: if request.auth.token.transport_editor == true;
+  allow update, delete: if false;  // logs immuables
+}
+```

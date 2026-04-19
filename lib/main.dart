@@ -14,6 +14,7 @@ import 'package:rider_ride_hailing_app/functions/print_function.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/splash_screen.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/web_entry_screen.dart';
 import 'package:rider_ride_hailing_app/pages/test_invoice_regeneration_page.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/editor_dashboard_screen.dart';
 import 'package:rider_ride_hailing_app/provider/admin_settings_provider.dart';
 import 'package:rider_ride_hailing_app/provider/airtel_money_payment_gateway_provider.dart';
 import 'package:rider_ride_hailing_app/provider/dark_theme_provider.dart';
@@ -594,6 +595,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 home: const SplashScreen(),
                 routes: {
                   '/test-invoice': (context) => const TestInvoiceRegenerationPage(),
+                  '/transport-editor': (context) => const EditorDashboardScreen(),
                 },
                 builder: EasyLoading.init(),
               ));

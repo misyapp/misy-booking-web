@@ -23,6 +23,7 @@
   },
   "homepage": "https://github.com/misyapp/riderapp#readme",
   "dependencies": {
-    "firebase-admin": "^13.4.0"
+    "firebase-admin": "^13.4.0",
+    "google-auth-library": "^10.6.2"
   }
 }
