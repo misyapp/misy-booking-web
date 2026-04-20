@@ -344,6 +344,45 @@ class TransportEditorProvider extends ChangeNotifier {
     }
   }
 
+  /// Remplace entièrement une direction (tracé + arrêts) avec le résultat
+  /// du sub-flow "Construire la ligne". Marque automatiquement les 2 étapes
+  /// de la direction à `modified`.
+  Future<bool> commitReplaceDirection({
+    required String direction, // 'aller' | 'retour'
+    required Map<String, dynamic> featureCollection,
+    int? numStops,
+    int? numVertices,
+  }) async {
+    final line = _lineNumber;
+    if (line == null) return false;
+    _saving = true;
+    _error = null;
+    notifyListeners();
+    try {
+      await _service.saveDirectionEdit(
+        lineNumber: line,
+        direction: direction,
+        featureCollection: featureCollection,
+        numStops: numStops,
+        numVertices: numVertices,
+      );
+      // Met à jour le cache local
+      final doc = _editedDoc ?? <String, dynamic>{};
+      final dirMap = Map<String, dynamic>.from(doc[direction] as Map? ?? {});
+      dirMap['feature_collection'] = featureCollection;
+      _editedDoc = Map<String, dynamic>.from(doc)..[direction] = dirMap;
+      _reloadWorkingFromDoc();
+      _mode = EditorMode.view;
+      return true;
+    } catch (e) {
+      _error = 'Sauvegarde direction KO: $e';
+      return false;
+    } finally {
+      _saving = false;
+      notifyListeners();
+    }
+  }
+
   void reset() {
     _lineNumber = null;
     _editedDoc = null;

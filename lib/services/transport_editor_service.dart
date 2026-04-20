@@ -64,7 +64,7 @@ class TransportEditorService {
   Future<Map<String, dynamic>> loadOrBootstrap(String lineNumber) async {
     final ref = _db.collection(collEdited).doc(lineNumber);
     final snap = await ref.get();
-    if (snap.exists) return snap.data()!;
+    if (snap.exists) return _hydrateDoc(snap.data()!);
 
     // Bootstrap : charger depuis TransportLinesService
     final svc = TransportLinesService.instance;
@@ -85,15 +85,42 @@ class TransportEditorService {
       'transport_type': m.transportType,
       'color': m.colorHex,
       'is_bundled': m.isBundled,
-      if (aller != null) 'aller': {'feature_collection': aller},
-      if (retour != null) 'retour': {'feature_collection': retour},
+      if (aller != null) 'aller': {'feature_collection_json': json.encode(aller)},
+      if (retour != null) 'retour': {'feature_collection_json': json.encode(retour)},
       'created_at': FieldValue.serverTimestamp(),
       'last_updated': FieldValue.serverTimestamp(),
       'last_updated_by': AdminAuthService.instance.currentUid,
       'bootstrapped_from_asset': true,
     };
     await ref.set(payload);
-    return payload;
+
+    // Retour hydraté (forme Map attendue par les callers)
+    return <String, dynamic>{
+      ...payload,
+      if (aller != null) 'aller': {'feature_collection': aller},
+      if (retour != null) 'retour': {'feature_collection': retour},
+    };
+  }
+
+  /// Firestore ne supporte pas les nested arrays (cf. LineString.coordinates).
+  /// On stocke les FeatureCollections encodés en JSON string côté Firestore et
+  /// on les hydrate (décode) en Map côté app.
+  Map<String, dynamic> _hydrateDoc(Map<String, dynamic> raw) {
+    final out = Map<String, dynamic>.from(raw);
+    for (final key in ['aller', 'retour']) {
+      final dir = raw[key];
+      if (dir is Map) {
+        final hydrated = Map<String, dynamic>.from(dir);
+        final encoded = hydrated['feature_collection_json'];
+        if (encoded is String) {
+          hydrated['feature_collection'] =
+              json.decode(encoded) as Map<String, dynamic>;
+          hydrated.remove('feature_collection_json');
+        }
+        out[key] = hydrated;
+      }
+    }
+    return out;
   }
 
   Future<Map<String, dynamic>?> _loadRawGeoJson(
@@ -147,7 +174,7 @@ class TransportEditorService {
     final ref = _db.collection(collEdited).doc(lineNumber);
     await ref.set({
       direction: {
-        'feature_collection': updatedFeatureCollection,
+        'feature_collection_json': json.encode(updatedFeatureCollection),
         'updated_at': FieldValue.serverTimestamp(),
         'updated_by': AdminAuthService.instance.currentUid,
       },
@@ -165,6 +192,52 @@ class TransportEditorService {
       verticesAfter: verticesAfter,
       stopsBefore: stopsBefore,
       stopsAfter: stopsAfter,
+    );
+  }
+
+  /// Remplace entièrement une direction (tracé + arrêts) — utilisé par le
+  /// sub-flow "Construire la ligne". Marque les 2 étapes de la direction
+  /// (route + stops) à `modified` en une seule opération.
+  Future<void> saveDirectionEdit({
+    required String lineNumber,
+    required String direction, // 'aller' | 'retour'
+    required Map<String, dynamic> featureCollection,
+    int? numStops,
+    int? numVertices,
+  }) async {
+    final ref = _db.collection(collEdited).doc(lineNumber);
+    await ref.set({
+      direction: {
+        'feature_collection_json': json.encode(featureCollection),
+        'updated_at': FieldValue.serverTimestamp(),
+        'updated_by': AdminAuthService.instance.currentUid,
+      },
+      'last_updated': FieldValue.serverTimestamp(),
+      'last_updated_by': AdminAuthService.instance.currentUid,
+    }, SetOptions(merge: true));
+
+    // Marque route + stops de cette direction à `modified` en une passe
+    final routeKey = direction == 'aller'
+        ? EditorStep.allerRoute.fieldKey
+        : EditorStep.retourRoute.fieldKey;
+    final stopsKey = direction == 'aller'
+        ? EditorStep.allerStops.fieldKey
+        : EditorStep.retourStops.fieldKey;
+    await _db.collection(collValidations).doc(lineNumber).set({
+      routeKey: ValidationStatus.modified.code,
+      stopsKey: ValidationStatus.modified.code,
+      'updated_at': FieldValue.serverTimestamp(),
+      'updated_by': AdminAuthService.instance.currentUid,
+      'updated_by_email': AdminAuthService.instance.currentEmail,
+    }, SetOptions(merge: true));
+
+    await _appendLog(
+      lineNumber: lineNumber,
+      direction: direction,
+      kind: 'direction',
+      action: 'rebuilt',
+      verticesAfter: numVertices,
+      stopsAfter: numStops,
     );
   }
 
@@ -192,12 +265,12 @@ class TransportEditorService {
       'is_bundled': true,
       'is_new_line': true,
       'aller': {
-        'feature_collection': allerFeatureCollection,
+        'feature_collection_json': json.encode(allerFeatureCollection),
         'updated_at': FieldValue.serverTimestamp(),
         'updated_by': AdminAuthService.instance.currentUid,
       },
       'retour': {
-        'feature_collection': retourFeatureCollection,
+        'feature_collection_json': json.encode(retourFeatureCollection),
         'updated_at': FieldValue.serverTimestamp(),
         'updated_by': AdminAuthService.instance.currentUid,
       },

@@ -1,3 +1,5 @@
+import 'dart:html' as html;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_easyloading/flutter_easyloading.dart';
@@ -5,6 +7,7 @@ import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/my_colors.dart';
 import 'package:rider_ride_hailing_app/pages/test_invoice_regeneration_page.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/editor_dashboard_screen.dart';
 
 import '../../../contants/my_image_url.dart';
 import '../../../provider/auth_provider.dart';
@@ -19,15 +22,24 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> {
   late CustomAuthProvider auth;
 
-  // Vérifie si on est en mode test-invoice
-  bool get _isTestInvoiceMode {
-    final url = Uri.base.toString();
-    return url.contains('test-invoice');
+  String _currentUrl() {
+    if (!kIsWeb) return '';
+    return '${html.window.location.href}|hash=${html.window.location.hash}|pathname=${html.window.location.pathname}';
   }
+
+  // Vérifie si on est en mode test-invoice
+  bool get _isTestInvoiceMode => _currentUrl().contains('test-invoice');
+
+  // Vérifie si on est en mode éditeur terrain transport (consultant)
+  bool get _isTransportEditorMode => _currentUrl().contains('transport-editor');
 
   @override
   void initState() {
     super.initState();
+    // DEBUG: tracer ce que voit l'app au démarrage pour diagnostiquer
+    // pourquoi le deep-link `/#/transport-editor` ne fonctionne pas.
+    // ignore: avoid_print
+    print('🔍 SPLASH URL: ${_currentUrl()} | Uri.base=${Uri.base}');
 
     // Si mode test-invoice, ne pas faire l'authentification normale
     if (_isTestInvoiceMode) {
@@ -35,6 +47,19 @@ class _SplashScreenState extends State<SplashScreen> {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const TestInvoiceRegenerationPage()),
         );
+      });
+      return;
+    }
+
+    // Mode éditeur terrain : on saute le `splashAuthentication` lourd
+    // (GPS, langues, settings Firestore, admin settings…) mais on arme
+    // quand même `setAuthListener` pour que la navigation post-login
+    // fonctionne. Le listener a une branche dédiée qui re-pousse le
+    // dashboard, lequel vérifie le custom claim via `AdminAuthService`.
+    if (_isTransportEditorMode) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        auth = Provider.of<CustomAuthProvider>(context, listen: false);
+        auth.setAuthListener(context);
       });
       return;
     }

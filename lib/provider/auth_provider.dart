@@ -21,6 +21,8 @@ import 'package:rider_ride_hailing_app/pages/auth_module/otp_verification_screen
 import 'package:rider_ride_hailing_app/pages/auth_module/phone_number_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/main_navigation_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/home_screen.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/editor_dashboard_screen.dart';
+import 'package:rider_ride_hailing_app/services/admin_auth_service.dart';
 import 'package:rider_ride_hailing_app/provider/trip_provider.dart';
 import 'package:rider_ride_hailing_app/provider/admin_settings_provider.dart';
 import 'package:rider_ride_hailing_app/provider/google_map_provider.dart';
@@ -63,9 +65,9 @@ class CustomAuthProvider with ChangeNotifier {
     userData.value = await DevFestPreferences().getUserDetails();
     globalSettings = await DevFestPreferences().getDefaultAppSettingRequest();
 
-    // 🚀 CORRECTION BUG PERFORMANCE: Vérifier le statut en parallèle sans bloquer
-    // Ne pas utiliser await pour ne pas retarder l'initialisation de l'app
-    checkGuestModeStatus(); // Sans await - s'exécute en parallèle
+    // 🔧 FIX: Restaurer le mode invité AVANT la navigation pour éviter les race conditions
+    // (isGuestMode doit être correct quand l'utilisateur arrive sur confirmDestination)
+    await checkGuestModeStatus();
 
     // 🚀 OPTIMISATION: Internet check non-bloquant (gain ~1-3s)
     // L'app assume qu'elle est connectée et vérifie en arrière-plan
@@ -190,6 +192,13 @@ class CustomAuthProvider with ChangeNotifier {
     });
   }
 
+  Widget _postAuthScreen() {
+    if (Uri.base.toString().contains('transport-editor')) {
+      return const EditorDashboardScreen();
+    }
+    return const MainNavigationScreen();
+  }
+
   setAuthListener(contex) {
     FirebaseAuth.instance.authStateChanges().listen((User? user) async {
       myCustomPrintStatement("users id and other details ${user == null}");
@@ -218,6 +227,24 @@ class CustomAuthProvider with ChangeNotifier {
         return;
       }
 
+      // 🎯 Mode éditeur terrain : flow simplifié.
+      // Le compte consultant n'a pas de doc Firestore `users/{uid}` (créé
+      // via Auth admin SDK uniquement). On court-circuite donc toute la
+      // logique user/guest/phoneNo et on re-pousse le dashboard, qui a
+      // son propre gate `AdminAuthService` sur le custom claim.
+      if (Uri.base.toString().contains('transport-editor')) {
+        await hideLoading();
+        if (user != null) {
+          currentUser = user;
+          AdminAuthService.instance.invalidate();
+          pushAndRemoveUntil(
+            context: MyGlobalKeys.navigatorKey.currentContext!,
+            screen: const EditorDashboardScreen(),
+          );
+        }
+        return;
+      }
+
       if (user == null) {
         var getRequest =
             await DevFestPreferences().getUserVerificationRequest();
@@ -240,7 +267,7 @@ class CustomAuthProvider with ChangeNotifier {
           await enableGuestMode();
           pushReplacement(
               context: MyGlobalKeys.navigatorKey.currentContext!,
-              screen: const MainNavigationScreen());
+              screen: _postAuthScreen());
         }
       } else {
         currentUser = user;
@@ -248,10 +275,11 @@ class CustomAuthProvider with ChangeNotifier {
         // 🎯 FIX: Gérer le cas de l'utilisateur anonyme (mode invité)
         // Les utilisateurs anonymes n'ont pas de document Firestore
         if (user.isAnonymous) {
-          myCustomPrintStatement("✅ Utilisateur anonyme détecté - navigation vers MainNavigationScreen");
+          myCustomPrintStatement("✅ Utilisateur anonyme détecté - activation mode invité et navigation");
+          await enableGuestMode();
           pushAndRemoveUntil(
               context: MyGlobalKeys.navigatorKey.currentContext!,
-              screen: const MainNavigationScreen());
+              screen: _postAuthScreen());
           return; // Sortir tôt pour éviter d'appeler getAndUpdateUserModal
         }
 
@@ -265,7 +293,7 @@ class CustomAuthProvider with ChangeNotifier {
               // Forcer la navigation même en cas de timeout
               pushAndRemoveUntil(
                 context: MyGlobalKeys.navigatorKey.currentContext!,
-                screen: const MainNavigationScreen());
+                screen: _postAuthScreen());
               throw TimeoutException('Global timeout on getAndUpdateUserModal');
             },
           );
@@ -277,7 +305,7 @@ class CustomAuthProvider with ChangeNotifier {
           // En cas d'erreur, forcer quand même la navigation pour ne pas bloquer l'utilisateur
           pushAndRemoveUntil(
             context: MyGlobalKeys.navigatorKey.currentContext!,
-            screen: const MainNavigationScreen());
+            screen: _postAuthScreen());
           return;
         }
         // ⚡ FIX: Vérifier phoneNo qui est le champ sauvegardé dans Firestore (ligne 79 user_modal.dart)
@@ -300,7 +328,7 @@ class CustomAuthProvider with ChangeNotifier {
           myCustomPrintStatement('⚡ Navigation immédiate vers MainNavigationScreen');
           pushAndRemoveUntil(
               context: MyGlobalKeys.navigatorKey.currentContext!,
-              screen: const MainNavigationScreen());
+              screen: _postAuthScreen());
 
           // ⚡ Vérifier la course active EN ARRIÈRE-PLAN (non-bloquant)
           // Si une course est trouvée, HomeScreen se mettra à jour automatiquement

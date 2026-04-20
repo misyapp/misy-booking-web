@@ -12,6 +12,7 @@ class OsmBaseMap extends StatelessWidget {
   final List<Widget> children;
   final void Function(TapPosition, LatLng)? onTap;
   final void Function(TapPosition, LatLng)? onLongPress;
+  final void Function(MapEvent)? onMapEvent;
   final InteractionOptions? interactionOptions;
 
   const OsmBaseMap({
@@ -22,6 +23,7 @@ class OsmBaseMap extends StatelessWidget {
     this.initialZoom = 13,
     this.onTap,
     this.onLongPress,
+    this.onMapEvent,
     this.interactionOptions,
   });
 
@@ -38,6 +40,7 @@ class OsmBaseMap extends StatelessWidget {
         maxZoom: 19,
         onTap: onTap,
         onLongPress: onLongPress,
+        onMapEvent: onMapEvent,
         interactionOptions: interactionOptions ??
             const InteractionOptions(
               flags: InteractiveFlag.all & ~InteractiveFlag.rotate,

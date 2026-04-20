@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
@@ -16,11 +17,43 @@ class TransportOsrmService {
   static const String _publicBase = 'https://router.project-osrm.org';
   static const String _proxyBase = 'https://book.misy.app/osrm-proxy.php';
 
+  /// OSRM public limite à ~25 waypoints par requête. Au-delà, on chunke.
+  static const int _maxWaypointsPerRequest = 25;
+
   /// Route driving entre une liste ordonnée de points.
   /// [waypoints] en LatLng (lat,lng). Renvoie coords en [lng, lat].
+  ///
+  /// Pour > 25 waypoints, split en sous-requêtes qui partagent un waypoint
+  /// de jointure (p. ex. [0..24], [24..48], ...) et concatène les geometries.
   Future<List<List<double>>?> routeDriving(List<LatLng> waypoints) async {
     if (waypoints.length < 2) return null;
 
+    if (waypoints.length <= _maxWaypointsPerRequest) {
+      return _routeSegment(waypoints);
+    }
+
+    // Chunking : chunks overlapping sur 1 waypoint (le dernier de l'un = le
+    // premier du suivant) pour éviter les discontinuités.
+    final merged = <List<double>>[];
+    int start = 0;
+    while (start < waypoints.length - 1) {
+      final end = math.min(start + _maxWaypointsPerRequest, waypoints.length);
+      final chunk = waypoints.sublist(start, end);
+      final seg = await _routeSegment(chunk);
+      if (seg == null) return null;
+      if (merged.isEmpty) {
+        merged.addAll(seg);
+      } else {
+        // Skip le premier point du nouveau chunk (= dernier du précédent)
+        merged.addAll(seg.length > 1 ? seg.sublist(1) : seg);
+      }
+      if (end >= waypoints.length) break;
+      start = end - 1;
+    }
+    return merged.isEmpty ? null : merged;
+  }
+
+  Future<List<List<double>>?> _routeSegment(List<LatLng> waypoints) async {
     final coordsPart = waypoints
         .map((p) => '${p.longitude},${p.latitude}')
         .join(';');

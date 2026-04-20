@@ -45,6 +45,27 @@ function initFirebase() {
   return admin.firestore();
 }
 
+/**
+ * Lit le FeatureCollection d'une direction dans un doc Firestore.
+ * Gère les deux formats :
+ *   - ancien : {aller: {feature_collection: {...}}}  (map direct)
+ *   - nouveau : {aller: {feature_collection_json: "..."}} (string JSON, Firestore
+ *     ne supporte pas les nested arrays donc on stringify)
+ */
+function extractFeatureCollection(dirMap) {
+  if (!dirMap) return null;
+  if (dirMap.feature_collection) return dirMap.feature_collection;
+  if (typeof dirMap.feature_collection_json === 'string') {
+    try {
+      return JSON.parse(dirMap.feature_collection_json);
+    } catch (e) {
+      console.error('⚠️ feature_collection_json invalide:', e.message);
+      return null;
+    }
+  }
+  return null;
+}
+
 function parseArgs(argv) {
   const args = { _: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -153,7 +174,7 @@ async function cmdDiff(db, args) {
   const paths = assetPaths(lineNumber);
 
   for (const dir of ['aller', 'retour']) {
-    const remote = data[dir]?.feature_collection;
+    const remote = extractFeatureCollection(data[dir]);
     if (!remote) continue;
     const localPath = paths[dir];
     const existsLocal = fs.existsSync(localPath);
@@ -204,7 +225,7 @@ async function cmdPull(db, args) {
     const paths = assetPaths(lineNumber);
 
     for (const dir of ['aller', 'retour']) {
-      const fc = data[dir]?.feature_collection;
+      const fc = extractFeatureCollection(data[dir]);
       if (!fc) continue;
       writeFeatureCollection(paths[dir], fc);
       console.log(`✅ ${dir.padEnd(6)} ${lineNumber}  → ${paths[dir]}`);
@@ -225,20 +246,20 @@ async function cmdPull(db, args) {
     entry.color = data.color || entry.color;
     entry.is_bundled = data.is_bundled ?? entry.is_bundled ?? true;
 
-    if (data.aller?.feature_collection) {
+    const allerFc = extractFeatureCollection(data.aller);
+    if (allerFc) {
       entry.aller = {
-        direction: data.aller.feature_collection.properties?.direction ||
-          entry.aller?.direction || '',
-        num_stops: countStops(data.aller.feature_collection),
+        direction: allerFc.properties?.direction || entry.aller?.direction || '',
+        num_stops: countStops(allerFc),
         asset_path: relAsset(lineNumber, 'aller'),
         remote_url: entry.aller?.remote_url,
       };
     }
-    if (data.retour?.feature_collection) {
+    const retourFc = extractFeatureCollection(data.retour);
+    if (retourFc) {
       entry.retour = {
-        direction: data.retour.feature_collection.properties?.direction ||
-          entry.retour?.direction || '',
-        num_stops: countStops(data.retour.feature_collection),
+        direction: retourFc.properties?.direction || entry.retour?.direction || '',
+        num_stops: countStops(retourFc),
         asset_path: relAsset(lineNumber, 'retour'),
         remote_url: entry.retour?.remote_url,
       };

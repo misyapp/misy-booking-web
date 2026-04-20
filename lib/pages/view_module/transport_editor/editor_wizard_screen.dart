@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/models/transport_line_validation.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/build_line_flow_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/editable_polyline_layer.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/editable_stops_layer.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/osm_base_map.dart';
@@ -351,9 +352,7 @@ class _WizardBodyState extends State<_WizardBody> {
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                  onPressed: p.isSaving
-                      ? null
-                      : () => p.setMode(EditorMode.modifying),
+                  onPressed: p.isSaving ? null : () => _launchBuildFlow(p),
                   icon: const Icon(Icons.edit),
                   label: const Text('Modifier'),
                 ),
@@ -367,14 +366,7 @@ class _WizardBodyState extends State<_WizardBody> {
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   foregroundColor: Colors.red,
                 ),
-                onPressed: p.isSaving
-                    ? null
-                    : () async {
-                        if (await _confirmDelete(context,
-                            'Effacer et repartir de zéro pour cette étape ?')) {
-                          p.setMode(EditorMode.restarting);
-                        }
-                      },
+                onPressed: p.isSaving ? null : () => _launchBuildFlow(p),
                 icon: const Icon(Icons.refresh),
                 label: const Text('Recommencer'),
               ),
@@ -443,6 +435,59 @@ class _WizardBodyState extends State<_WizardBody> {
   }
 
   // ─────────── Actions ───────────
+
+  /// Lance le sub-flow "Construire la ligne" pour la direction courante et
+  /// persiste le résultat à la fin. Remplace l'ancien mode édition drag-drop.
+  Future<void> _launchBuildFlow(TransportEditorProvider p) async {
+    final line = p.lineNumber;
+    if (line == null) return;
+    final direction = p.step.isAller ? 'aller' : 'retour';
+    final directionLabel = p.step.isAller ? 'aller' : 'retour';
+
+    final result = await Navigator.of(context).push<BuildLineFlowResult>(
+      MaterialPageRoute(
+        builder: (_) => BuildLineFlowScreen(
+          lineNumber: line,
+          direction: direction,
+          directionLabel: directionLabel,
+        ),
+      ),
+    );
+    if (!mounted || result == null) return;
+
+    final ok = await p.commitReplaceDirection(
+      direction: direction,
+      featureCollection: result.featureCollection,
+      numStops: result.numStops,
+      numVertices: result.numVertices,
+    );
+    if (!mounted) return;
+    if (!ok) {
+      _snack(context, p.error ?? 'Sauvegarde impossible');
+      return;
+    }
+    _snack(context, 'Direction $directionLabel mise à jour ✓');
+    // Après une reconstruction complète, route + stops de la direction sont
+    // tous deux modifiés → on saute à la prochaine étape pending de l'autre
+    // direction (ou fin du wizard).
+    _goToNextDirection(p);
+  }
+
+  /// Passe à la première étape de l'autre direction.
+  void _goToNextDirection(TransportEditorProvider p) {
+    final nextStep = p.step.isAller
+        ? EditorStep.retourRoute
+        : null; // déjà sur retour → fin
+    if (nextStep != null) {
+      p.setStep(nextStep);
+      _recenterMap(p);
+    } else {
+      _snack(context, 'Ligne entièrement vérifiée 🎉');
+      Future.delayed(const Duration(milliseconds: 700), () {
+        if (mounted) Navigator.of(context).pop();
+      });
+    }
+  }
 
   Future<void> _onValidateAsIs(TransportEditorProvider p) async {
     final ok = await p.validateAsIs();
