@@ -54,8 +54,65 @@ class OsmBaseMap extends StatelessWidget {
           tileProvider: NetworkTileProvider(),
         ),
         ...children,
+        _ZoomControls(controller: controller),
         const _AttributionOverlay(),
       ],
+    );
+  }
+}
+
+/// Boutons +/− en overlay à droite de la carte. Utilisent `MapController.move`
+/// avec le centre courant et le zoom ±1, clampé [5, 19] pour cohérence avec
+/// `minZoom`/`maxZoom` de `MapOptions`.
+class _ZoomControls extends StatelessWidget {
+  final MapController controller;
+  const _ZoomControls({required this.controller});
+
+  void _zoom(double delta) {
+    final cam = controller.camera;
+    final next = (cam.zoom + delta).clamp(5.0, 19.0);
+    if (next == cam.zoom) return;
+    controller.move(cam.center, next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Padding(
+        padding: const EdgeInsets.only(right: 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ZoomButton(icon: Icons.add, onTap: () => _zoom(1)),
+            const SizedBox(height: 6),
+            _ZoomButton(icon: Icons.remove, onTap: () => _zoom(-1)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ZoomButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _ZoomButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 3,
+      shape: const CircleBorder(),
+      color: Colors.white,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(9),
+          child: Icon(icon, size: 20, color: Colors.black87),
+        ),
+      ),
     );
   }
 }

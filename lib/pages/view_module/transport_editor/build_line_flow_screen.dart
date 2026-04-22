@@ -74,6 +74,12 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
   static const double _pulseMin = 0.15;
   static const double _pulseMax = 0.45;
 
+  // Nom pré-rempli hérité de la dernière recherche. Non-null quand l'user
+  // vient de sélectionner une prédiction et n'a pas encore cliqué sur la carte
+  // pour confirmer la position. Le prochain clic carte (étape origin /
+  // destination) consomme ce nom comme prefill du dialog.
+  String? _pendingSearchName;
+
   @override
   void initState() {
     super.initState();
@@ -271,46 +277,64 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
                       ),
                     ),
                     Expanded(
-                      child: OsmBaseMap(
-                        controller: _mapController,
-                        onTap: (tp, latLng) => _onMapTap(p, latLng),
-                        onMapEvent: (e) {
-                          // Capture la camera sur tous les events (incluant le
-                          // ready initial) pour que le layer OSM s'affiche
-                          // dès l'ouverture, pas seulement au premier pan.
-                          if (mounted) {
-                            setState(() => _lastCamera = e.camera);
-                          }
-                          _maybeFitReference();
-                        },
+                      child: Stack(
                         children: [
-                          // Calque référence (EN BAS pour rester derrière) :
-                          // simple repère visuel, PAS une donnée à revalider.
-                          // Orange clignotant (pulse d'opacité) pour le rendre
-                          // repérable tout en restant low-intensity.
-                          if (_showReference && _hasReference)
-                            ..._buildPulsingReference(),
-                          // Arrêts OSM bundlés par-dessus la référence pour
-                          // rester cliquables quand on pose départ/arrivée ou
-                          // arrêts.
-                          if (_lastCamera != null)
-                            OsmStopsLayer(
-                              camera: _lastCamera!,
-                              onStopTap: (stop) => _onOsmStopTap(p, stop),
-                            ),
-                          if (p.routeCoords.isNotEmpty)
-                            PolylineLayer(
-                              polylines: [
-                                Polyline(
-                                  points: p.routeCoords
-                                      .map((c) => LatLng(c[1], c[0]))
-                                      .toList(),
-                                  strokeWidth: 5,
-                                  color: const Color(0xFF1565C0),
+                          OsmBaseMap(
+                            controller: _mapController,
+                            onTap: (tp, latLng) => _onMapTap(p, latLng),
+                            onMapEvent: (e) {
+                              // Capture la camera sur tous les events (incluant
+                              // le ready initial) pour que le layer OSM
+                              // s'affiche dès l'ouverture, pas seulement au
+                              // premier pan.
+                              if (mounted) {
+                                setState(() => _lastCamera = e.camera);
+                              }
+                              _maybeFitReference();
+                            },
+                            children: [
+                              // Calque référence (EN BAS pour rester derrière)
+                              // : simple repère visuel, PAS une donnée à
+                              // revalider. Orange clignotant (pulse d'opacité)
+                              // pour le rendre repérable tout en restant
+                              // low-intensity.
+                              if (_showReference && _hasReference)
+                                ..._buildPulsingReference(),
+                              // Arrêts OSM bundlés par-dessus la référence pour
+                              // rester cliquables quand on pose départ/arrivée
+                              // ou arrêts.
+                              if (_lastCamera != null)
+                                OsmStopsLayer(
+                                  camera: _lastCamera!,
+                                  onStopTap: (stop) => _onOsmStopTap(p, stop),
                                 ),
-                              ],
+                              if (p.routeCoords.isNotEmpty)
+                                PolylineLayer(
+                                  polylines: [
+                                    Polyline(
+                                      points: p.routeCoords
+                                          .map((c) => LatLng(c[1], c[0]))
+                                          .toList(),
+                                      strokeWidth: 5,
+                                      color: const Color(0xFF1565C0),
+                                    ),
+                                  ],
+                                ),
+                              MarkerLayer(markers: _buildMarkers(p)),
+                            ],
+                          ),
+                          if (_pendingSearchName != null)
+                            Positioned(
+                              top: 12,
+                              left: 12,
+                              right: 12,
+                              child: _SearchHintBanner(
+                                name: _pendingSearchName!,
+                                isOrigin: p.step == BuildLineStep.origin,
+                                onDismiss: () => setState(
+                                    () => _pendingSearchName = null),
+                              ),
                             ),
-                          MarkerLayer(markers: _buildMarkers(p)),
                         ],
                       ),
                     ),
@@ -393,10 +417,12 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
   Future<void> _onMapTap(BuildLineFlowProvider p, LatLng latLng) async {
     switch (p.step) {
       case BuildLineStep.origin:
-        await _setTerminusWithPrompt(p, latLng, isOrigin: true);
+        await _setTerminusWithPrompt(p, latLng,
+            isOrigin: true, prefillName: _consumePendingSearchName());
         break;
       case BuildLineStep.destination:
-        await _setTerminusWithPrompt(p, latLng, isOrigin: false);
+        await _setTerminusWithPrompt(p, latLng,
+            isOrigin: false, prefillName: _consumePendingSearchName());
         break;
       case BuildLineStep.stops:
         final name = await _promptStopName(context);
@@ -408,6 +434,16 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
         p.addWaypoint(latLng);
         break;
     }
+  }
+
+  /// Renvoie le nom en attente (recherche Nominatim) et le reset à `null`.
+  /// Utilisé par le prochain clic carte pour pré-remplir le dialog de nommage.
+  String? _consumePendingSearchName() {
+    final n = _pendingSearchName;
+    if (n != null) {
+      setState(() => _pendingSearchName = null);
+    }
+    return n;
   }
 
   Future<void> _onOsmStopTap(BuildLineFlowProvider p, OsmStop stop) async {
@@ -467,16 +503,18 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
     }
   }
 
-  Future<void> _onPlaceSearchSelected(
-      BuildLineFlowProvider p, LatLng latLng, String description) async {
+  /// Sélection d'une prédiction de recherche : on zoom sur la zone et on
+  /// mémorise le nom comme prefill. **Ne pose pas** le pin ni n'ouvre de dialog
+  /// — l'user doit cliquer sur la carte pour confirmer la position exacte
+  /// (la géolocalisation Nominatim est approximative selon le type de lieu).
+  void _onPlaceSearchSelected(
+      BuildLineFlowProvider p, LatLng latLng, String description) {
     _mapController.move(latLng, 17);
-    if (p.step == BuildLineStep.origin) {
-      await _setTerminusWithPrompt(p, latLng,
-          isOrigin: true, prefillName: _firstComma(description));
-    } else if (p.step == BuildLineStep.destination) {
-      await _setTerminusWithPrompt(p, latLng,
-          isOrigin: false, prefillName: _firstComma(description));
+    if (p.step != BuildLineStep.origin &&
+        p.step != BuildLineStep.destination) {
+      return;
     }
+    setState(() => _pendingSearchName = _firstComma(description));
   }
 
   String _firstComma(String s) {
@@ -1019,6 +1057,71 @@ class _SidePanel extends StatelessWidget {
           label: Text(isLast ? 'Terminer' : 'Suivant'),
         ),
       ],
+    );
+  }
+}
+
+/// Banner affiché en haut de la carte quand l'user vient de sélectionner une
+/// prédiction de recherche mais n'a pas encore cliqué sur la carte pour
+/// poser le point. Rappelle que le clic valide la position exacte.
+class _SearchHintBanner extends StatelessWidget {
+  final String name;
+  final bool isOrigin;
+  final VoidCallback onDismiss;
+
+  const _SearchHintBanner({
+    required this.name,
+    required this.isOrigin,
+    required this.onDismiss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = isOrigin ? 'départ' : 'arrivée';
+    return Material(
+      elevation: 4,
+      borderRadius: BorderRadius.circular(8),
+      color: const Color(0xFF1565C0),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            const Icon(Icons.touch_app, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Clique sur la carte pour placer le point de $label',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    '« $name » — la position exacte vient de ton clic',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.white70, size: 18),
+              tooltip: 'Annuler',
+              onPressed: onDismiss,
+              splashRadius: 18,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

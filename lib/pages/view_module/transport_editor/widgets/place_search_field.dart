@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:rider_ride_hailing_app/services/places_autocomplete_web.dart';
+import 'package:rider_ride_hailing_app/services/nominatim_service.dart';
 
-/// TextField avec dropdown d'autocomplete Google Places (Madagascar).
+/// TextField avec dropdown d'autocomplete Nominatim (OSM, API gratuite).
 /// Quand l'user sélectionne une prédiction, appelle [onPlaceSelected] avec
-/// les coordonnées + le nom du lieu, ce qui permet à l'appelant de zoomer
-/// la carte sur la zone.
+/// les coordonnées + le nom du lieu. Nominatim renvoie les coords directement,
+/// donc pas de second appel type "place details".
 class PlaceSearchField extends StatefulWidget {
   final String hint;
   final void Function(LatLng position, String description) onPlaceSelected;
@@ -29,7 +29,7 @@ class _PlaceSearchFieldState extends State<PlaceSearchField> {
 
   Timer? _debounce;
   OverlayEntry? _overlay;
-  List<Map<String, dynamic>> _predictions = [];
+  List<NominatimPlace> _predictions = [];
   bool _loading = false;
 
   @override
@@ -43,14 +43,16 @@ class _PlaceSearchFieldState extends State<PlaceSearchField> {
 
   void _onChanged(String value) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), () async {
+    // Debounce à 400 ms pour rester confortable avec la Nominatim Usage Policy
+    // (~1 req/sec conseillé pour de la saisie interactive).
+    _debounce = Timer(const Duration(milliseconds: 400), () async {
       if (value.trim().length < 3) {
         setState(() => _predictions = []);
         _removeOverlay();
         return;
       }
       setState(() => _loading = true);
-      final preds = await PlacesAutocompleteWeb.getPlacePredictions(value);
+      final preds = await NominatimService.instance.search(value);
       if (!mounted) return;
       setState(() {
         _predictions = preds;
@@ -64,30 +66,15 @@ class _PlaceSearchFieldState extends State<PlaceSearchField> {
     });
   }
 
-  Future<void> _onPredictionTapped(Map<String, dynamic> pred) async {
-    final placeId = pred['place_id']?.toString();
-    if (placeId == null) return;
-    _controller.text = pred['description']?.toString() ?? '';
+  void _onPredictionTapped(NominatimPlace p) {
+    _controller.text = p.displayName;
     _removeOverlay();
-    setState(() => _loading = true);
-    final details = await PlacesAutocompleteWeb.getPlaceDetails(placeId);
-    if (!mounted) return;
-    setState(() => _loading = false);
-    final loc = (details?['result']?['geometry']?['location']) as Map?;
-    if (loc == null) {
-      _showSnack('Impossible de récupérer la position du lieu');
-      return;
-    }
-    final lat = (loc['lat'] as num).toDouble();
-    final lng = (loc['lng'] as num).toDouble();
-    widget.onPlaceSelected(LatLng(lat, lng), _controller.text);
+    widget.onPlaceSelected(LatLng(p.lat, p.lon), p.displayName);
   }
 
   void _showOverlay() {
     _removeOverlay();
     final overlay = Overlay.of(context);
-    // Largeur identique au TextField pour rester confiné dans son conteneur
-    // (utile dans une sidebar étroite : évite le débordement hors carte).
     final renderBox = context.findRenderObject() as RenderBox?;
     final width = renderBox?.size.width ?? 280.0;
     _overlay = OverlayEntry(
@@ -113,8 +100,15 @@ class _PlaceSearchFieldState extends State<PlaceSearchField> {
                     dense: true,
                     leading: const Icon(Icons.place_outlined, size: 20),
                     title: Text(
-                      p['description']?.toString() ?? '',
-                      style: const TextStyle(fontSize: 12),
+                      p.shortName,
+                      style: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Text(
+                      p.displayName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 10),
                     ),
                     onTap: () => _onPredictionTapped(p),
                   );
@@ -131,10 +125,6 @@ class _PlaceSearchFieldState extends State<PlaceSearchField> {
   void _removeOverlay() {
     _overlay?.remove();
     _overlay = null;
-  }
-
-  void _showSnack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
