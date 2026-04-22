@@ -244,12 +244,21 @@ class _EditorNewLineScreenState extends State<EditorNewLineScreen> {
       _snack('Renseigne le numéro de ligne d\'abord');
       return;
     }
+    // Pour le retour d'une nouvelle ligne : afficher l'aller déjà construit
+    // comme repère visuel (user ne se perd pas sur la carte).
+    final referenceFc =
+        (direction == 'retour' && _allerFC != null) ? _allerFC : null;
+    final colorHex =
+        '0x${_colorValue.toRadixString(16).padLeft(8, '0').toUpperCase()}';
+
     final result = await Navigator.of(context).push<BuildLineFlowResult>(
       MaterialPageRoute(
         builder: (_) => BuildLineFlowScreen(
           lineNumber: line,
           direction: direction,
           directionLabel: direction,
+          referenceFeatureCollection: referenceFc,
+          referenceColorHex: colorHex,
         ),
       ),
     );

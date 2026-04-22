@@ -284,7 +284,7 @@ class _DashboardBodyState extends State<_DashboardBody> {
         title: 'Une ligne à vérifier',
         description:
             'Chaque carte représente une ligne. Touche la pour lancer le '
-            'wizard de vérification en 4 étapes.',
+            'wizard de vérification en 2 étapes (aller + retour).',
         child: card,
       );
     }
@@ -295,23 +295,19 @@ class _DashboardBodyState extends State<_DashboardBody> {
       {bool withTutoKey = false}) {
     final pastilles = Row(
       children: [
-        _pastille('A-Tracé', v.allerRoute),
+        _pastille('Aller', v.aller),
         const SizedBox(width: 6),
-        _pastille('R-Tracé', v.retourRoute),
-        const SizedBox(width: 6),
-        _pastille('A-Arrêts', v.allerStops),
-        const SizedBox(width: 6),
-        _pastille('R-Arrêts', v.retourStops),
+        _pastille('Retour', v.retour),
       ],
     );
     if (withTutoKey) {
       return TutoStep(
         stepKey: _pastillesKey,
-        title: 'État des 4 vérifications',
+        title: 'État des 2 vérifications',
         description:
             'Gris = à vérifier, vert = validé tel quel, orange = modifié. '
-            'Les 4 pastilles : tracé aller, tracé retour, arrêts aller, '
-            'arrêts retour.',
+            'Les 2 pastilles : tracé aller (avec ses arrêts) et tracé retour '
+            '(avec ses arrêts).',
         child: pastilles,
       );
     }

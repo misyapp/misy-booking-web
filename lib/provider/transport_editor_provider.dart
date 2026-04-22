@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:rider_ride_hailing_app/models/transport_line_validation.dart';
@@ -42,7 +40,7 @@ class TransportEditorProvider extends ChangeNotifier {
   Map<String, dynamic>? _editedDoc;
   Map<String, dynamic>? get editedDoc => _editedDoc;
 
-  EditorStep _step = EditorStep.allerRoute;
+  EditorStep _step = EditorStep.aller;
   EditorStep get step => _step;
 
   EditorMode _mode = EditorMode.view;
@@ -77,7 +75,7 @@ class TransportEditorProvider extends ChangeNotifier {
     notifyListeners();
     try {
       _editedDoc = await _service.loadOrBootstrap(lineNumber);
-      setStep(initialStep ?? EditorStep.allerRoute);
+      setStep(initialStep ?? EditorStep.aller);
     } catch (e) {
       _error = 'Chargement ligne $lineNumber KO: $e';
     } finally {
@@ -130,11 +128,8 @@ class TransportEditorProvider extends ChangeNotifier {
     _mode = mode;
     if (mode == EditorMode.restarting) {
       _pushUndo();
-      if (_step.isRoute) {
-        _vertices = [];
-      } else {
-        _stops = [];
-      }
+      _vertices = [];
+      _stops = [];
     }
     notifyListeners();
   }
@@ -269,81 +264,6 @@ class TransportEditorProvider extends ChangeNotifier {
     }
   }
 
-  /// Commit les modifs locales dans Firestore et sort du mode édition.
-  Future<bool> commitEdit() async {
-    final line = _lineNumber;
-    final doc = _editedDoc;
-    if (line == null || doc == null) return false;
-    _saving = true;
-    _error = null;
-    notifyListeners();
-    try {
-      final direction = _step.isAller ? 'aller' : 'retour';
-      final existing =
-          (doc[direction] as Map?)?['feature_collection'] as Map<String, dynamic>? ??
-              GeoJsonHelpers.emptyFeatureCollection(
-                  lineNumber: line, direction: direction);
-
-      int? vBefore, vAfter, sBefore, sAfter;
-      Map<String, dynamic> updated;
-
-      if (_step.isRoute) {
-        vBefore = GeoJsonHelpers.extractLineString(existing).length;
-        vAfter = _vertices.length;
-        final coords = _vertices
-            .map((p) => [p.longitude, p.latitude])
-            .toList();
-        updated = GeoJsonHelpers.replaceLineString(existing, coords);
-      } else {
-        sBefore = GeoJsonHelpers.extractStops(existing).length;
-        sAfter = _stops.length;
-        final stopFeatures = _stops
-            .map((s) => GeoJsonHelpers.makeStopFeature(
-                  lng: s.position.longitude,
-                  lat: s.position.latitude,
-                  name: s.name,
-                  stopId: s.stopId,
-                ))
-            .toList();
-        updated = GeoJsonHelpers.replaceStops(existing, stopFeatures);
-        // MAJ num_stops dans properties root
-        final props =
-            Map<String, dynamic>.from(updated['properties'] as Map? ?? {});
-        props['num_stops'] = _stops.length;
-        updated['properties'] = props;
-      }
-
-      // Clone Firestore-safe (pas de Timestamp qui traînent)
-      updated = json.decode(json.encode(updated));
-
-      await _service.saveStepEdit(
-        lineNumber: line,
-        step: _step,
-        updatedFeatureCollection: updated,
-        verticesBefore: vBefore,
-        verticesAfter: vAfter,
-        stopsBefore: sBefore,
-        stopsAfter: sAfter,
-      );
-
-      // Met à jour le cache local
-      final dirMap =
-          Map<String, dynamic>.from(doc[direction] as Map? ?? {});
-      dirMap['feature_collection'] = updated;
-      _editedDoc = Map<String, dynamic>.from(doc)..[direction] = dirMap;
-      _mode = EditorMode.view;
-      _undoStack.clear();
-      _redoStack.clear();
-      return true;
-    } catch (e) {
-      _error = 'Sauvegarde KO: $e';
-      return false;
-    } finally {
-      _saving = false;
-      notifyListeners();
-    }
-  }
-
   /// Remplace entièrement une direction (tracé + arrêts) avec le résultat
   /// du sub-flow "Construire la ligne". Marque automatiquement les 2 étapes
   /// de la direction à `modified`.
@@ -386,7 +306,7 @@ class TransportEditorProvider extends ChangeNotifier {
   void reset() {
     _lineNumber = null;
     _editedDoc = null;
-    _step = EditorStep.allerRoute;
+    _step = EditorStep.aller;
     _mode = EditorMode.view;
     _vertices = [];
     _stops = [];

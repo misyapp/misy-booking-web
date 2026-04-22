@@ -153,51 +153,13 @@ class TransportEditorService {
     await _appendLog(
       lineNumber: lineNumber,
       direction: step.isAller ? 'aller' : 'retour',
-      kind: step.isRoute ? 'route' : 'stops',
+      kind: 'direction',
       action: 'validated',
     );
   }
 
-  /// Écrit un FeatureCollection modifié (tracé ou arrêts) pour une direction.
-  /// Pour une étape "route" : remplace le LineString, conserve les Points.
-  /// Pour une étape "stops" : remplace les Points, conserve le LineString.
-  Future<void> saveStepEdit({
-    required String lineNumber,
-    required EditorStep step,
-    required Map<String, dynamic> updatedFeatureCollection,
-    int? verticesBefore,
-    int? verticesAfter,
-    int? stopsBefore,
-    int? stopsAfter,
-  }) async {
-    final direction = step.isAller ? 'aller' : 'retour';
-    final ref = _db.collection(collEdited).doc(lineNumber);
-    await ref.set({
-      direction: {
-        'feature_collection_json': json.encode(updatedFeatureCollection),
-        'updated_at': FieldValue.serverTimestamp(),
-        'updated_by': AdminAuthService.instance.currentUid,
-      },
-      'last_updated': FieldValue.serverTimestamp(),
-      'last_updated_by': AdminAuthService.instance.currentUid,
-    }, SetOptions(merge: true));
-
-    await _setStepStatus(lineNumber, step, ValidationStatus.modified);
-    await _appendLog(
-      lineNumber: lineNumber,
-      direction: direction,
-      kind: step.isRoute ? 'route' : 'stops',
-      action: 'modified',
-      verticesBefore: verticesBefore,
-      verticesAfter: verticesAfter,
-      stopsBefore: stopsBefore,
-      stopsAfter: stopsAfter,
-    );
-  }
-
   /// Remplace entièrement une direction (tracé + arrêts) — utilisé par le
-  /// sub-flow "Construire la ligne". Marque les 2 étapes de la direction
-  /// (route + stops) à `modified` en une seule opération.
+  /// sub-flow "Construire la ligne". Marque la direction à `modified`.
   Future<void> saveDirectionEdit({
     required String lineNumber,
     required String direction, // 'aller' | 'retour'
@@ -216,16 +178,11 @@ class TransportEditorService {
       'last_updated_by': AdminAuthService.instance.currentUid,
     }, SetOptions(merge: true));
 
-    // Marque route + stops de cette direction à `modified` en une passe
-    final routeKey = direction == 'aller'
-        ? EditorStep.allerRoute.fieldKey
-        : EditorStep.retourRoute.fieldKey;
-    final stopsKey = direction == 'aller'
-        ? EditorStep.allerStops.fieldKey
-        : EditorStep.retourStops.fieldKey;
+    final key = direction == 'aller'
+        ? EditorStep.aller.fieldKey
+        : EditorStep.retour.fieldKey;
     await _db.collection(collValidations).doc(lineNumber).set({
-      routeKey: ValidationStatus.modified.code,
-      stopsKey: ValidationStatus.modified.code,
+      key: ValidationStatus.modified.code,
       'updated_at': FieldValue.serverTimestamp(),
       'updated_by': AdminAuthService.instance.currentUid,
       'updated_by_email': AdminAuthService.instance.currentEmail,

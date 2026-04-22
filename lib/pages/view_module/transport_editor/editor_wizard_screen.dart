@@ -11,9 +11,10 @@ import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widget
 import 'package:rider_ride_hailing_app/provider/transport_editor_provider.dart';
 import 'package:showcaseview/showcaseview.dart';
 
-/// Wizard 4 étapes : tracé aller → tracé retour → arrêts aller → arrêts retour.
-/// Chaque étape affiche la carte OSM + les éléments concernés, avec 3 actions :
-/// Valider tel quel / Modifier / Recommencer.
+/// Wizard 2 étapes : tracé aller → tracé retour.
+/// Chaque étape couvre tracé + arrêts de la direction (gérés ensemble via
+/// le sub-flow `BuildLineFlowScreen`). 2 actions : Valider tel quel /
+/// Construire la ligne XXX.
 class EditorWizardScreen extends StatelessWidget {
   final String lineNumber;
   final EditorStep initialStep;
@@ -21,7 +22,7 @@ class EditorWizardScreen extends StatelessWidget {
   const EditorWizardScreen({
     super.key,
     required this.lineNumber,
-    this.initialStep = EditorStep.allerRoute,
+    this.initialStep = EditorStep.aller,
   });
 
   @override
@@ -49,7 +50,6 @@ class _WizardBodyState extends State<_WizardBody> {
   final GlobalKey _stepperKey = GlobalKey();
   final GlobalKey _mapKey = GlobalKey();
   final GlobalKey _toolbarKey = GlobalKey();
-  final GlobalKey _validateKey = GlobalKey();
   final GlobalKey _modifyKey = GlobalKey();
 
   @override
@@ -58,7 +58,7 @@ class _WizardBodyState extends State<_WizardBody> {
     TutorialHelper.autoStartOnce(
       context: context,
       tourId: 'wizard_v1',
-      keys: [_stepperKey, _mapKey, _validateKey, _modifyKey],
+      keys: [_stepperKey, _mapKey, _modifyKey],
     );
   }
 
@@ -79,45 +79,21 @@ class _WizardBodyState extends State<_WizardBody> {
         }
         return Scaffold(
           appBar: _buildAppBar(p),
-          body: Stack(
+          body: Column(
             children: [
-              Positioned.fill(child: _buildMap(p)),
-              if (!p.step.isRoute)
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  bottom: 210,
-                  width: 260,
-                  child: Material(
-                    elevation: 4,
-                    child: StopsListPanel(
-                      stops: p.stops,
-                      editable: p.isEditing,
-                      onReorder: p.reorderStops,
-                      onRename: p.renameStop,
-                      onDelete: (i) async {
-                        if (await _confirmDelete(context,
-                            'Supprimer l\'arrêt ${p.stops[i].name} ?')) {
-                          p.removeStop(i);
-                        }
-                      },
-                      onFocus: (i) => _mapController.move(
-                          p.stops[i].position, 17),
+              Expanded(
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 340,
+                      child: _buildSidePanel(p),
                     ),
-                  ),
+                    Expanded(child: _buildMap(p)),
+                  ],
                 ),
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: _buildStepper(p),
               ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: _buildToolbar(p),
-              ),
+              // Stepper en bas pour libérer le haut de la carte.
+              _buildStepper(p),
             ],
           ),
         );
@@ -141,7 +117,7 @@ class _WizardBodyState extends State<_WizardBody> {
             await TutorialHelper.reset('wizard_v1');
             if (!mounted) return;
             ShowCaseWidget.of(context).startShowCase(
-              [_stepperKey, _mapKey, _validateKey, _modifyKey],
+              [_stepperKey, _mapKey, _modifyKey],
             );
           },
         ),
@@ -152,14 +128,14 @@ class _WizardBodyState extends State<_WizardBody> {
   Widget _buildStepper(TransportEditorProvider p) {
     return TutoStep(
       stepKey: _stepperKey,
-      title: 'Les 4 étapes',
+      title: 'Les 2 étapes',
       description:
-          'Pour chaque ligne, tu valides dans l\'ordre : tracé aller, '
-          'tracé retour, arrêts aller, arrêts retour. Tape un chiffre pour '
-          'sauter à une étape.',
+          'Pour chaque ligne : vérifie le tracé aller, puis le tracé retour. '
+          'Chaque étape couvre à la fois le tracé et les arrêts. Tape un '
+          'chiffre pour sauter à une étape.',
       child: Container(
-        margin: const EdgeInsets.all(8),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        margin: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.95),
           borderRadius: BorderRadius.circular(10),
@@ -173,10 +149,12 @@ class _WizardBodyState extends State<_WizardBody> {
         child: Row(
           children: [
             for (final s in EditorStep.values) ...[
-              _stepChip(p, s),
+              Expanded(child: _stepChip(p, s)),
               if (s != EditorStep.values.last)
-                const Expanded(
-                    child: Divider(thickness: 1.5, color: Colors.grey)),
+                const SizedBox(
+                  width: 60,
+                  child: Divider(thickness: 1.5, color: Colors.grey),
+                ),
             ],
           ],
         ),
@@ -188,15 +166,14 @@ class _WizardBodyState extends State<_WizardBody> {
     final isCurrent = p.step == s;
     final idx = s.index + 1;
     return InkWell(
-      onTap: p.isEditing
-          ? null
-          : () {
-              p.setStep(s);
-              _recenterMap(p);
-            },
+      onTap: () {
+        p.setStep(s);
+        _recenterMap(p);
+      },
       borderRadius: BorderRadius.circular(30),
-      child: Column(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
             width: 32,
@@ -214,12 +191,13 @@ class _WizardBodyState extends State<_WizardBody> {
               ),
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(width: 8),
           Text(
             s.label,
             style: TextStyle(
-              fontSize: 10,
-              fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+              fontSize: 13,
+              fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
+              color: isCurrent ? const Color(0xFF1565C0) : Colors.black87,
             ),
           ),
         ],
@@ -233,203 +211,185 @@ class _WizardBodyState extends State<_WizardBody> {
     return TutoStep(
       stepKey: _mapKey,
       title: 'Carte OSM',
-      description: p.step.isRoute
-          ? 'Le tracé actuel est affiché. En mode Modifier, tire les points '
-              'pour les déplacer. Les petits + au milieu permettent d\'ajouter '
-              'un point. Appuie longtemps sur un point pour le supprimer.'
-          : 'Les arrêts sont les pins rouges numérotés. En mode Modifier, tire '
-              'les pins pour les déplacer, tape un pin pour le renommer, '
-              'appuie longtemps pour le supprimer, tape sur la carte vide '
-              'pour ajouter un arrêt.',
+      description:
+          'Visualisation de la direction (tracé + arrêts). Pour modifier, '
+          'utilise le bouton "Construire la ligne" qui ouvre le sub-flow '
+          'guidé départ → arrivée → arrêts → affiner.',
       child: OsmBaseMap(
         controller: _mapController,
         initialCenter: center,
         initialZoom: 14,
-        onTap: (_, latlng) => _onMapTap(p, latlng),
         children: [
           EditablePolylineLayer(
             vertices: p.vertices,
             color: color,
-            editable: p.isEditing && p.step.isRoute,
-            onVertexMoved: p.moveVertex,
-            onVertexRemoved: p.removeVertex,
-            onVertexInserted: (idx, pos) => p.insertVertex(pos, afterIndex: idx),
+            editable: false,
           ),
           EditableStopsLayer(
             stops: p.stops,
-            editable: p.isEditing && !p.step.isRoute,
-            onStopMoved: p.moveStop,
-            onStopTapped: (i) => _onStopTapped(p, i),
-            onStopLongPressed: (i) async {
-              if (await _confirmDelete(
-                  context, 'Supprimer l\'arrêt ${p.stops[i].name} ?')) {
-                p.removeStop(i);
-              }
-            },
+            editable: false,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildToolbar(TransportEditorProvider p) {
+  Widget _buildSidePanel(TransportEditorProvider p) {
     return TutoStep(
       stepKey: _toolbarKey,
       title: 'Barre d\'actions',
       description:
-          'Tes 3 actions : Valider tel quel si l\'existant est correct, '
-          'Modifier pour ajuster, Recommencer pour repartir de zéro.',
+          'Reconstruis la direction via "Construire la ligne" (départ → '
+          'arrivée → arrêts → affiner). Le tracé affiché n\'est qu\'un '
+          'repère visuel, pas une validation possible.',
       child: Material(
-        elevation: 8,
-        color: Colors.white,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
-          child: p.isEditing ? _editingActions(p) : _viewActions(p),
+        elevation: 4,
+        color: const Color(0xFFFAFAFA),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+              child: _buildSidebarHeader(p),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                child: _buildSidebarBody(p),
+              ),
+            ),
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 14),
+              child: _viewActions(p),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _viewActions(TransportEditorProvider p) {
-    final status = _statusForCurrentStep(p);
+  Widget _buildSidebarHeader(TransportEditorProvider p) {
     return Column(
-      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
+            const Icon(
+              Icons.route,
+              size: 18,
+              color: Color(0xFF1565C0),
+            ),
+            const SizedBox(width: 6),
             Expanded(
               child: Text(
-                status.isDone
-                    ? 'Étape déjà ${status.label.toLowerCase()} — tu peux la '
-                        'revalider ou passer à la suivante.'
-                    : 'Comment l\'${p.step.isRoute ? "tracé" : "liste d\'arrêts"} '
-                        'te paraît ?',
-                style: const TextStyle(fontSize: 12, color: Colors.black87),
+                p.step.label,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 16),
               ),
             ),
-            if (p.step.next != null)
-              TextButton.icon(
-                onPressed: () {
-                  p.setStep(p.step.next!);
-                  _recenterMap(p);
-                },
-                icon: const Icon(Icons.skip_next),
-                label: const Text('Passer'),
-              ),
           ],
         ),
-        const SizedBox(height: 6),
-        Row(
-          children: [
-            Expanded(
-              child: TutoStep(
-                stepKey: _validateKey,
-                title: 'Valider tel quel',
-                description:
-                    'Si le tracé / les arrêts sont corrects, valide et passe '
-                    'à l\'étape suivante.',
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF43A047),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  onPressed: p.isSaving ? null : () => _onValidateAsIs(p),
-                  icon: const Icon(Icons.check),
-                  label: const Text('Valider tel quel'),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TutoStep(
-                stepKey: _modifyKey,
-                title: 'Modifier',
-                description:
-                    'Mode édition interactif pour corriger les erreurs sans '
-                    'tout refaire.',
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  onPressed: p.isSaving ? null : () => _launchBuildFlow(p),
-                  icon: const Icon(Icons.edit),
-                  label: const Text('Modifier'),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 140,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  foregroundColor: Colors.red,
-                ),
-                onPressed: p.isSaving ? null : () => _launchBuildFlow(p),
-                icon: const Icon(Icons.refresh),
-                label: const Text('Recommencer'),
-              ),
-            ),
-          ],
+        const SizedBox(height: 4),
+        const Text(
+          'Comment cette direction te paraît (tracé + arrêts) ?',
+          style: TextStyle(fontSize: 12, color: Colors.black54),
         ),
       ],
     );
   }
 
-  Widget _editingActions(TransportEditorProvider p) {
-    return Row(
+  Widget _buildSidebarBody(TransportEditorProvider p) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        IconButton(
-          tooltip: 'Annuler la dernière action',
-          onPressed: p.canUndo ? p.undo : null,
-          icon: const Icon(Icons.undo),
+        Text(
+          'Tracé : ${p.vertices.length} point(s)',
+          style: const TextStyle(fontSize: 12, color: Colors.black87),
         ),
-        IconButton(
-          tooltip: 'Refaire',
-          onPressed: p.canRedo ? p.redo : null,
-          icon: const Icon(Icons.redo),
+        const SizedBox(height: 4),
+        Text(
+          'Arrêts : ${p.stops.length}',
+          style: const TextStyle(fontSize: 12, color: Colors.black87),
         ),
-        if (p.step.isRoute)
+        if (p.stops.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          const Text(
+            'Liste des arrêts',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+          const SizedBox(height: 6),
+          for (int i = 0; i < p.stops.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                children: [
+                  Container(
+                    width: 22,
+                    height: 22,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFD32F2F),
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '${i + 1}',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      p.stops[i].name,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _viewActions(TransportEditorProvider p) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TutoStep(
+          stepKey: _modifyKey,
+          title: 'Construire la ligne ${p.lineNumber ?? ""}',
+          description:
+              'Le tracé affiché en fond n\'est qu\'un repère visuel. Tu dois '
+              'tout reconstruire via le sub-flow guidé (départ → arrivée → '
+              'arrêts → affiner). Pas de validation "tel quel".',
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1565C0),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            onPressed: p.isSaving ? null : () => _launchBuildFlow(p),
+            icon: const Icon(Icons.edit_road),
+            label: Text('Construire la ligne ${p.lineNumber ?? ""}'),
+          ),
+        ),
+        if (p.step.next != null) ...[
+          const SizedBox(height: 6),
           TextButton.icon(
-            onPressed: () => _onAutoRoute(p),
-            icon: const Icon(Icons.auto_fix_high),
-            label: const Text('Tracer auto A→B'),
+            onPressed: () {
+              p.setStep(p.step.next!);
+              _recenterMap(p);
+            },
+            icon: const Icon(Icons.skip_next, size: 18),
+            label: const Text('Passer à l\'étape suivante'),
           ),
-        if (!p.step.isRoute)
-          TextButton.icon(
-            onPressed: () => _onAddStopDialog(p),
-            icon: const Icon(Icons.add_location_alt),
-            label: const Text('Ajouter un arrêt'),
-          ),
-        const Spacer(),
-        TextButton(
-          onPressed: p.isSaving
-              ? null
-              : () {
-                  p.setMode(EditorMode.view);
-                  // Recharge depuis le doc pour annuler les modifs non-committées
-                  p.setStep(p.step);
-                },
-          child: const Text('Annuler'),
-        ),
-        const SizedBox(width: 8),
-        ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF1565C0),
-            foregroundColor: Colors.white,
-          ),
-          onPressed: p.isSaving ? null : () => _onCommitEdit(p),
-          icon: p.isSaving
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
-                )
-              : const Icon(Icons.save),
-          label: const Text('Valider cette étape'),
-        ),
+        ],
       ],
     );
   }
@@ -438,11 +398,17 @@ class _WizardBodyState extends State<_WizardBody> {
 
   /// Lance le sub-flow "Construire la ligne" pour la direction courante et
   /// persiste le résultat à la fin. Remplace l'ancien mode édition drag-drop.
+  /// Passe la FC actuelle comme référence pour qu'elle apparaisse en
+  /// arrière-fond semi-transparent dans le sub-flow (toggle-able).
   Future<void> _launchBuildFlow(TransportEditorProvider p) async {
     final line = p.lineNumber;
     if (line == null) return;
     final direction = p.step.isAller ? 'aller' : 'retour';
     final directionLabel = p.step.isAller ? 'aller' : 'retour';
+
+    final dir = p.editedDoc?[direction] as Map<String, dynamic>?;
+    final referenceFc = dir?['feature_collection'] as Map<String, dynamic>?;
+    final colorHex = p.editedDoc?['color'] as String?;
 
     final result = await Navigator.of(context).push<BuildLineFlowResult>(
       MaterialPageRoute(
@@ -450,6 +416,8 @@ class _WizardBodyState extends State<_WizardBody> {
           lineNumber: line,
           direction: direction,
           directionLabel: directionLabel,
+          referenceFeatureCollection: referenceFc,
+          referenceColorHex: colorHex,
         ),
       ),
     );
@@ -473,43 +441,8 @@ class _WizardBodyState extends State<_WizardBody> {
     _goToNextDirection(p);
   }
 
-  /// Passe à la première étape de l'autre direction.
-  void _goToNextDirection(TransportEditorProvider p) {
-    final nextStep = p.step.isAller
-        ? EditorStep.retourRoute
-        : null; // déjà sur retour → fin
-    if (nextStep != null) {
-      p.setStep(nextStep);
-      _recenterMap(p);
-    } else {
-      _snack(context, 'Ligne entièrement vérifiée 🎉');
-      Future.delayed(const Duration(milliseconds: 700), () {
-        if (mounted) Navigator.of(context).pop();
-      });
-    }
-  }
-
-  Future<void> _onValidateAsIs(TransportEditorProvider p) async {
-    final ok = await p.validateAsIs();
-    if (!mounted) return;
-    if (!ok) {
-      _snack(context, p.error ?? 'Validation impossible');
-      return;
-    }
-    _snack(context, '${p.step.label} validé ✓');
-    _goToNextStep(p);
-  }
-
-  Future<void> _onCommitEdit(TransportEditorProvider p) async {
-    final ok = await p.commitEdit();
-    if (!mounted) return;
-    if (!ok) {
-      _snack(context, p.error ?? 'Sauvegarde impossible');
-      return;
-    }
-    _snack(context, '${p.step.label} enregistré ✓');
-    _goToNextStep(p);
-  }
+  /// Passe à la direction suivante, ou ferme le wizard si on a fini.
+  void _goToNextDirection(TransportEditorProvider p) => _goToNextStep(p);
 
   void _goToNextStep(TransportEditorProvider p) {
     final next = p.step.next;
@@ -522,96 +455,6 @@ class _WizardBodyState extends State<_WizardBody> {
         if (mounted) Navigator.of(context).pop();
       });
     }
-  }
-
-  Future<void> _onAutoRoute(TransportEditorProvider p) async {
-    if (p.vertices.length < 2) {
-      _snack(context,
-          'Pose d\'abord au moins 2 points pour définir A et B.');
-      return;
-    }
-    _snack(context, 'Calcul du tracé routier via OSRM…');
-    final ok = await p.autoRouteBetween(
-        [p.vertices.first, p.vertices.last]);
-    if (!mounted) return;
-    _snack(context,
-        ok ? 'Tracé auto appliqué' : 'OSRM indisponible, réessaie.');
-  }
-
-  void _onMapTap(TransportEditorProvider p, LatLng latlng) {
-    if (!p.isEditing) return;
-    if (p.step.isRoute) {
-      // Ajoute un vertex à la fin
-      p.insertVertex(latlng);
-    } else {
-      // Ajoute un arrêt
-      _onAddStopFromTap(p, latlng);
-    }
-  }
-
-  Future<void> _onAddStopFromTap(
-      TransportEditorProvider p, LatLng pos) async {
-    final name = await _promptStopName(context);
-    if (name == null || name.isEmpty) return;
-    p.addStop(pos, name);
-  }
-
-  Future<void> _onAddStopDialog(TransportEditorProvider p) async {
-    _snack(context, 'Tape sur la carte pour poser un arrêt.');
-  }
-
-  Future<void> _onStopTapped(TransportEditorProvider p, int i) async {
-    final current = p.stops[i].name;
-    final name = await _promptStopName(context, initial: current);
-    if (name == null || name.isEmpty) return;
-    p.renameStop(i, name);
-  }
-
-  Future<String?> _promptStopName(BuildContext ctx, {String? initial}) {
-    final ctrl = TextEditingController(text: initial ?? '');
-    return showDialog<String>(
-      context: ctx,
-      builder: (c) => AlertDialog(
-        title: Text(initial == null ? 'Nouvel arrêt' : 'Renommer'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Nom de l\'arrêt',
-            hintText: 'ex: Analakely',
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(c),
-              child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(c, ctrl.text.trim()),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<bool> _confirmDelete(BuildContext ctx, String message) async {
-    final res = await showDialog<bool>(
-      context: ctx,
-      builder: (c) => AlertDialog(
-        content: Text(message),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(c, false),
-              child: const Text('Annuler')),
-          TextButton(
-            onPressed: () => Navigator.pop(c, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Confirmer'),
-          ),
-        ],
-      ),
-    );
-    return res == true;
   }
 
   void _recenterMap(TransportEditorProvider p) {
@@ -642,11 +485,6 @@ class _WizardBodyState extends State<_WizardBody> {
       return LatLng(sumLat / p.stops.length, sumLng / p.stops.length);
     }
     return null;
-  }
-
-  ValidationStatus _statusForCurrentStep(TransportEditorProvider p) {
-    // On ne fetch pas en live dans le wizard (simplifié) : retourne pending
-    return ValidationStatus.pending;
   }
 
   Color _lineColor(TransportEditorProvider p) {

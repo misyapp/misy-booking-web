@@ -32,26 +32,186 @@ class BuildLineFlowScreen extends StatefulWidget {
   final String direction; // 'aller' | 'retour'
   final String directionLabel; // "aller" ou "retour" pour l'UI
 
+  /// FeatureCollection de la direction actuelle (si on reconstruit une
+  /// ligne existante). Rendu en arrière-fond semi-transparent comme repère
+  /// visuel, toggle-able via un bouton dans l'AppBar. `null` = nouvelle
+  /// ligne from scratch, pas de référence.
+  final Map<String, dynamic>? referenceFeatureCollection;
+
+  /// Couleur de la ligne (format "0xFFRRGGBB" ou "#RRGGBB"). Sert à teinter
+  /// le calque de référence pour le rendre reconnaissable. Fallback : bleu.
+  final String? referenceColorHex;
+
   const BuildLineFlowScreen({
     super.key,
     required this.lineNumber,
     required this.direction,
     required this.directionLabel,
+    this.referenceFeatureCollection,
+    this.referenceColorHex,
   });
 
   @override
   State<BuildLineFlowScreen> createState() => _BuildLineFlowScreenState();
 }
 
-class _BuildLineFlowScreenState extends State<BuildLineFlowScreen> {
+class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
+    with SingleTickerProviderStateMixin {
   final MapController _mapController = MapController();
   MapCamera? _lastCamera;
+
+  // Référence (tracé actuel affiché en arrière-fond)
+  List<LatLng> _refLinePoints = const [];
+  List<({LatLng pos, String name})> _refStops = const [];
+  bool _showReference = true;
+  bool _didFitReference = false;
+
+  // Pulse d'opacité pour faire ressortir la référence sans la rendre dominante.
+  // Orange clignotant (fade in/out) → signal visuel "repère seulement".
+  late final AnimationController _pulseCtrl;
+  static const Color _refColor = Color(0xFFFF9800); // orange Material
+  // Plage d'opacité basse intentionnellement : pas une donnée à copier.
+  static const double _pulseMin = 0.15;
+  static const double _pulseMax = 0.45;
 
   @override
   void initState() {
     super.initState();
     // Assure que OsmStopsService est chargé (charge une fois, idempotent)
     OsmStopsService.instance.load();
+    _parseReference();
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulseCtrl.dispose();
+    super.dispose();
+  }
+
+  /// Opacité courante dérivée du pulse (triangulaire avec reverse).
+  double get _pulseOpacity =>
+      _pulseMin + (_pulseMax - _pulseMin) * _pulseCtrl.value;
+
+  void _parseReference() {
+    final fc = widget.referenceFeatureCollection;
+    if (fc == null) return;
+    final linePoints = <LatLng>[];
+    final stops = <({LatLng pos, String name})>[];
+    for (final f in (fc['features'] as List? ?? [])) {
+      final g = f['geometry'] as Map?;
+      if (g == null) continue;
+      if (g['type'] == 'LineString') {
+        for (final c in (g['coordinates'] as List? ?? [])) {
+          linePoints.add(LatLng(
+            (c[1] as num).toDouble(),
+            (c[0] as num).toDouble(),
+          ));
+        }
+      } else if (g['type'] == 'Point') {
+        final props = (f['properties'] as Map?) ?? const {};
+        // Les waypoints (type == 'waypoint') ne sont pas des arrêts visibles,
+        // on les ignore côté référence.
+        if (props['type'] == 'waypoint') continue;
+        final c = g['coordinates'] as List;
+        stops.add((
+          pos: LatLng(
+            (c[1] as num).toDouble(),
+            (c[0] as num).toDouble(),
+          ),
+          name: (props['name'] as String?) ?? '',
+        ));
+      }
+    }
+    _refLinePoints = linePoints;
+    _refStops = stops;
+  }
+
+  bool get _hasReference =>
+      _refLinePoints.isNotEmpty || _refStops.isNotEmpty;
+
+  /// Construit les layers de référence (polyline + stops) enveloppés dans
+  /// des AnimatedBuilder qui se rebuildent à chaque tick du pulse, faisant
+  /// ainsi pulser l'opacité sans toucher le reste de la carte.
+  List<Widget> _buildPulsingReference() {
+    return [
+      if (_refLinePoints.isNotEmpty)
+        AnimatedBuilder(
+          animation: _pulseCtrl,
+          builder: (_, __) {
+            final op = _pulseOpacity;
+            return PolylineLayer(
+              polylines: [
+                Polyline(
+                  points: _refLinePoints,
+                  strokeWidth: 6,
+                  color: _refColor.withOpacity(op),
+                  borderStrokeWidth: 1.5,
+                  borderColor: Colors.white.withOpacity(op * 0.6),
+                ),
+              ],
+            );
+          },
+        ),
+      if (_refStops.isNotEmpty)
+        AnimatedBuilder(
+          animation: _pulseCtrl,
+          builder: (_, __) {
+            final op = _pulseOpacity;
+            return MarkerLayer(
+              markers: [
+                for (final s in _refStops)
+                  Marker(
+                    point: s.pos,
+                    width: 12,
+                    height: 12,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: _refColor.withOpacity(op + 0.05),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withOpacity(op * 0.8),
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+    ];
+  }
+
+  /// Cadre la carte sur la référence (tracé + arrêts) au premier rendu.
+  /// Évite d'ouvrir le sub-flow sur un centrage Tana par défaut qui peut
+  /// laisser la ligne hors viewport.
+  void _maybeFitReference() {
+    if (_didFitReference || !_hasReference) return;
+    final pts = <LatLng>[
+      ..._refLinePoints,
+      for (final s in _refStops) s.pos,
+    ];
+    if (pts.isEmpty) return;
+    _didFitReference = true;
+    // Schedule après le frame pour que MapController soit prêt.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      try {
+        _mapController.fitCamera(
+          CameraFit.bounds(
+            bounds: LatLngBounds.fromPoints(pts),
+            padding: const EdgeInsets.all(60),
+          ),
+        );
+      } catch (_) {
+        // MapController pas encore prêt → le prochain onMapEvent réessaiera
+        _didFitReference = false;
+      }
+    });
   }
 
   @override
@@ -69,6 +229,17 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen> {
               onPressed: () => _confirmClose(context),
             ),
             actions: [
+              if (_hasReference)
+                IconButton(
+                  tooltip: _showReference
+                      ? 'Masquer le tracé actuel'
+                      : 'Afficher le tracé actuel',
+                  icon: Icon(
+                    _showReference ? Icons.layers : Icons.layers_outlined,
+                  ),
+                  onPressed: () =>
+                      setState(() => _showReference = !_showReference),
+                ),
               IconButton(
                 tooltip: p.canUndo
                     ? 'Annuler la dernière action'
@@ -110,12 +281,18 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen> {
                           if (mounted) {
                             setState(() => _lastCamera = e.camera);
                           }
+                          _maybeFitReference();
                         },
                         children: [
-                          // Les arrêts OSM sont visibles à chaque étape : sert
-                          // de référence visuelle pour placer départ/arrivée
-                          // près d'arrêts existants, et d'interactif pour
-                          // ajouter des arrêts en étape stops.
+                          // Calque référence (EN BAS pour rester derrière) :
+                          // simple repère visuel, PAS une donnée à revalider.
+                          // Orange clignotant (pulse d'opacité) pour le rendre
+                          // repérable tout en restant low-intensity.
+                          if (_showReference && _hasReference)
+                            ..._buildPulsingReference(),
+                          // Arrêts OSM bundlés par-dessus la référence pour
+                          // rester cliquables quand on pose départ/arrivée ou
+                          // arrêts.
                           if (_lastCamera != null)
                             OsmStopsLayer(
                               camera: _lastCamera!,

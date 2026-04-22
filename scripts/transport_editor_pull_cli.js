@@ -144,19 +144,26 @@ async function cmdStatus(db) {
   const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   rows.sort((a, b) => a.id.localeCompare(b.id));
   const pad = (s, n) => String(s).padEnd(n);
-  console.log(pad('Ligne', 16), pad('A-Tracé', 12), pad('R-Tracé', 12),
-    pad('A-Arrêts', 12), pad('R-Arrêts', 12), 'par');
-  console.log('─'.repeat(90));
+  console.log(pad('Ligne', 16), pad('Aller', 12), pad('Retour', 12), 'par');
+  console.log('─'.repeat(60));
   for (const r of rows) {
+    // Schema 2 clés (post-avril 2026). Fallback sur l'ancien 4-clés (merge
+    // route + stops) pour les docs pas encore migrés.
+    const aller = r.aller || mergeLegacy(r.aller_route, r.aller_stops);
+    const retour = r.retour || mergeLegacy(r.retour_route, r.retour_stops);
     console.log(
       pad(r.id, 16),
-      pad(r.aller_route || 'pending', 12),
-      pad(r.retour_route || 'pending', 12),
-      pad(r.aller_stops || 'pending', 12),
-      pad(r.retour_stops || 'pending', 12),
+      pad(aller || 'pending', 12),
+      pad(retour || 'pending', 12),
       r.updated_by_email || '-',
     );
   }
+}
+
+function mergeLegacy(route, stops) {
+  if (route === 'modified' || stops === 'modified') return 'modified';
+  if (route === 'validated' && stops === 'validated') return 'validated';
+  return 'pending';
 }
 
 async function cmdDiff(db, args) {
