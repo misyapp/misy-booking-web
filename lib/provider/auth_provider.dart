@@ -21,6 +21,7 @@ import 'package:rider_ride_hailing_app/pages/auth_module/otp_verification_screen
 import 'package:rider_ride_hailing_app/pages/auth_module/phone_number_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/main_navigation_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/home_screen.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/admin_review_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/editor_dashboard_screen.dart';
 import 'package:rider_ride_hailing_app/services/admin_auth_service.dart';
 import 'package:rider_ride_hailing_app/provider/trip_provider.dart';
@@ -193,7 +194,11 @@ class CustomAuthProvider with ChangeNotifier {
   }
 
   Widget _postAuthScreen() {
-    if (Uri.base.toString().contains('transport-editor')) {
+    final url = Uri.base.toString();
+    if (url.contains('transport-admin')) {
+      return const AdminReviewScreen();
+    }
+    if (url.contains('transport-editor')) {
       return const EditorDashboardScreen();
     }
     return const MainNavigationScreen();
@@ -227,19 +232,24 @@ class CustomAuthProvider with ChangeNotifier {
         return;
       }
 
-      // 🎯 Mode éditeur terrain : flow simplifié.
-      // Le compte consultant n'a pas de doc Firestore `users/{uid}` (créé
-      // via Auth admin SDK uniquement). On court-circuite donc toute la
-      // logique user/guest/phoneNo et on re-pousse le dashboard, qui a
-      // son propre gate `AdminAuthService` sur le custom claim.
-      if (Uri.base.toString().contains('transport-editor')) {
+      // 🎯 Mode éditeur terrain OU review admin : flow simplifié.
+      // Les comptes consultant/admin n'ont pas de doc Firestore `users/{uid}`
+      // (créés via Auth admin SDK uniquement). On court-circuite toute la
+      // logique user/guest/phoneNo et on re-pousse le dashboard adéquat
+      // qui a son propre gate `AdminAuthService` sur le custom claim.
+      final _url = Uri.base.toString();
+      final _isAdminReview = _url.contains('transport-admin');
+      final _isEditor = _url.contains('transport-editor');
+      if (_isAdminReview || _isEditor) {
         await hideLoading();
         if (user != null) {
           currentUser = user;
           AdminAuthService.instance.invalidate();
           pushAndRemoveUntil(
             context: MyGlobalKeys.navigatorKey.currentContext!,
-            screen: const EditorDashboardScreen(),
+            screen: _isAdminReview
+                ? const AdminReviewScreen()
+                : const EditorDashboardScreen(),
           );
         }
         return;

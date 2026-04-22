@@ -21,6 +21,7 @@ class TransportEditorService {
   static const String collEdited = 'transport_lines_edited';
   static const String collValidations = 'transport_line_validations';
   static const String collLog = 'transport_edits_log';
+  static const String collPublished = 'transport_lines_published';
 
   FirebaseFirestore get _db => FirebaseFirestore.instance;
 
@@ -183,6 +184,10 @@ class TransportEditorService {
         : EditorStep.retour.fieldKey;
     await _db.collection(collValidations).doc(lineNumber).set({
       key: ValidationStatus.modified.code,
+      // Remet le statut admin à pending et efface un éventuel motif de rejet
+      // précédent : chaque nouvelle édition consultant = nouvelle review admin.
+      '${direction}_admin_status': AdminStatus.pending.code,
+      '${direction}_rejection_reason': FieldValue.delete(),
       'updated_at': FieldValue.serverTimestamp(),
       'updated_by': AdminAuthService.instance.currentUid,
       'updated_by_email': AdminAuthService.instance.currentEmail,
@@ -196,6 +201,108 @@ class TransportEditorService {
       verticesAfter: numVertices,
       stopsAfter: numStops,
     );
+  }
+
+  // ───────────────────────── Admin review ─────────────────────────
+
+  /// Valide la direction éditée par un consultant : copie le FC dans la
+  /// collection prod (`transport_lines_published`) et met à jour le statut
+  /// admin. L'app lit cette collection en priorité → la ligne arrive en
+  /// prod sans rebuild Flutter.
+  Future<void> approveDirection({
+    required String lineNumber,
+    required String direction, // 'aller' | 'retour'
+    required Map<String, dynamic> featureCollection,
+    Map<String, dynamic>? lineMetadata, // display_name, color, transport_type
+  }) async {
+    final now = FieldValue.serverTimestamp();
+    final uid = AdminAuthService.instance.currentUid;
+    final email = AdminAuthService.instance.currentEmail;
+
+    // 1. Écrit le FC validé dans la collection prod.
+    final pubRef = _db.collection(collPublished).doc(lineNumber);
+    await pubRef.set({
+      'line_number': lineNumber,
+      if (lineMetadata != null) ...{
+        if (lineMetadata['display_name'] != null)
+          'display_name': lineMetadata['display_name'],
+        if (lineMetadata['transport_type'] != null)
+          'transport_type': lineMetadata['transport_type'],
+        if (lineMetadata['color'] != null) 'color': lineMetadata['color'],
+      },
+      direction: {
+        'feature_collection_json': json.encode(featureCollection),
+        'published_at': now,
+        'published_by_uid': uid,
+        'published_by_email': email,
+      },
+      'last_updated': now,
+    }, SetOptions(merge: true));
+
+    // 2. MAJ statut admin dans transport_line_validations.
+    await _db.collection(collValidations).doc(lineNumber).set({
+      '${direction}_admin_status': AdminStatus.approved.code,
+      '${direction}_reviewed_at': now,
+      '${direction}_reviewed_by_email': email,
+      // Efface un éventuel motif de rejet précédent
+      '${direction}_rejection_reason': FieldValue.delete(),
+      'updated_at': now,
+    }, SetOptions(merge: true));
+
+    await _appendLog(
+      lineNumber: lineNumber,
+      direction: direction,
+      kind: 'admin_review',
+      action: 'approved',
+    );
+  }
+
+  /// Rejette la direction : remet le statut consultant à `pending` (→ il
+  /// retrouve la ligne à refaire dans son dashboard) et enregistre un motif.
+  Future<void> rejectDirection({
+    required String lineNumber,
+    required String direction, // 'aller' | 'retour'
+    required String reason,
+  }) async {
+    final now = FieldValue.serverTimestamp();
+    final email = AdminAuthService.instance.currentEmail;
+
+    await _db.collection(collValidations).doc(lineNumber).set({
+      '${direction}_admin_status': AdminStatus.rejected.code,
+      '${direction}_reviewed_at': now,
+      '${direction}_reviewed_by_email': email,
+      '${direction}_rejection_reason': reason,
+      // Rebascule le statut consultant à `pending` → force le refaire
+      direction: ValidationStatus.pending.code,
+      'updated_at': now,
+    }, SetOptions(merge: true));
+
+    await _appendLog(
+      lineNumber: lineNumber,
+      direction: direction,
+      kind: 'admin_review',
+      action: 'rejected',
+    );
+  }
+
+  /// Charge la FC publiée pour une direction donnée (null si pas publiée).
+  /// Utilisé par TransportLinesService pour lire la prod Firestore en
+  /// priorité sur l'asset bundlé.
+  Future<Map<String, dynamic>?> loadPublishedFeatureCollection(
+      String lineNumber, String direction) async {
+    final snap = await _db.collection(collPublished).doc(lineNumber).get();
+    if (!snap.exists) return null;
+    final data = snap.data();
+    if (data == null) return null;
+    final dir = data[direction];
+    if (dir is! Map) return null;
+    final encoded = dir['feature_collection_json'];
+    if (encoded is! String) return null;
+    try {
+      return json.decode(encoded) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
   }
 
   // ───────────────────────── Nouvelle ligne ─────────────────────────

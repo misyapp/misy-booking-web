@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:rider_ride_hailing_app/models/transport_line_validation.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/login_screen.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/admin_review_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/editor_new_line_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/editor_wizard_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/tutorial_helpers.dart';
@@ -85,6 +86,21 @@ class _DashboardBodyState extends State<_DashboardBody> {
         backgroundColor: const Color(0xFF1565C0),
         foregroundColor: Colors.white,
         actions: [
+          FutureBuilder<bool>(
+            future: AdminAuthService.instance.isTransportAdmin(),
+            builder: (ctx, snap) {
+              if (snap.data != true) return const SizedBox.shrink();
+              return IconButton(
+                tooltip: 'Review admin',
+                icon: const Icon(Icons.admin_panel_settings_outlined),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const AdminReviewScreen(),
+                  ),
+                ),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'Revoir le tuto',
             icon: const Icon(Icons.school_outlined),
@@ -295,9 +311,9 @@ class _DashboardBodyState extends State<_DashboardBody> {
       {bool withTutoKey = false}) {
     final pastilles = Row(
       children: [
-        _pastille('Aller', v.aller),
+        _pastille('Aller', v.aller, v.allerAdmin),
         const SizedBox(width: 6),
-        _pastille('Retour', v.retour),
+        _pastille('Retour', v.retour, v.retourAdmin),
       ],
     );
     if (withTutoKey) {
@@ -305,32 +321,53 @@ class _DashboardBodyState extends State<_DashboardBody> {
         stepKey: _pastillesKey,
         title: 'État des 2 vérifications',
         description:
-            'Gris = à vérifier, vert = validé tel quel, orange = modifié. '
-            'Les 2 pastilles : tracé aller (avec ses arrêts) et tracé retour '
-            '(avec ses arrêts).',
+            'Gris = à vérifier, orange = modifié (en attente review admin), '
+            'rouge = à refaire (l\'admin a renvoyé, tape pour voir le motif), '
+            'vert = validé par admin et en prod.',
         child: pastilles,
       );
     }
     return pastilles;
   }
 
-  Widget _pastille(String label, ValidationStatus status) {
+  Widget _pastille(String label, ValidationStatus status, AdminReview admin) {
+    // Priorité d'affichage :
+    //   1. rejected → rouge "À refaire" (plus critique, consultant doit agir)
+    //   2. approved → vert "En prod"
+    //   3. modified → orange "Envoyé"
+    //   4. pending → gris
     Color bg;
     IconData? icon;
-    switch (status) {
-      case ValidationStatus.validated:
-        bg = const Color(0xFF66BB6A);
-        icon = Icons.check;
-        break;
-      case ValidationStatus.modified:
-        bg = const Color(0xFFFF9800);
-        icon = Icons.edit;
-        break;
-      case ValidationStatus.pending:
-        bg = Colors.grey.shade300;
-        icon = null;
+    String displayLabel = label;
+    String? rejectReason;
+
+    if (admin.status == AdminStatus.rejected) {
+      bg = const Color(0xFFE53935);
+      icon = Icons.replay;
+      displayLabel = '$label · À refaire';
+      rejectReason = admin.rejectionReason;
+    } else if (admin.status == AdminStatus.approved) {
+      bg = const Color(0xFF66BB6A);
+      icon = Icons.check_circle;
+      displayLabel = '$label · En prod';
+    } else {
+      switch (status) {
+        case ValidationStatus.validated:
+          bg = const Color(0xFF66BB6A);
+          icon = Icons.check;
+          break;
+        case ValidationStatus.modified:
+          bg = const Color(0xFFFF9800);
+          icon = Icons.schedule; // en attente admin
+          displayLabel = '$label · Envoyé';
+          break;
+        case ValidationStatus.pending:
+          bg = Colors.grey.shade300;
+          icon = null;
+      }
     }
-    return Container(
+
+    final pastille = Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: bg,
@@ -340,22 +377,33 @@ class _DashboardBodyState extends State<_DashboardBody> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 11, color: Colors.white),
+            Icon(icon, size: 11,
+                color: bg == Colors.grey.shade300
+                    ? Colors.black54
+                    : Colors.white),
             const SizedBox(width: 3),
           ],
           Text(
-            label,
+            displayLabel,
             style: TextStyle(
               fontSize: 10,
-              color: status == ValidationStatus.pending
-                  ? Colors.black87
-                  : Colors.white,
+              color: bg == Colors.grey.shade300 ? Colors.black87 : Colors.white,
               fontWeight: FontWeight.w600,
             ),
           ),
         ],
       ),
     );
+
+    if (rejectReason != null && rejectReason.isNotEmpty) {
+      return Tooltip(
+        message: 'Motif admin : $rejectReason',
+        triggerMode: TooltipTriggerMode.tap,
+        showDuration: const Duration(seconds: 6),
+        child: pastille,
+      );
+    }
+    return pastille;
   }
 
   Widget _colorDot(int colorValue) {

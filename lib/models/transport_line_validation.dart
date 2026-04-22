@@ -74,19 +74,88 @@ extension EditorStepX on EditorStep {
   }
 }
 
+/// Statut admin par direction (workflow review/publication).
+enum AdminStatus { pending, approved, rejected }
+
+extension AdminStatusX on AdminStatus {
+  String get code {
+    switch (this) {
+      case AdminStatus.pending:
+        return 'pending';
+      case AdminStatus.approved:
+        return 'approved';
+      case AdminStatus.rejected:
+        return 'rejected';
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case AdminStatus.pending:
+        return 'À reviewer';
+      case AdminStatus.approved:
+        return 'Validé admin';
+      case AdminStatus.rejected:
+        return 'À refaire';
+    }
+  }
+
+  static AdminStatus fromCode(String? code) {
+    switch (code) {
+      case 'approved':
+        return AdminStatus.approved;
+      case 'rejected':
+        return AdminStatus.rejected;
+      default:
+        return AdminStatus.pending;
+    }
+  }
+}
+
+/// Review admin pour une direction donnée.
+class AdminReview {
+  final AdminStatus status;
+  final DateTime? reviewedAt;
+  final String? reviewedByEmail;
+  final String? rejectionReason;
+
+  const AdminReview({
+    this.status = AdminStatus.pending,
+    this.reviewedAt,
+    this.reviewedByEmail,
+    this.rejectionReason,
+  });
+
+  static AdminReview fromFirestore(Map<String, dynamic> data, String direction) {
+    final ts = data['${direction}_reviewed_at'];
+    return AdminReview(
+      status: AdminStatusX.fromCode(data['${direction}_admin_status'] as String?),
+      reviewedAt: ts is Timestamp ? ts.toDate() : null,
+      reviewedByEmail: data['${direction}_reviewed_by_email'] as String?,
+      rejectionReason: data['${direction}_rejection_reason'] as String?,
+    );
+  }
+}
+
 class TransportLineValidation {
   final String lineNumber;
   final ValidationStatus aller;
   final ValidationStatus retour;
+  final AdminReview allerAdmin;
+  final AdminReview retourAdmin;
   final DateTime? updatedAt;
   final String? updatedBy;
+  final String? updatedByEmail;
 
   const TransportLineValidation({
     required this.lineNumber,
     this.aller = ValidationStatus.pending,
     this.retour = ValidationStatus.pending,
+    this.allerAdmin = const AdminReview(),
+    this.retourAdmin = const AdminReview(),
     this.updatedAt,
     this.updatedBy,
+    this.updatedByEmail,
   });
 
   factory TransportLineValidation.empty(String lineNumber) =>
@@ -104,8 +173,11 @@ class TransportLineValidation {
       lineNumber: lineNumber,
       aller: _readStatus(data, 'aller', 'aller_route', 'aller_stops'),
       retour: _readStatus(data, 'retour', 'retour_route', 'retour_stops'),
+      allerAdmin: AdminReview.fromFirestore(data, 'aller'),
+      retourAdmin: AdminReview.fromFirestore(data, 'retour'),
       updatedAt: ts is Timestamp ? ts.toDate() : null,
       updatedBy: data['updated_by'] as String?,
+      updatedByEmail: data['updated_by_email'] as String?,
     );
   }
 
@@ -136,6 +208,15 @@ class TransportLineValidation {
         return aller;
       case EditorStep.retour:
         return retour;
+    }
+  }
+
+  AdminReview adminReviewFor(EditorStep step) {
+    switch (step) {
+      case EditorStep.aller:
+        return allerAdmin;
+      case EditorStep.retour:
+        return retourAdmin;
     }
   }
 

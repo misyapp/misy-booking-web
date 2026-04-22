@@ -144,17 +144,28 @@ async function cmdStatus(db) {
   const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   rows.sort((a, b) => a.id.localeCompare(b.id));
   const pad = (s, n) => String(s).padEnd(n);
-  console.log(pad('Ligne', 16), pad('Aller', 12), pad('Retour', 12), 'par');
-  console.log('─'.repeat(60));
+  console.log(
+    pad('Ligne', 16),
+    pad('Aller', 12),
+    pad('Retour', 12),
+    pad('A-Admin', 12),
+    pad('R-Admin', 12),
+    'par',
+  );
+  console.log('─'.repeat(90));
   for (const r of rows) {
     // Schema 2 clés (post-avril 2026). Fallback sur l'ancien 4-clés (merge
     // route + stops) pour les docs pas encore migrés.
     const aller = r.aller || mergeLegacy(r.aller_route, r.aller_stops);
     const retour = r.retour || mergeLegacy(r.retour_route, r.retour_stops);
+    const aAdmin = r.aller_admin_status || 'pending';
+    const rAdmin = r.retour_admin_status || 'pending';
     console.log(
       pad(r.id, 16),
       pad(aller || 'pending', 12),
       pad(retour || 'pending', 12),
+      pad(aAdmin, 12),
+      pad(rAdmin, 12),
       r.updated_by_email || '-',
     );
   }
@@ -205,7 +216,7 @@ async function cmdDiff(db, args) {
 async function cmdPull(db, args) {
   const lineNumber = args._[0];
   if (!args.all && !lineNumber) {
-    console.error('Usage: pull <ligne>   ou   pull --all');
+    console.error('Usage: pull <ligne>   ou   pull --all [--approved-only]');
     process.exit(1);
   }
 
@@ -222,18 +233,36 @@ async function cmdPull(db, args) {
     docs = [d];
   }
 
+  // Pre-fetch des validations pour le filtre --approved-only
+  let validationsMap = null;
+  if (args['approved-only']) {
+    const vSnap = await db.collection(COLL_VALIDATIONS).get();
+    validationsMap = new Map(vSnap.docs.map((d) => [d.id, d.data()]));
+    console.log('🔒 Filtre --approved-only : pull uniquement des directions validées par l\'admin.\n');
+  }
+
   const manifest = readManifest();
   const byLine = new Map(manifest.lines.map((l) => [l.line_number, l]));
 
   let touched = 0;
+  let skipped = 0;
   for (const doc of docs) {
     const lineNumber = doc.id;
     const data = doc.data();
     const paths = assetPaths(lineNumber);
+    const validation = validationsMap?.get(lineNumber) || {};
 
     for (const dir of ['aller', 'retour']) {
       const fc = extractFeatureCollection(data[dir]);
       if (!fc) continue;
+      if (args['approved-only']) {
+        const adminStatus = validation[`${dir}_admin_status`];
+        if (adminStatus !== 'approved') {
+          console.log(`⏭  ${dir.padEnd(6)} ${lineNumber}  (admin_status=${adminStatus || 'pending'})`);
+          skipped++;
+          continue;
+        }
+      }
       writeFeatureCollection(paths[dir], fc);
       console.log(`✅ ${dir.padEnd(6)} ${lineNumber}  → ${paths[dir]}`);
       touched++;
@@ -280,7 +309,8 @@ async function cmdPull(db, args) {
   manifest.lines.sort((a, b) => a.line_number.localeCompare(b.line_number));
   writeManifest(manifest);
   console.log(`\n📝 manifest mis à jour (${manifest.lines.length} lignes)`);
-  console.log(`\n${touched} fichier(s) écrit(s). git diff pour revue.`);
+  const skipMsg = skipped > 0 ? ` (${skipped} non-approuvé(s) ignoré(s))` : '';
+  console.log(`\n${touched} fichier(s) écrit(s)${skipMsg}. git diff pour revue.`);
 }
 
 async function cmdPrune(db, args) {

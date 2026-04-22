@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:rider_ride_hailing_app/functions/print_function.dart';
 import 'package:rider_ride_hailing_app/models/transport_line.dart';
 import 'package:rider_ride_hailing_app/models/route_planner.dart';
+import 'package:rider_ride_hailing_app/services/transport_editor_service.dart';
 
 /// Métadonnées d'une direction (aller ou retour) depuis le manifest
 class RouteMetadata {
@@ -234,7 +235,15 @@ class TransportLinesService {
     }
   }
 
-  /// Charge un tracé unique (aller OU retour)
+  /// Charge un tracé unique (aller OU retour).
+  ///
+  /// Ordre de lookup :
+  /// 1. Firestore `transport_lines_published/{line}.{direction}` (prod live
+  ///    éditée par les consultants + validée par l'admin). Si présent →
+  ///    gagne sur l'asset bundlé, permet de pousser des corrections sans
+  ///    rebuild Flutter.
+  /// 2. Asset bundlé (`assets/transport_lines/core/{line}_{dir}.geojson`).
+  /// 3. Remote Firebase Storage via URL (legacy).
   Future<TransportLine?> _loadSingleRoute(
     String lineNumber,
     RouteMetadata route,
@@ -242,15 +251,23 @@ class TransportLinesService {
     bool isRetour,
   ) async {
     try {
-      String geojsonContent;
       final direction = isRetour ? 'retour' : 'aller';
       final filename = '${lineNumber}_$direction.geojson';
 
+      // 1. Essai Firestore prod live (bypass cache — les validations admin
+      //    doivent apparaître immédiatement côté app).
+      final published = await TransportEditorService.instance
+          .loadPublishedFeatureCollection(lineNumber, direction);
+      if (published != null) {
+        return TransportLine.fromGeoJson(published, filename);
+      }
+
+      // 2. Asset bundlé
+      String geojsonContent;
       if (isBundled && route.assetPath != null) {
-        // Charger depuis assets locaux
         geojsonContent = await rootBundle.loadString(route.assetPath!);
       } else if (route.remoteUrl != null) {
-        // Charger depuis Firebase Storage (avec cache local)
+        // 3. Remote (legacy Firebase Storage)
         geojsonContent = await _fetchRemoteGeoJson(route.remoteUrl!);
       } else {
         return null;

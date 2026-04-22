@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
@@ -14,6 +15,7 @@ import 'package:rider_ride_hailing_app/functions/print_function.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/splash_screen.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/web_entry_screen.dart';
 import 'package:rider_ride_hailing_app/pages/test_invoice_regeneration_page.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/admin_review_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/editor_dashboard_screen.dart';
 import 'package:rider_ride_hailing_app/provider/admin_settings_provider.dart';
 import 'package:rider_ride_hailing_app/provider/airtel_money_payment_gateway_provider.dart';
@@ -83,7 +85,14 @@ void _clearFirestoreCacheInBackground() {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
+  // URL path-based sur le web : Bluehost a déjà un SPA-fallback qui sert
+  // index.html pour `/transport-editor` → Flutter doit lire le pathname,
+  // pas le fragment. Sinon `Uri.base` ne voit pas le deep-link.
+  if (kIsWeb) {
+    usePathUrlStrategy();
+  }
+
   // Configure error widget for debugging
   // 🔧 FIX: Utiliser Container au lieu de MaterialApp+Scaffold pour éviter
   // les erreurs de layout avec contraintes infinies
@@ -596,6 +605,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 routes: {
                   '/test-invoice': (context) => const TestInvoiceRegenerationPage(),
                   '/transport-editor': (context) => const EditorDashboardScreen(),
+                  '/transport-admin': (context) => const AdminReviewScreen(),
                 },
                 builder: EasyLoading.init(),
               ));

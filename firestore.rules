@@ -15,12 +15,24 @@ service cloud.firestore {
     }
 
     match /transport_line_validations/{line} {
-      allow read, write: if request.auth.token.transport_editor == true;
+      // Editor écrit son état de travail ; admin ajoute son review (update).
+      allow read, create: if request.auth.token.transport_editor == true;
+      allow update: if request.auth.token.transport_editor == true
+        || request.auth.token.transport_admin == true;
     }
 
     match /transport_edits_log/{id} {
-      allow create, read: if request.auth.token.transport_editor == true;
+      allow create, read: if request.auth.token.transport_editor == true
+        || request.auth.token.transport_admin == true;
       allow update, delete: if false;  // logs immuables
+    }
+
+    // Lignes publiées = source prod live, lue par l'app mobile/web.
+    // Seul l'admin peut publier ; lecture publique pour que l'app serve
+    // les lignes validées sans login.
+    match /transport_lines_published/{line} {
+      allow read: if true;
+      allow write: if request.auth.token.transport_admin == true;
     }
 
     // ──────────────────────────────────────────────────────────────────
