@@ -58,7 +58,7 @@ class _WizardBodyState extends State<_WizardBody> {
     TutorialHelper.autoStartOnce(
       context: context,
       tourId: 'wizard_v1',
-      keys: [_stepperKey, _mapKey, _modifyKey],
+      keys: [_stepperKey, _mapKey, _toolbarKey, _modifyKey],
     );
   }
 
@@ -117,7 +117,7 @@ class _WizardBodyState extends State<_WizardBody> {
             await TutorialHelper.reset('wizard_v1');
             if (!mounted) return;
             ShowCaseWidget.of(context).startShowCase(
-              [_stepperKey, _mapKey, _modifyKey],
+              [_stepperKey, _mapKey, _toolbarKey, _modifyKey],
             );
           },
         ),
@@ -438,11 +438,8 @@ class _WizardBodyState extends State<_WizardBody> {
     // Après une reconstruction complète, route + stops de la direction sont
     // tous deux modifiés → on saute à la prochaine étape pending de l'autre
     // direction (ou fin du wizard).
-    _goToNextDirection(p);
+    _goToNextStep(p);
   }
-
-  /// Passe à la direction suivante, ou ferme le wizard si on a fini.
-  void _goToNextDirection(TransportEditorProvider p) => _goToNextStep(p);
 
   void _goToNextStep(TransportEditorProvider p) {
     final next = p.step.next;

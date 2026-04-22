@@ -12,7 +12,7 @@
  *        node scripts/transport_editor_pull_cli.js pull 017
  *        node scripts/transport_editor_pull_cli.js pull --all
  *        node scripts/transport_editor_pull_cli.js prune --all
- *   4) git diff → commit → rsync vers Bluehost.
+ *   4) git diff → commit → rsync vers OVH (book.misy.app).
  *
  * Pré-requis : assets/json_files/service_account_credential.json
  */

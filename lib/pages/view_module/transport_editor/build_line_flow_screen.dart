@@ -555,17 +555,15 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
       lineNumber: widget.lineNumber,
       direction: widget.direction,
     );
+    final lsFeature = (fc['features'] as List)
+        .cast<Map<String, dynamic>>()
+        .firstWhere(
+          (f) => (f['geometry'] as Map?)?['type'] == 'LineString',
+          orElse: () => const {},
+        );
     final numVertices =
-        (fc['features'] as List).firstWhere(
-              (f) => f['geometry']['type'] == 'LineString',
-              orElse: () => null,
-            ) !=
-                null
-            ? ((fc['features'] as List).firstWhere(
-                    (f) => f['geometry']['type'] == 'LineString')['geometry']
-                    ['coordinates'] as List)
-                .length
-            : 0;
+        ((lsFeature['geometry'] as Map?)?['coordinates'] as List?)?.length ??
+            0;
     final numStops = 2 + p.stops.length;
     Navigator.of(context).pop(
       BuildLineFlowResult(

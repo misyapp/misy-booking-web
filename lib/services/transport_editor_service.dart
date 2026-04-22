@@ -148,17 +148,6 @@ class TransportEditorService {
     }
   }
 
-  /// Marque l'étape comme validée telle quelle (aucune modif du FC).
-  Future<void> markValidated(String lineNumber, EditorStep step) async {
-    await _setStepStatus(lineNumber, step, ValidationStatus.validated);
-    await _appendLog(
-      lineNumber: lineNumber,
-      direction: step.isAller ? 'aller' : 'retour',
-      kind: 'direction',
-      action: 'validated',
-    );
-  }
-
   /// Remplace entièrement une direction (tracé + arrêts) — utilisé par le
   /// sub-flow "Construire la ligne". Marque la direction à `modified`.
   Future<void> saveDirectionEdit({

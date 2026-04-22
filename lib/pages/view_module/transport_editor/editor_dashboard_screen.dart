@@ -208,8 +208,8 @@ class _DashboardBodyState extends State<_DashboardBody> {
       Map<String, TransportLineValidation> validations) {
     if (_allMeta.isEmpty) return const SizedBox.shrink();
     final total = _allMeta.length;
-    final done = validations.values.where((v) => v.isFullyValidated).length;
-    final pct = (done / total * 100).round();
+    final published = validations.values.where((v) => v.isPublished).length;
+    final pct = (published / total * 100).round();
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12),
       padding: const EdgeInsets.all(10),
@@ -224,8 +224,7 @@ class _DashboardBodyState extends State<_DashboardBody> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Progression : $done / $total lignes entièrement validées '
-              '($pct%)',
+              'En prod : $published / $total lignes validées admin ($pct%)',
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
           ),

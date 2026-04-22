@@ -222,6 +222,13 @@ class TransportLineValidation {
 
   bool get isFullyValidated => aller.isDone && retour.isDone;
 
+  /// True seulement si les 2 directions ont été validées par l'admin et sont
+  /// donc publiées en prod. Distinct de [isFullyValidated] qui retourne vrai
+  /// dès que le consultant a modifié les 2 (mais pas encore reviewé).
+  bool get isPublished =>
+      allerAdmin.status == AdminStatus.approved &&
+      retourAdmin.status == AdminStatus.approved;
+
   /// Étape non-validée la plus précoce (reprise du wizard).
   EditorStep get nextPendingStep {
     for (final step in EditorStep.values) {

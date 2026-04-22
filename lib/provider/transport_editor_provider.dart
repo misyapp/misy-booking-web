@@ -244,26 +244,6 @@ class TransportEditorProvider extends ChangeNotifier {
 
   // ─────────── Persistance ───────────
 
-  /// Valide l'étape telle quelle (aucune modif du doc Firestore).
-  Future<bool> validateAsIs() async {
-    final line = _lineNumber;
-    if (line == null) return false;
-    _saving = true;
-    _error = null;
-    notifyListeners();
-    try {
-      await _service.markValidated(line, _step);
-      _mode = EditorMode.view;
-      return true;
-    } catch (e) {
-      _error = 'Validation KO: $e';
-      return false;
-    } finally {
-      _saving = false;
-      notifyListeners();
-    }
-  }
-
   /// Remplace entièrement une direction (tracé + arrêts) avec le résultat
   /// du sub-flow "Construire la ligne". Marque automatiquement les 2 étapes
   /// de la direction à `modified`.
