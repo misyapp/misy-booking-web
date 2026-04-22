@@ -556,7 +556,12 @@ exports.sendNotificationFunction = functions.https.onRequest(
 
         const invalidTokens = [];
 
-        for (let i = 0; i < deviceTokens.length; i++) {
+        // Envoi FCM en parallèle plutôt que séquentiel : chaque requête est
+        // indépendante (un token = un appel). Les erreurs sont capturées dans
+        // chaque sendOne (pas de rejet global), donc Promise.all se resout
+        // toujours une fois que toutes les notifs ont répondu. Le tracking
+        // des tokens invalides (404) est conservé à l'identique.
+        const sendOne = async (token) => {
           const re = {
             message: {
               notification: {
@@ -567,11 +572,9 @@ exports.sendNotificationFunction = functions.https.onRequest(
                 id: id,
                 userId: userId,
               },
-              token: deviceTokens[i],
+              token: token,
             },
           };
-
-          console.log({ "Notification Payload": re }, deviceTokens[i]);
 
           try {
             const response = await axios.post(
@@ -584,19 +587,23 @@ exports.sendNotificationFunction = functions.https.onRequest(
                 },
               },
             );
-
-            console.log(`Notification sent successfully
-            to ${deviceTokens[i]}:`, response.data);
+            console.log(
+              `Notification sent successfully to ${token}:`,
+              response.data,
+            );
           } catch (error) {
-            console.log(`Error sending notification
-            to ${deviceTokens[i]}:`, error.message);
-
+            console.log(
+              `Error sending notification to ${token}:`,
+              error.message,
+            );
             // Check if error response exists and if status is 404
             if (error.response && error.response.status === 404) {
-              invalidTokens.push(deviceTokens[i]);
+              invalidTokens.push(token);
             }
           }
-        }
+        };
+
+        await Promise.all(deviceTokens.map(sendOne));
 
 
         console.log("Invalid Tokens:", invalidTokens);
