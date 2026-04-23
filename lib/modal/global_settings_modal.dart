@@ -22,6 +22,7 @@ class GlobalSettingsModal {
   bool enableSequentialNotification;
   int sequentialNotificationTimeout;
   bool sequentialFallbackToLegacy;
+  double airportSurcharge;
 
   GlobalSettingsModal(
       {required this.adminCommission,
@@ -44,7 +45,8 @@ class GlobalSettingsModal {
       required this.maxWaitingTimeInMin,
       required this.enableSequentialNotification,
       required this.sequentialNotificationTimeout,
-      required this.sequentialFallbackToLegacy});
+      required this.sequentialFallbackToLegacy,
+      required this.airportSurcharge});
   factory GlobalSettingsModal.fromJson(Map json) {
     myCustomPrintStatement("json modal global setting is that $json");
     return GlobalSettingsModal(
@@ -80,6 +82,7 @@ class GlobalSettingsModal {
                 .first),
         enableSequentialNotification: json['enableSequentialNotification'] ?? false,
         sequentialNotificationTimeout: json['sequentialNotificationTimeout'] ?? 30,
-        sequentialFallbackToLegacy: json['sequentialFallbackToLegacy'] ?? true);
+        sequentialFallbackToLegacy: json['sequentialFallbackToLegacy'] ?? true,
+        airportSurcharge: double.parse((json['airport_surcharge'] ?? 5000).toString()));
   }
 }

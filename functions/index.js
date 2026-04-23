@@ -253,65 +253,47 @@ exports.mainFunction = functions.https.onRequest(async (req, res) => {
         db.collection(bookingsCollection)
           .doc(bookingData.id).update({
             isBookingConfirmed: BookingConfirmStatus.PENDING,
-
+            confirmationPendingSince: admin.firestore.Timestamp.now(),
           });
         console.log({ message: "Job Updated SUCCESSFULLY" });
       } else if (BookingStatus.ACCEPTED == bookingData.status && bookingData.isBookingConfirmed == BookingConfirmStatus.PENDING) {
+        // Driver n'a pas confirmé dans les 15 min → remettre la course en
+        // disponible pour d'autres chauffeurs (même comportement qu'un rejet).
+        // PAS de cancelledBooking, PAS de conversion en instantané.
+        // Le rider ne voit rien (transparent).
+        console.log(`Scheduled booking ${bookingId}: driver ${bookingData.acceptedBy} didn't confirm — resetting to available`);
+
+        // Notifier le driver assigné que sa confirmation a expiré
         notificationData = {
           tokens: driverData.deviceId,
           title: translate("bookingCancelled", driverData.preferedLanguage),
           body: translate("bookingCancelNotConfirmInTimeString", driverData.preferedLanguage),
           bookingId: bookingId,
           userId: driverData.id,
-
         };
 
-        // notificationResponse =
-        await axios.post(
-          sendNotificationFunctionUrl, notificationData);
-        //   const rescheduleTime = bookingData.scheduleTime.toDate();
-        //   rescheduleTime.setMinutes(rescheduleTime.getMinutes() - 2);
-        // // Extract updated values for cron expression
-        // const newMinutes = rescheduleTime.getMinutes(); // Get local minutes
-        // const newHours = rescheduleTime.getHours(); // Get local hours
-        // const newDayOfMonth = rescheduleTime.getDate(); // Get local day of the month
-        // const newMonth = rescheduleTime.getMonth() + 1;
-        // // Months are zero-based in JavaScript
+        await axios.post(sendNotificationFunctionUrl, notificationData);
 
-        // // Format the cron expression (UTC timezone)
-        // const newSchedule =
-        //   `${newMinutes}  ${newHours} ${newDayOfMonth} ${newMonth} *`;
-
-        // console.log({ "newSchedule time ::::: >>>>": newSchedule });
-
-        const updatedJobData = {
-          // newSchedule: newSchedule,
-          bookingId: bookingId,
-          jobStatus: JobStatus.DELETE,
-        };
-
-
-        await axios.post(updateJobUrl, updatedJobData);
-        const bookingDataCopy = bookingData;
-        db.collection(bookingsCollection)
+        // Reset le booking — même état qu'un rejet par le driver
+        await db.collection(bookingsCollection)
           .doc(bookingData.id).update({
-            isBookingConfirmed: BookingConfirmStatus.ACCEPTED,
+            isBookingConfirmed: BookingConfirmStatus.Not_ASSIGNED,
             acceptedBy: null,
             acceptedTime: null,
             status: 0,
-            startRide: true,
-            isSchedule: false,
-
+            // isSchedule reste true — la course reste planifiée
+            // startRide reste false
           });
-        const newDocRef = db.collection(cancelledBookingCollection).doc();
 
-        bookingDataCopy.id = newDocRef.id;
-        bookingDataCopy.cancelledBy = "Scheduler";
-        bookingDataCopy.cancelledByUserId = "cloud_function";
-        bookingDataCopy.reason = "Booking not confirmed in time";
-        console.log(`New Cancelled Booking Insert SUCCESSFULLY ${newDocRef.id}`);
-        newDocRef.set(bookingDataCopy);
-        console.log({ message: "Job Updated SUCCESSFULLY" });
+        // Supprimer le scheduler job — un nouveau sera créé quand
+        // un autre driver accepte (driverapp.updateScheduledJob)
+        const updatedJobData = {
+          bookingId: bookingId,
+          jobStatus: JobStatus.DELETE,
+        };
+        await axios.post(updateJobUrl, updatedJobData);
+
+        console.log(`Scheduled booking ${bookingId} reset to available — awaiting new driver`);
       } else {
         console.log({ message: "Nothing happen due to some issue" });
         const updatedJobData = {

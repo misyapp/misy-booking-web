@@ -11,7 +11,9 @@ import '../contants/global_keys.dart';
 import '../contants/my_colors.dart';
 import '../contants/my_image_url.dart';
 import '../contants/sized_box.dart';
+import '../provider/auth_provider.dart';
 import '../provider/trip_provider.dart';
+import 'auth_prompt_bottom_sheet.dart';
 import '../services/analytics/analytics_service.dart';
 import '../services/airport_detection_service.dart';
 import '../services/location.dart';
@@ -398,6 +400,22 @@ class _ConfirmDestinationState extends State<ConfirmDestination> with WidgetsBin
 
                       // 📍 Le loader est déjà affiché par le bouton (load: _isCreatingBooking)
                       // Pas besoin de showLoading() ici - évite le double loader
+
+                      // 🔧 FIX: Interception mode invité — l'utilisateur doit se connecter avant de créer une course
+                      final authProvider = Provider.of<CustomAuthProvider>(context, listen: false);
+                      if (authProvider.isGuestMode) {
+                        myCustomPrintStatement("🚫 Mode invité détecté sur confirmDestination - Affichage du prompt d'authentification");
+                        if (mounted) {
+                          setState(() { _isCreatingBooking = false; });
+                        }
+                        await showAuthPromptBottomSheet(
+                          context,
+                          onAuthSuccess: () {
+                            myCustomPrintStatement("✅ Authentification réussie depuis confirmDestination");
+                          },
+                        );
+                        return;
+                      }
 
                       // 🔧 FIX: Sauvegarder rideScheduledTime AVANT createRequest
                       // Car resetAllExceptScheduled() dans createBooking() met rideScheduledTime = null

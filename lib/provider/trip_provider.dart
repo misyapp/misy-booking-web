@@ -138,6 +138,13 @@ class TripProvider extends ChangeNotifier {
       }
     }
 
+    // Guard: si on est déjà sur cet écran, ne pas re-déclencher toute la chaîne
+    if (_currentStep == newStep) {
+      myCustomPrintStatement(
+          '⏭️ currentStep déjà à $newStep - skip notifyListeners');
+      return;
+    }
+
     myCustomPrintStatement('✅ Setting currentStep to: $newStep');
     _currentStep = newStep;
     notifyListeners(); // S'assurer que l'UI se met à jour
@@ -309,6 +316,13 @@ class TripProvider extends ChangeNotifier {
             '🛑 BLOCKING driverOnWay for scheduled booking - startRide=$startRideIsTrue, rideStarted=$rideHasStarted (driver must confirm to show flow)');
         return; // Don't set driverOnWay until driver confirms start
       }
+    }
+
+    // Guard: si déjà sur driverOnWay, le setter va ignorer — pas besoin de relancer les effets
+    if (currentStep == CustomTripType.driverOnWay) {
+      myCustomPrintStatement(
+          '⏭️ _safeSetDriverOnWay: déjà sur driverOnWay - skip (source: $source)');
+      return;
     }
 
     myCustomPrintStatement('✅ Setting driverOnWay from: $source');
@@ -2429,6 +2443,17 @@ class TripProvider extends ChangeNotifier {
     return 'classic';
   }
 
+  /// Indique si la course en cours touche un aéroport (pickup ou drop).
+  /// Utilisé pour appliquer le supplément aéroport configurable
+  /// (`globalSettings.airportSurcharge`) dans le calcul du prix.
+  bool get _isAirportRide =>
+      (pickLocation?['isAirport'] == true) ||
+      (dropLocation?['isAirport'] == true);
+
+  /// Supplément aéroport applicable à la course en cours (0 si pas concernée).
+  double get _airportSurchargeForCurrentTrip =>
+      _isAirportRide ? globalSettings.airportSurcharge : 0;
+
   /// Calcule le prix pour l'affichage UI (méthode helper)
   ///
   /// Cette méthode permet de calculer le prix de n'importe quel véhicule
@@ -2447,14 +2472,15 @@ class TripProvider extends ChangeNotifier {
           DateTime.now().add(Duration(hours: 1)); // Simulation réservation
     }
 
-    // Calculer le prix
+    // Calculer le prix de base
     final price = calculatePrice(vehicle);
 
     // Restaurer les valeurs précédentes
     selectedVehicle = previousVehicle;
     rideScheduledTime = previousScheduleTime;
 
-    return price;
+    // 🛫 Ajouter le supplément aéroport si applicable (pickup ou drop = aéroport)
+    return price + _airportSurchargeForCurrentTrip;
   }
 
   /// Calcule le prix avec le nouveau système de tarification V2 (synchrone)
@@ -2659,6 +2685,11 @@ class TripProvider extends ChangeNotifier {
     return next.toInt().toString();
   }
 
+  // Lock provider-level : empêche deux createRequest() concurrents.
+  // Contrairement au lock widget (_isCreatingBooking dans confirm_destination.dart),
+  // celui-ci persiste même si le widget est rebuild/recréé.
+  bool _isCreatingRequest = false;
+
   Future<bool> createRequest(
       {required VehicleModal vehicleDetails,
       required String paymentMethod,
@@ -2668,9 +2699,25 @@ class TripProvider extends ChangeNotifier {
       PromoCodeModal? promocodeDetails,
       DateTime? scheduleTime,
       String bookingId = ""}) async {
-    var res = await FirestoreServices.bookingRequest
-        .where('requestBy', isEqualTo: userData.value!.id)
-        .get();
+    // 🔒 Lock provider-level : empêcher les appels concurrents
+    if (_isCreatingRequest) {
+      myCustomPrintStatement(
+          '🛑 createRequest BLOQUÉ — déjà en cours (provider lock)');
+      return false;
+    }
+    _isCreatingRequest = true;
+
+    try {
+      // Guard: utilisateur non connecté → bloquer la création
+      if (userData.value == null || userData.value!.id == null) {
+        myCustomPrintStatement(
+            '🛑 createRequest: userData est null - utilisateur non connecté');
+        return false;
+      }
+
+      var res = await FirestoreServices.bookingRequest
+          .where('requestBy', isEqualTo: userData.value!.id)
+          .get();
 
     if (res.docs.isEmpty) {
       myCustomPrintStatement(
@@ -2799,6 +2846,10 @@ class TripProvider extends ChangeNotifier {
       myCustomPrintStatement("you have already booked a ride");
     }
     return true; // Par défaut, considérer comme réussi (cas edge)
+    } finally {
+      _isCreatingRequest = false;
+      myCustomPrintStatement('🔓 createRequest: provider lock released');
+    }
   }
 
   createBooking(
@@ -2879,6 +2930,10 @@ class TripProvider extends ChangeNotifier {
       "total_ride_price":
           calculatePriceForVehicle(vehicleDetails, withReservation: isScheduled)
               .toStringAsFixed(2),
+      // 🛫 Supplément aéroport — déjà inclus dans `total_ride_price` via
+      // `calculatePriceForVehicle()`. On stocke ici le montant à part pour
+      // la traçabilité (audit, facturation, affichage dashboard).
+      "airport_surcharge": _airportSurchargeForCurrentTrip,
     };
     // Obtenir la commission effective depuis la zone courante
     final categoryName = _mapVehicleIdToCategory(vehicleDetails);
@@ -3138,10 +3193,14 @@ class TripProvider extends ChangeNotifier {
         push(
             context: MyGlobalKeys.navigatorKey.currentContext!,
             screen: const PendingScheduledBookingRequested());
-        await BookingServiceScheduler().createScheduledJob(
+        final schedulerOk = await BookingServiceScheduler().createScheduledJob(
             timestamp:
                 scheduleTime.subtract(const Duration(minutes: 20)).toUtc(),
             bookingId: data['id']);
+        if (!schedulerOk) {
+          myCustomPrintStatement(
+              '⚠️ SCHEDULER: Job creation failed for ${data['id']}');
+        }
 
         showSnackbar(translate(
             "Your scheduled booking request has been successfully placed"));
@@ -3178,10 +3237,14 @@ class TripProvider extends ChangeNotifier {
         push(
             context: MyGlobalKeys.navigatorKey.currentContext!,
             screen: const PendingScheduledBookingRequested());
-        await BookingServiceScheduler().createScheduledJob(
+        final schedulerOkNoDrivers = await BookingServiceScheduler().createScheduledJob(
             timestamp:
                 scheduleTime.subtract(const Duration(minutes: 20)).toUtc(),
             bookingId: data['id']);
+        if (!schedulerOkNoDrivers) {
+          myCustomPrintStatement(
+              '⚠️ SCHEDULER: Job creation failed (no drivers) for ${data['id']}');
+        }
 
         showSnackbar(translate(
             "Your scheduled booking request has been successfully placed"));
@@ -3356,13 +3419,21 @@ class TripProvider extends ChangeNotifier {
               myCustomPrintStatement(
                   '🔍 Transition checks - isScheduled: $isScheduledBooking, rideStarted: $rideHasStarted, startRide: $startRideIsTrue');
 
-              // Toujours transitionner vers driverOnWay quand acceptedBy n'est pas null
-              myCustomPrintStatement(
-                  '🚗 Transitioning to driverOnWay - isScheduled: $isScheduledBooking, rideStarted: $rideHasStarted, startRide: $startRideIsTrue');
-              myCustomPrintStatement(
-                  '🔍 DIRECT currentStep assignment in stream - using safeSet now!');
-              _safeSetDriverOnWay(
-                  source: 'mainStream-acceptance'); // Set the screen state
+              // Pour les courses PLANIFIÉES : ne PAS passer en driverOnWay tant que
+              // le driver n'a pas CONFIRMÉ (isBookingConfirmed==2 ou startRide==true).
+              // Le rider reste sur l'écran "Mes réservations" — pas de polyline.
+              // La transition se fera via le path startRideJustActivated plus bas.
+              if (isScheduledBooking &&
+                  !startRideIsTrue &&
+                  check['isBookingConfirmed'] != 2) {
+                myCustomPrintStatement(
+                    '📅 Scheduled booking accepted but NOT confirmed — staying on pending screen (isBookingConfirmed=${check['isBookingConfirmed']})');
+              } else {
+                myCustomPrintStatement(
+                    '🚗 Transitioning to driverOnWay - isScheduled: $isScheduledBooking, rideStarted: $rideHasStarted, startRide: $startRideIsTrue');
+                _safeSetDriverOnWay(
+                    source: 'mainStream-acceptance'); // Set the screen state
+              }
 
               myCustomPrintStatement(
                   '🔄 Updated booking data and screen state');
@@ -3469,6 +3540,14 @@ class TripProvider extends ChangeNotifier {
                 }
 
                 if (shouldActivateRide) {
+                  // Guard: ne pas re-déclencher si déjà sur driverOnWay pour ce même booking
+                  if (currentStep == CustomTripType.driverOnWay &&
+                      booking!['id'] == check['id'] &&
+                      acceptedDriver != null) {
+                    myCustomPrintStatement(
+                        '⏭️ Scheduled booking déjà activé (driverOnWay) - skip re-trigger');
+                    booking = check; // Mettre à jour les données sans re-déclencher le flow
+                  } else {
                   myCustomPrintStatement(
                       '🚗✅ SCHEDULED BOOKING READY TO ACTIVATE! - BookingID: ${booking!['id']}, startRide: $startRideIsTrue, rideStarted: $rideHasStarted');
 
@@ -3501,6 +3580,7 @@ class TripProvider extends ChangeNotifier {
                           '❌ Error in scheduled booking afterAcceptFunctionality: $e');
                     }
                   });
+                  }
                 } else if (justAccepted) {
                   // 🔧 FIX: Pour les courses planifiées, quand le chauffeur CONFIRME la réservation (justAccepted)
                   // on ne déclenche PAS le flow driverOnWay. On attend que startRide=true (chauffeur démarre la course)
@@ -3856,7 +3936,14 @@ class TripProvider extends ChangeNotifier {
             "address": booking!['dropAddress'] ?? 'Destination',
           };
           if (booking!['status'] < BookingStatusType.RIDE_COMPLETE.value) {
-            createPath();
+            // Ne PAS dessiner le polyline pour les courses planifiées non confirmées
+            // (le rider ne doit rien voir tant que le driver n'a pas confirmé)
+            final isScheduledNotConfirmed = booking!['isSchedule'] == true &&
+                booking!['startRide'] != true &&
+                booking!['isBookingConfirmed'] != 2;
+            if (!isScheduledNotConfirmed) {
+              createPath();
+            }
           }
           // }
         }
@@ -3864,6 +3951,22 @@ class TripProvider extends ChangeNotifier {
 
         getUnreadCount(); //function code commented
       } else {
+        // 🔧 FIX: Protéger contre les snapshots vides transitoires.
+        // Firestore peut émettre un premier snapshot vide juste après la
+        // souscription (avant que l'écriture locale soit propagée côté
+        // serveur, surtout sur réseau lent). Sans cette garde, un booking
+        // qui vient d'être créé est immédiatement archivé par checkAndReset(),
+        // alors que le doc existe bien dans Firestore.
+        // On ignore l'événement vide si le booking local a moins de 30s.
+        if (booking != null && booking!['requestTime'] is Timestamp) {
+          final int ageSeconds = Timestamp.now().seconds -
+              (booking!['requestTime'] as Timestamp).seconds;
+          if (ageSeconds < 30) {
+            myCustomPrintStatement(
+                '⚠️ Snapshot vide ignoré — booking ${booking!['id']} trop jeune (${ageSeconds}s)');
+            return;
+          }
+        }
         checkAndReset();
       }
     });
@@ -3940,7 +4043,9 @@ class TripProvider extends ChangeNotifier {
                     // 🔧 FIX: Vérifier si le booking a été annulé par le rider
                     final cancelledBy = data['cancelledBy'];
                     final status = data['status'];
+                    // Accepte 'customer' (legacy) et 'rider' (canonique post-normalisation 2026-04-19)
                     if (cancelledBy == 'customer' ||
+                        cancelledBy == 'rider' ||
                         status == BookingStatusType.CANCELLED.value ||
                         status == BookingStatusType.CANCELLED_BY_RIDER.value) {
                       myCustomPrintStatement(
@@ -4082,7 +4187,9 @@ class TripProvider extends ChangeNotifier {
                     // 🔧 FIX: Vérifier si le booking a été annulé par le rider
                     final cancelledBy = firebaseData['cancelledBy'];
                     final status = firebaseData['status'];
+                    // Accepte 'customer' (legacy) et 'rider' (canonique post-normalisation 2026-04-19)
                     if (cancelledBy == 'customer' ||
+                        cancelledBy == 'rider' ||
                         status == BookingStatusType.CANCELLED.value ||
                         status == BookingStatusType.CANCELLED_BY_RIDER.value) {
                       myCustomPrintStatement(
@@ -4495,8 +4602,9 @@ class TripProvider extends ChangeNotifier {
               if (MyGlobalKeys.navigatorKey.currentContext != null &&
                   !_userCancelledManually) {
                 // Determine if cancellation was by user or driver
+                // Accepte 'customer' (legacy) et 'rider' (canonique post-normalisation 2026-04-19)
                 String cancellationMessage;
-                if (cancelledBy == 'customer') {
+                if (cancelledBy == 'customer' || cancelledBy == 'rider') {
                   cancellationMessage = translate('Trip was cancelled by you');
                 } else {
                   cancellationMessage = translate('Trip was cancelled by driver');
@@ -5242,19 +5350,19 @@ class TripProvider extends ChangeNotifier {
     myCustomPrintStatement(
         '📱 afterAcceptFunctionality - isScheduled: $isScheduledBooking, rideStarted: $rideHasStarted, fromPush: $fromPushNotification');
 
-    if (!fromPushNotification) {
+    // Guard: ne pas re-déclencher setScreen si on est déjà sur driverOnWay
+    if (currentStep == CustomTripType.driverOnWay) {
+      myCustomPrintStatement(
+          '⏭️ afterAcceptFunctionality: déjà sur driverOnWay - skip setScreen');
+    } else if (!fromPushNotification) {
       myCustomPrintStatement(
           '📱 Setting screen to driverOnWay from afterAcceptFunctionality - isScheduled: $isScheduledBooking');
       setScreen(CustomTripType.driverOnWay);
     } else {
       myCustomPrintStatement(
           '🚫 Screen already set by push notification, ensuring correct state');
-      // Ensure we're on the correct screen
-      if (currentStep != CustomTripType.driverOnWay) {
-        myCustomPrintStatement('⚠️ Correcting screen state to driverOnWay');
-        _safeSetDriverOnWay(source: 'afterAcceptFunctionality-correction');
-        notifyListeners();
-      }
+      _safeSetDriverOnWay(source: 'afterAcceptFunctionality-correction');
+      notifyListeners();
     }
 
     myCustomPrintStatement(
@@ -5698,7 +5806,10 @@ class TripProvider extends ChangeNotifier {
                         _pendingRequestRetryTimer = null;
                         myCustomPrintStatement('🛑 Timers annulés lors de l\'annulation manuelle');
 
-                        cancelAnotherRide['cancelledBy'] = 'customer';
+                        // Canonical value: 'rider' (pas 'customer'). Le driverapp check
+                        // 'rider' (trip_chat_screen.dart:153) et le dashboard normalise les
+                        // deux valeurs en "Passager" à la lecture (Controller.php:128).
+                        cancelAnotherRide['cancelledBy'] = 'rider';
                         cancelAnotherRide['cancelledByUserId'] =
                             userData.value!.id;
                         cancelAnotherRide['reason'] = reason;
@@ -5711,7 +5822,7 @@ class TripProvider extends ChangeNotifier {
                                   .doc(cancelAnotherRide['id'])
                                   .update({
                                 'status': BookingStatusType.RIDE_COMPLETE.value,
-                                'cancelledBy': 'customer',
+                                'cancelledBy': 'rider',
                                 'cancelledByUserId': userData.value!.id,
                                 'reason': reason,
                                 'endTime': Timestamp.now(),
@@ -5736,7 +5847,7 @@ class TripProvider extends ChangeNotifier {
                                   cancelAnotherRide['id'] == booking!['id']) {
                                 booking!['status'] =
                                     BookingStatusType.RIDE_COMPLETE.value;
-                                booking!['cancelledBy'] = 'customer';
+                                booking!['cancelledBy'] = 'rider';
                                 booking!['endTime'] = Timestamp.now();
                                 notifyListeners();
                               }
@@ -5809,7 +5920,7 @@ class TripProvider extends ChangeNotifier {
 
                               // Ajouter les infos d'annulation au booking
                               cancelAnotherRide['status'] = BookingStatusType.CANCELLED_BY_RIDER.value;
-                              cancelAnotherRide['cancelledBy'] = 'customer';
+                              cancelAnotherRide['cancelledBy'] = 'rider';
                               cancelAnotherRide['cancellationReason'] = reason;
                               cancelAnotherRide['cancelledAt'] = FieldValue.serverTimestamp();
 

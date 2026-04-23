@@ -275,7 +275,7 @@ class _BookingDetailsState extends State<BookingDetails> {
         // Si un chauffeur a accepté, mettre à jour avec le statut CANCELLED_BY_RIDER
         await FirestoreServices.bookingRequest.doc(booking['id']).update({
           'status': BookingStatusType.CANCELLED_BY_RIDER.value,
-          'cancelledBy': 'customer',
+          'cancelledBy': 'rider',
           'cancelledByUserId': userData.value!.id,
           'cancelReason': cancelReason ?? 'No reason provided',
           'ride_status': 'Cancelled by Rider',
@@ -285,7 +285,7 @@ class _BookingDetailsState extends State<BookingDetails> {
         // Copier vers l'historique avec le statut d'annulation
         Map<String, dynamic> historyData = Map.from(booking);
         historyData['status'] = BookingStatusType.CANCELLED_BY_RIDER.value;
-        historyData['cancelledBy'] = 'customer';
+        historyData['cancelledBy'] = 'rider';
         historyData['cancelledByUserId'] = userData.value!.id;
         historyData['cancelReason'] = cancelReason ?? 'No reason provided';
         historyData['ride_status'] = 'Cancelled by Rider';
