@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_dragmarker/flutter_map_dragmarker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/provider/build_line_flow_provider.dart';
@@ -274,6 +275,11 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
                         onRecomputeWithStops: () => _onRecomputeWithStops(p),
                         onRecomputeWithWaypoints: () =>
                             _onRecomputeWithWaypoints(p),
+                        // Étape review : les 2 boutons de la liste appellent
+                        // les mêmes handlers que tap/longpress sur les pins
+                        // de la carte, pour cohérence.
+                        onStopDelete: (i) => _onReviewStopLongPress(p, i),
+                        onStopRename: (i) => _onReviewStopTap(p, i),
                       ),
                     ),
                     Expanded(
@@ -321,6 +327,12 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
                                   ],
                                 ),
                               MarkerLayer(markers: _buildMarkers(p)),
+                              // En étape review : stops draggables pour les
+                              // repositionner, avec tap=renommer et
+                              // longpress=supprimer. DragMarkers doit venir
+                              // après MarkerLayer pour rester au-dessus.
+                              if (p.step == BuildLineStep.review)
+                                _buildReviewStopsDragLayer(p),
                             ],
                           ),
                           if (_pendingSearchName != null)
@@ -374,12 +386,17 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
       markers.add(_pinMarker(p.destination!, 'A', const Color(0xFFC62828),
           pulse: activeDest));
     }
-    for (int i = 0; i < p.stops.length; i++) {
-      markers.add(_pinMarker(
-        p.stops[i].position,
-        '${i + 1}',
-        const Color(0xFFFF9800),
-      ));
+    // En étape review, les arrêts sont rendus via DragMarkers (drag + tap
+    // rename + long press delete) — voir _buildReviewStopsDragLayer. Dans
+    // les autres étapes, on garde des Markers simples.
+    if (p.step != BuildLineStep.review) {
+      for (int i = 0; i < p.stops.length; i++) {
+        markers.add(_pinMarker(
+          p.stops[i].position,
+          '${i + 1}',
+          const Color(0xFFFF9800),
+        ));
+      }
     }
     for (final w in p.waypoints) {
       markers.add(Marker(
@@ -412,6 +429,37 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
     );
   }
 
+  /// Layer DragMarkers spécifique à l'étape review : chaque arrêt peut être
+  /// déplacé (drag), renommé (tap), supprimé (long press). La clé du marker
+  /// inclut le nom pour forcer un re-layout si l'user renomme (sinon
+  /// flutter_map_dragmarker garde le même widget et le label bouge pas).
+  Widget _buildReviewStopsDragLayer(BuildLineFlowProvider p) {
+    return DragMarkers(
+      alignment: Alignment.topCenter,
+      markers: [
+        for (int i = 0; i < p.stops.length; i++)
+          DragMarker(
+            key: ValueKey('review-stop-$i-${p.stops[i].name}'),
+            point: p.stops[i].position,
+            size: const Size(64, 74),
+            alignment: Alignment.topCenter,
+            builder: (ctx, pos, isDragging) {
+              return _AnimatedPin(
+                label: '${i + 1}',
+                color: isDragging
+                    ? Colors.orange
+                    : const Color(0xFFFF9800),
+                pulse: false,
+              );
+            },
+            onDragEnd: (_, newPos) => p.moveStop(i, newPos),
+            onTap: (_) => _onReviewStopTap(p, i),
+            onLongPress: (_) => _onReviewStopLongPress(p, i),
+          ),
+      ],
+    );
+  }
+
   // ─────── Handlers ───────
 
   Future<void> _onMapTap(BuildLineFlowProvider p, LatLng latLng) async {
@@ -432,6 +480,9 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
         break;
       case BuildLineStep.refine:
         p.addWaypoint(latLng);
+        break;
+      case BuildLineStep.review:
+        await _onReviewInsertStop(p, latLng);
         break;
     }
   }
@@ -473,7 +524,82 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
           p.addStop(stop.position, name.trim(), osmId: stop.id);
         }
         return;
+      case BuildLineStep.review:
+        await _onReviewInsertStop(p, stop.position,
+            prefillName: stop.hasName ? stop.name : null,
+            osmId: stop.id);
+        return;
     }
+  }
+
+  // ─────── Handlers étape Vérifier ───────
+
+  /// Insère un arrêt au segment le plus proche du clic. Utilisé par
+  /// _onMapTap et _onOsmStopTap en étape review.
+  Future<void> _onReviewInsertStop(
+    BuildLineFlowProvider p,
+    LatLng pos, {
+    String? prefillName,
+    String? osmId,
+  }) async {
+    final name = await _promptStopName(
+      context,
+      initialName: prefillName ?? '',
+      title: 'Insérer un arrêt',
+    );
+    if (name == null) return;
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    final insertedAt =
+        p.insertStopAtClosestSegment(pos, trimmed, osmId: osmId);
+    if (!mounted) return;
+    _snack(context,
+        'Arrêt inséré en position ${insertedAt + 1} — recalcule le tracé avant de terminer');
+  }
+
+  /// Tap sur un pin existant en étape review : renommer.
+  Future<void> _onReviewStopTap(BuildLineFlowProvider p, int index) async {
+    final current = p.stops[index].name;
+    final newName = await _promptStopName(
+      context,
+      initialName: current,
+      title: 'Renommer l\'arrêt ${index + 1}',
+    );
+    if (newName == null) return;
+    final trimmed = newName.trim();
+    if (trimmed.isEmpty) return;
+    p.renameStop(index, trimmed);
+  }
+
+  /// Long press sur un pin existant en étape review : supprimer (avec confirm).
+  Future<void> _onReviewStopLongPress(
+      BuildLineFlowProvider p, int index) async {
+    final name = p.stops[index].name;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer cet arrêt ?'),
+        content: Text(
+          'L\'arrêt ${index + 1} « $name » sera supprimé.\n\n'
+          'Les arrêts suivants seront renumérotés. Tu devras recalculer le tracé avant de terminer.',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    p.removeStop(index);
   }
 
   /// Pose le terminus origine (ou destination) avec un dialog pour nommer.
@@ -498,6 +624,15 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
     if (trimmed.isEmpty) return;
     if (isOrigin) {
       p.setOrigin(pos, name: trimmed);
+      // Auto-advance vers l'étape arrivée : le clic "Ajouter" du dialog est
+      // un commitment clair. Sans ça, le consultant suppose qu'il peut
+      // cliquer directement sur la carte pour poser l'arrivée — et re-bouge
+      // son départ à la place. Pour corriger la position du départ, utiliser
+      // le bouton Précédent (reste sur la même étape avec le pin placé).
+      if (mounted && p.step == BuildLineStep.origin) {
+        p.setStep(BuildLineStep.destination);
+        _snack(context, 'Départ placé ✓  — place maintenant l\'arrivée');
+      }
     } else {
       p.setDestination(pos, name: trimmed);
     }
@@ -545,9 +680,35 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
           _snack(context, 'Ajoute au moins 2 arrêts');
           return;
         }
+        // Auto-recalcul du tracé complet avec les arrêts. Évite à l'user
+        // de cliquer "Recalculer" manuellement avant "Suivant". Si OSRM
+        // échoue, on avance quand même — l'user verra le banner dirty à
+        // l'étape suivante et pourra retenter.
+        if (p.isRouteDirty) {
+          final ok = await p.recomputeFullRoute();
+          if (!mounted) return;
+          if (!ok) {
+            _snack(context,
+                'OSRM KO — tu pourras recalculer à l\'étape suivante');
+          }
+        }
         p.setStep(BuildLineStep.refine);
         break;
       case BuildLineStep.refine:
+        // Même logique qu'au-dessus : auto-recalcul si l'user a touché
+        // aux waypoints, puis on avance vers Vérifier.
+        if (p.isRouteDirty) {
+          final ok = await p.recomputeFullRoute();
+          if (!mounted) return;
+          if (!ok) {
+            _snack(context,
+                'OSRM KO — recalcule manuellement à l\'étape Vérifier');
+          }
+        }
+        p.setStep(BuildLineStep.review);
+        break;
+      case BuildLineStep.review:
+        // Le bouton "Suivant" n'existe pas à cette étape (c'est "Terminer").
         break;
     }
   }
@@ -564,6 +725,9 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
         break;
       case BuildLineStep.refine:
         p.setStep(BuildLineStep.stops);
+        break;
+      case BuildLineStep.review:
+        p.setStep(BuildLineStep.refine);
         break;
     }
   }
@@ -819,6 +983,7 @@ class _StepperHeader extends StatelessWidget {
       ('② Arrivée', BuildLineStep.destination),
       ('③ Arrêts', BuildLineStep.stops),
       ('④ Affiner', BuildLineStep.refine),
+      ('⑤ Vérifier', BuildLineStep.review),
     ];
     return Container(
       color: const Color(0xFFE3F2FD),
@@ -865,6 +1030,10 @@ class _SidePanel extends StatelessWidget {
   final void Function(LatLng, String) onPlaceSearchSelected;
   final VoidCallback onRecomputeWithStops;
   final VoidCallback onRecomputeWithWaypoints;
+  // Callbacks spécifiques à l'étape review : delete + rename sur un arrêt.
+  // Optionnels pour que les autres étapes n'aient pas à les passer.
+  final void Function(int index)? onStopDelete;
+  final void Function(int index)? onStopRename;
 
   const _SidePanel({
     required this.step,
@@ -874,6 +1043,8 @@ class _SidePanel extends StatelessWidget {
     required this.onPlaceSearchSelected,
     required this.onRecomputeWithStops,
     required this.onRecomputeWithWaypoints,
+    this.onStopDelete,
+    this.onStopRename,
   });
 
   @override
@@ -930,7 +1101,15 @@ class _SidePanel extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               hasPoint
-                  ? '📍 Position placée${name != null && name.isNotEmpty ? " : $name" : ""}.\n\nTape ailleurs sur la carte pour ajuster.'
+                  ? (step == BuildLineStep.origin
+                      // Cas atteint uniquement via Précédent depuis l'arrivée.
+                      // On rappelle que l'étape suivante est l'arrivée et que
+                      // le re-clic carte ajuste la position du départ.
+                      ? '📍 Départ${name != null && name.isNotEmpty ? " : $name" : ""}.\n\nRe-clique sur la carte pour corriger la position, puis repasse à l\'arrivée via Suivant.'
+                      // Destination : on pointe explicitement vers le bouton
+                      // Suivant (qui déclenche OSRM). Le re-clic carte ajuste
+                      // la position, mais l'action principale est Suivant.
+                      : '📍 Arrivée${name != null && name.isNotEmpty ? " : $name" : ""}.\n\nClique « Suivant » en bas pour calculer le tracé.\n(Re-clic sur la carte pour ajuster la position.)')
                   : '🔎 Tape le nom d\'un lieu, zoom automatique, puis clique sur la carte pour placer le point.',
               style: const TextStyle(fontSize: 12, color: Colors.black54),
             ),
@@ -1027,11 +1206,20 @@ class _SidePanel extends StatelessWidget {
             ),
           ],
         );
+      case BuildLineStep.review:
+        return _ReviewPanel(
+          provider: p,
+          onRecompute: onRecomputeWithWaypoints,
+          onStopDelete: onStopDelete,
+          onStopRename: onStopRename,
+        );
     }
   }
 
   Widget _actionRow(BuildContext context, BuildLineFlowProvider p) {
-    final isLast = step == BuildLineStep.refine;
+    // "Terminer" est désormais à l'étape review (la 5e et dernière). Les
+    // étapes précédentes affichent "Suivant".
+    final isLast = step == BuildLineStep.review;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -1130,15 +1318,25 @@ class _StopRow extends StatelessWidget {
   final int index;
   final FlowStop stop;
   final VoidCallback onDelete;
+  /// Optionnel. Quand fourni, le nom devient tappable (tap = renommer) et
+  /// un bouton crayon ✏️ apparaît. Utilisé dans l'étape review où l'user
+  /// peut corriger un arrêt sans refaire tout le flow.
+  final VoidCallback? onRename;
 
   const _StopRow({
     required this.index,
     required this.stop,
     required this.onDelete,
+    this.onRename,
   });
 
   @override
   Widget build(BuildContext context) {
+    final nameWidget = Text(
+      stop.name,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(fontSize: 12),
+    );
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -1168,12 +1366,18 @@ class _StopRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              stop.name,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12),
-            ),
+            child: onRename != null
+                ? InkWell(onTap: onRename, child: nameWidget)
+                : nameWidget,
           ),
+          if (onRename != null)
+            InkWell(
+              onTap: onRename,
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(Icons.edit, size: 14, color: Colors.black54),
+              ),
+            ),
           InkWell(
             onTap: onDelete,
             child: const Padding(
@@ -1183,6 +1387,154 @@ class _StopRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ─────────────────────── Review panel (étape ⑤) ───────────────────────
+
+/// Panneau latéral de l'étape « Vérifier » : liste des arrêts avec
+/// rename/delete, bouton recalculer (prominent si dirty), bannière warning
+/// tracé obsolète, et récap origin/destination en bas (read-only).
+class _ReviewPanel extends StatelessWidget {
+  final BuildLineFlowProvider provider;
+  final VoidCallback onRecompute;
+  final void Function(int index)? onStopDelete;
+  final void Function(int index)? onStopRename;
+
+  const _ReviewPanel({
+    required this.provider,
+    required this.onRecompute,
+    required this.onStopDelete,
+    required this.onStopRename,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = provider;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('🧐 Vérification finale',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        const SizedBox(height: 6),
+        Text(
+          '${p.stops.length} arrêt${p.stops.length > 1 ? "s" : ""}'
+          ' · ${p.waypoints.length} waypoint${p.waypoints.length > 1 ? "s" : ""}',
+          style: const TextStyle(fontSize: 12, color: Colors.black54),
+        ),
+        const SizedBox(height: 8),
+        // Aide concise. Les 3 modes d'édition directe sur la carte et les
+        // 2 depuis la liste sont listés ici pour que l'user n'ait pas à
+        // deviner.
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE3F2FD),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: const Text(
+            'Comment modifier :\n'
+            '• Drag un pin pour le déplacer\n'
+            '• Tap un pin pour le renommer\n'
+            '• Long press un pin pour le supprimer\n'
+            '• Clic libre sur la carte = insérer un arrêt (auto-placé entre les 2 plus proches)',
+            style: TextStyle(fontSize: 11, color: Colors.black87, height: 1.4),
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (p.isRouteDirty) ...[
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF3E0),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: const Color(0xFFFF9800)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.warning_amber,
+                    size: 16, color: Color(0xFFE65100)),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Tracé obsolète depuis ta modif. Recalcule avant de terminer.',
+                    style: TextStyle(
+                        fontSize: 11, color: Color(0xFFE65100)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: p.isRouteDirty
+                  ? const Color(0xFFFF9800)
+                  : Colors.grey[300],
+              foregroundColor:
+                  p.isRouteDirty ? Colors.white : Colors.black54,
+              padding: const EdgeInsets.symmetric(vertical: 10),
+            ),
+            onPressed: p.isRouting ? null : onRecompute,
+            icon: p.isRouting
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.sync, size: 16),
+            label: Text(p.isRouting ? 'Calcul...' : 'Recalculer le tracé'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'Arrêts (dans l\'ordre)',
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+        ),
+        const SizedBox(height: 6),
+        if (p.stops.isEmpty)
+          const Text(
+            'Aucun arrêt.',
+            style: TextStyle(
+              fontSize: 12,
+              fontStyle: FontStyle.italic,
+              color: Colors.black45,
+            ),
+          )
+        else
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (int i = 0; i < p.stops.length; i++)
+                _StopRow(
+                  index: i,
+                  stop: p.stops[i],
+                  onDelete: () => onStopDelete?.call(i),
+                  onRename: () => onStopRename?.call(i),
+                ),
+            ],
+          ),
+        const SizedBox(height: 12),
+        const Divider(),
+        Text('Départ : ${p.originName ?? "?"}',
+            style: const TextStyle(fontSize: 11, color: Colors.black54)),
+        Text('Arrivée : ${p.destinationName ?? "?"}',
+            style: const TextStyle(fontSize: 11, color: Colors.black54)),
+        const SizedBox(height: 2),
+        const Text(
+          '(pour corriger départ/arrivée, clique Précédent jusqu\'aux étapes ①②)',
+          style: TextStyle(
+            fontSize: 10,
+            color: Colors.black45,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      ],
     );
   }
 }

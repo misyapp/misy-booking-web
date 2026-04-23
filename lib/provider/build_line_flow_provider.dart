@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:rider_ride_hailing_app/services/transport_osrm_service.dart';
 
-enum BuildLineStep { origin, destination, stops, refine }
+enum BuildLineStep { origin, destination, stops, refine, review }
 
 /// Un arrêt saisi par l'user dans le flow.
 class FlowStop {
@@ -38,6 +38,7 @@ class _FlowSnapshot {
   final List<FlowStop> stops;
   final List<FlowWaypoint> waypoints;
   final List<List<double>> routeCoords;
+  final bool routeDirty;
 
   _FlowSnapshot({
     required this.step,
@@ -48,6 +49,7 @@ class _FlowSnapshot {
     required this.stops,
     required this.waypoints,
     required this.routeCoords,
+    required this.routeDirty,
   });
 }
 
@@ -70,6 +72,12 @@ class BuildLineFlowProvider extends ChangeNotifier {
   List<List<double>> _routeCoords = const []; // [lng, lat]
   bool _isRouting = false;
   String? _error;
+
+  /// True dès qu'une mutation structurelle a été faite depuis le dernier
+  /// `_recompute` réussi. Utilisé par l'étape review pour bloquer "Terminer"
+  /// tant que la route affichée ne reflète pas les modifications.
+  bool _routeDirty = false;
+  bool get isRouteDirty => _routeDirty;
 
   // Undo stack : snapshots immutables pris AVANT chaque mutation
   final List<_FlowSnapshot> _undoStack = [];
@@ -99,6 +107,11 @@ class BuildLineFlowProvider extends ChangeNotifier {
         return _stops.length >= 2 && hasRoute;
       case BuildLineStep.refine:
         return hasRoute;
+      case BuildLineStep.review:
+        // Terminer ne doit JAMAIS publier un tracé qui ne reflète plus les
+        // arrêts (ex: l'user a supprimé un arrêt et pas recalculé). La seule
+        // façon de valider est de partir d'un état où le tracé est à jour.
+        return hasRoute && !_routeDirty && _stops.length >= 2;
     }
   }
 
@@ -112,6 +125,7 @@ class BuildLineFlowProvider extends ChangeNotifier {
       stops: _stops.map((s) => s.copy()).toList(),
       waypoints: _waypoints.map((w) => w.copy()).toList(),
       routeCoords: List<List<double>>.from(_routeCoords),
+      routeDirty: _routeDirty,
     ));
     if (_undoStack.length > _maxUndo) {
       _undoStack.removeAt(0);
@@ -134,6 +148,7 @@ class BuildLineFlowProvider extends ChangeNotifier {
       ..clear()
       ..addAll(s.waypoints);
     _routeCoords = s.routeCoords;
+    _routeDirty = s.routeDirty;
     _error = null;
     notifyListeners();
     return true;
@@ -151,6 +166,7 @@ class BuildLineFlowProvider extends ChangeNotifier {
     _pushSnapshot();
     _origin = pos;
     if (name != null) _originName = name;
+    _routeDirty = true;
     notifyListeners();
   }
 
@@ -158,6 +174,7 @@ class BuildLineFlowProvider extends ChangeNotifier {
     _pushSnapshot();
     _destination = pos;
     if (name != null) _destinationName = name;
+    _routeDirty = true;
     notifyListeners();
   }
 
@@ -197,6 +214,7 @@ class BuildLineFlowProvider extends ChangeNotifier {
         return false;
       }
       _routeCoords = coords;
+      _routeDirty = false;
       return true;
     } finally {
       _isRouting = false;
@@ -207,7 +225,57 @@ class BuildLineFlowProvider extends ChangeNotifier {
   void addStop(LatLng pos, String name, {String? osmId}) {
     _pushSnapshot();
     _stops.add(FlowStop(name: name, position: pos, osmId: osmId));
+    _routeDirty = true;
     notifyListeners();
+  }
+
+  /// Insère un arrêt à la position donnée dans la liste. Les arrêts qui
+  /// suivaient sont décalés (leur numéro UI augmente de 1, gratuitement via
+  /// l'index). Les waypoints dont l'`afterStopIndex >= index` sont incrémentés
+  /// de 1 pour rester attachés au même stop logique après décalage.
+  ///
+  /// Utilisé par l'étape review pour "insérer un arrêt entre 2 arrêts
+  /// existants" sans refaire tout le flow.
+  void insertStopAt(int index, LatLng pos, String name, {String? osmId}) {
+    final safeIdx = index.clamp(0, _stops.length);
+    _pushSnapshot();
+    _stops.insert(safeIdx, FlowStop(name: name, position: pos, osmId: osmId));
+    for (final w in _waypoints) {
+      if (w.afterStopIndex >= safeIdx) w.afterStopIndex++;
+    }
+    _routeDirty = true;
+    notifyListeners();
+  }
+
+  /// Trouve le segment le plus proche de [pos] dans la séquence
+  /// `[origin, stop₀, …, stopₙ, destination]` et insère l'arrêt au bon index.
+  /// Retourne l'index auquel l'arrêt a été inséré (pratique pour un snackbar
+  /// "arrêt inséré à la position N").
+  int insertStopAtClosestSegment(LatLng pos, String name, {String? osmId}) {
+    final sequence = <LatLng>[
+      if (_origin != null) _origin!,
+      ..._stops.map((s) => s.position),
+      if (_destination != null) _destination!,
+    ];
+    // Fallback : si pas encore d'origin/destination, append à la fin.
+    if (sequence.length < 2) {
+      addStop(pos, name, osmId: osmId);
+      return _stops.length - 1;
+    }
+    int bestSegment = 0;
+    double bestDist = double.infinity;
+    for (int i = 0; i < sequence.length - 1; i++) {
+      final d = _pointToSegmentDist(pos, sequence[i], sequence[i + 1]);
+      if (d < bestDist) {
+        bestDist = d;
+        bestSegment = i;
+      }
+    }
+    // Le segment `k` (0-indexé) va entre `sequence[k]` et `sequence[k+1]`.
+    // Comme sequence[0] est origin, sequence[1] est stops[0], etc., insérer
+    // au segment `k` = insérer à l'index `k` dans `_stops`.
+    insertStopAt(bestSegment, pos, name, osmId: osmId);
+    return bestSegment;
   }
 
   void removeStop(int index) {
@@ -221,6 +289,7 @@ class BuildLineFlowProvider extends ChangeNotifier {
         w.afterStopIndex = _stops.length - 1;
       }
     }
+    _routeDirty = true;
     notifyListeners();
   }
 
@@ -228,6 +297,7 @@ class BuildLineFlowProvider extends ChangeNotifier {
     if (index < 0 || index >= _stops.length) return;
     _pushSnapshot();
     _stops[index].name = name;
+    // Pas de dirty : le nom ne change pas la géométrie de la route.
     notifyListeners();
   }
 
@@ -235,6 +305,7 @@ class BuildLineFlowProvider extends ChangeNotifier {
     if (index < 0 || index >= _stops.length) return;
     _pushSnapshot();
     _stops[index].position = pos;
+    _routeDirty = true;
     notifyListeners();
   }
 
@@ -244,6 +315,7 @@ class BuildLineFlowProvider extends ChangeNotifier {
     _pushSnapshot();
     final s = _stops.removeAt(oldIdx);
     _stops.insert(newIdx > oldIdx ? newIdx - 1 : newIdx, s);
+    _routeDirty = true;
     notifyListeners();
   }
 
@@ -269,6 +341,7 @@ class BuildLineFlowProvider extends ChangeNotifier {
 
     _pushSnapshot();
     _waypoints.add(FlowWaypoint(position: pos, afterStopIndex: closestIdx));
+    _routeDirty = true;
     notifyListeners();
   }
 
@@ -276,6 +349,7 @@ class BuildLineFlowProvider extends ChangeNotifier {
     if (index < 0 || index >= _waypoints.length) return;
     _pushSnapshot();
     _waypoints.removeAt(index);
+    _routeDirty = true;
     notifyListeners();
   }
 
@@ -283,6 +357,7 @@ class BuildLineFlowProvider extends ChangeNotifier {
     if (index < 0 || index >= _waypoints.length) return;
     _pushSnapshot();
     _waypoints[index].position = pos;
+    _routeDirty = true;
     notifyListeners();
   }
 
@@ -411,6 +486,7 @@ class BuildLineFlowProvider extends ChangeNotifier {
     _routeCoords = const [];
     _isRouting = false;
     _error = null;
+    _routeDirty = false;
     notifyListeners();
   }
 }
