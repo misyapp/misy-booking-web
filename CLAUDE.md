@@ -91,21 +91,32 @@ lib/
 flutter build web --release
 ```
 
-#### Déploiement sur book.misy.app
+#### Déploiement sur book.misy.app (OVH)
 ```bash
-rsync -avz --delete --exclude='osrm-proxy.php' -e "ssh -i ~/.ssh/id_rsa_misy" /Users/stephane/StudioProjects/misy-booking-web/build/web/ root@162.240.145.160:/home/misyapp/booking_web/
+rsync -avz --delete --exclude='osrm-proxy.php' \
+  -e "ssh -i ~/.ssh/id_rsa_misy" \
+  --rsync-path="sudo rsync" \
+  build/web/ ubuntu@51.254.141.103:/var/www/book.misy.app/
+```
+
+#### Vérification après deploy
+```bash
+curl -sI "https://book.misy.app/main.dart.js?$(date +%s)" | grep -i last-modified
+# Last-Modified doit être d'aujourd'hui
 ```
 
 #### Connexion SSH au serveur
 ```bash
-ssh -i ~/.ssh/id_rsa_misy root@162.240.145.160
+ssh -i ~/.ssh/id_rsa_misy ubuntu@51.254.141.103
 ```
 
 ### Informations Serveur
-- **Serveur**: Bluehost (162.240.145.160)
+- **Serveur**: OVH VPS (51.254.141.103, hostname `newsletter.misy.email`)
 - **URL Production**: https://book.misy.app
-- **Répertoire Web**: `/home/misyapp/booking_web/`
+- **User SSH**: `ubuntu` (passwordless sudo)
+- **Répertoire Web**: `/var/www/book.misy.app/` (owner `www-data:www-data`, d'où `--rsync-path="sudo rsync"`)
 - **Clé SSH**: `~/.ssh/id_rsa_misy`
+- `deploy.sh`, `DEPLOYMENT.md`, `DEPLOYMENT_WEB.md`, `QUICK_START.md`, `README.md` sont tous alignés sur OVH depuis le 2026-04-21. `CHANGELOG.md` garde les anciennes refs Bluehost (historique).
 
 ## Éditeur terrain transport (consultant)
 
@@ -167,7 +178,8 @@ le claim détecté (re-login éventuellement nécessaire pour rafraîchir l'ID t
    flutter build web --release
    rsync -avz --delete --exclude='osrm-proxy.php' \
      -e "ssh -i ~/.ssh/id_rsa_misy" \
-     build/web/ root@162.240.145.160:/home/misyapp/booking_web/
+     --rsync-path="sudo rsync" \
+     build/web/ ubuntu@51.254.141.103:/var/www/book.misy.app/
    ```
 4. **Cleanup** (après validation des diff) :
    ```bash

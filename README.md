@@ -11,7 +11,7 @@ L'application est déployée sur: **https://book.misy.app**
 - **Flutter Web** - Framework de développement
 - **Firebase** - Backend (Firestore, Auth, Storage)
 - **Google Maps API** - Cartographie et localisation
-- **Bluehost** - Hébergement web
+- **OVH VPS** - Hébergement web (nginx)
 
 ## 📦 Structure du projet
 
@@ -27,7 +27,7 @@ Ce projet est une version web-only de l'application MISY, optimisée pour foncti
 flutter build web --release
 ```
 
-### Déploiement sur Bluehost
+### Déploiement sur OVH (book.misy.app)
 
 **Méthode rapide** (recommandé):
 ```bash
@@ -36,8 +36,10 @@ flutter build web --release
 
 **Méthode manuelle**:
 ```bash
-rsync -avz --delete -e "ssh -i ~/.ssh/id_rsa_misy" \
-  build/web/ root@162.240.145.160:/home/misyapp/booking_web/
+rsync -avz --delete --exclude='osrm-proxy.php' \
+  -e "ssh -i ~/.ssh/id_rsa_misy" \
+  --rsync-path="sudo rsync" \
+  build/web/ ubuntu@51.254.141.103:/var/www/book.misy.app/
 ```
 
 📖 **Guide complet**: Voir [DEPLOYMENT.md](DEPLOYMENT.md) pour toutes les commandes SSH et le workflow de déploiement.

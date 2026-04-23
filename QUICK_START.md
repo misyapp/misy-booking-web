@@ -6,43 +6,51 @@
 
 #### 🔄 Mettre à jour et déployer
 ```bash
-cd /Users/stephane/StudioProjects/misy_booking_web
+cd /Users/stephane/StudioProjects/misy-booking-web
 git pull origin main
 flutter build web --release
 ./deploy.sh
 ```
 
-#### 🔐 Connexion SSH au serveur
+#### 🔐 Connexion SSH au serveur (OVH)
 ```bash
-ssh -i ~/.ssh/id_rsa_misy root@162.240.145.160
+ssh -i ~/.ssh/id_rsa_misy ubuntu@51.254.141.103
 ```
 
 #### 📦 Déploiement manuel (si besoin)
 ```bash
-rsync -avz --delete -e "ssh -i ~/.ssh/id_rsa_misy" \
-  build/web/ root@162.240.145.160:/home/misyapp/booking_web/
+rsync -avz --delete --exclude='osrm-proxy.php' \
+  -e "ssh -i ~/.ssh/id_rsa_misy" \
+  --rsync-path="sudo rsync" \
+  build/web/ ubuntu@51.254.141.103:/var/www/book.misy.app/
 ```
 
 #### 🔍 Vérifier les fichiers sur le serveur
 ```bash
-ssh -i ~/.ssh/id_rsa_misy root@162.240.145.160 "ls -lh /home/misyapp/booking_web/"
+ssh -i ~/.ssh/id_rsa_misy ubuntu@51.254.141.103 "ls -lh /var/www/book.misy.app/"
 ```
 
-#### 📋 Voir les logs Apache
+#### 📋 Voir les logs nginx
 ```bash
-ssh -i ~/.ssh/id_rsa_misy root@162.240.145.160 "tail -f /var/log/apache2/error.log"
+ssh -i ~/.ssh/id_rsa_misy ubuntu@51.254.141.103 "sudo tail -f /var/log/nginx/error.log"
 ```
 
-#### 🔄 Redémarrer Apache
+#### 🔄 Redémarrer nginx
 ```bash
-ssh -i ~/.ssh/id_rsa_misy root@162.240.145.160 "systemctl restart apache2"
+ssh -i ~/.ssh/id_rsa_misy ubuntu@51.254.141.103 "sudo systemctl restart nginx"
+```
+
+#### ✅ Vérifier que le deploy a bien servi (cache SW)
+```bash
+curl -sI "https://book.misy.app/main.dart.js?$(date +%s)" | grep -i last-modified
+# Le Last-Modified doit être d'aujourd'hui
 ```
 
 ## 🗂️ Structure du projet
 
 ```
-misy_booking_web/
-├── deploy.sh              # Script de déploiement automatisé
+misy-booking-web/
+├── deploy.sh              # Script de déploiement automatisé (OVH)
 ├── DEPLOYMENT.md          # Guide complet de déploiement
 ├── CHANGELOG.md           # Historique horodaté des modifications
 ├── README.md              # Documentation principale
@@ -81,7 +89,7 @@ cp assets/json_files/service_account_credential.example.json assets/json_files/s
 
 - **Application web**: https://book.misy.app
 - **Repository GitHub**: https://github.com/misyapp/misy-booking-web
-- **Serveur**: root@162.240.145.160
+- **Serveur prod**: ubuntu@51.254.141.103 (OVH VPS, hostname `newsletter.misy.email`)
 
 ## 📚 Documentation complète
 
@@ -104,27 +112,32 @@ flutter build web --release
 chmod 600 ~/.ssh/id_rsa_misy
 
 # Tester la connexion
-ssh -i ~/.ssh/id_rsa_misy root@162.240.145.160 "echo 'OK'"
+ssh -i ~/.ssh/id_rsa_misy ubuntu@51.254.141.103 "echo 'OK'"
 ```
 
-### L'app ne se met pas à jour
+Si rsync retourne `permission denied` sur `/var/www/book.misy.app/` : vérifie
+que `--rsync-path="sudo rsync"` est bien présent dans la commande (le
+DocumentRoot appartient à `www-data`).
+
+### L'app ne se met pas à jour (cache navigateur)
+Le service worker Flutter cache `main.dart.js` agressivement :
+- Fermer **toutes** les fenêtres privées (pas juste l'onglet)
+- OU DevTools → Application → Clear site data
+
+Si le problème persiste, vérifier que le fichier servi est bien le nouveau :
 ```bash
-# Forcer le refresh du cache
-rsync -avz --delete --force \
-  -e "ssh -i ~/.ssh/id_rsa_misy" \
-  build/web/ \
-  root@162.240.145.160:/home/misyapp/booking_web/
+curl -sI "https://book.misy.app/main.dart.js?$(date +%s)" | grep -i last-modified
 ```
 
 ## 💡 Tips
 
-1. **Toujours tester localement** avant de déployer
+1. **Toujours tester localement** avant de déployer (`flutter run -d chrome`)
 2. **Vérifier git status** avant de committer
 3. **Lire les logs** si quelque chose ne fonctionne pas
-4. **Le script deploy.sh** fait tout automatiquement
+4. **Le script deploy.sh** fait tout automatiquement (y compris la vérif `Last-Modified`)
 
 ---
 
-**Dernière mise à jour**: 2026-01-17 15:45  
-**Projet**: MISY Booking Web Application  
-**Version**: 1.0.0
+**Dernière mise à jour**: 2026-04-21
+**Projet**: MISY Booking Web Application
+**Serveur**: OVH VPS `51.254.141.103`

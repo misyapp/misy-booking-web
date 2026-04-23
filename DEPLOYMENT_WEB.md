@@ -36,72 +36,62 @@ Après compilation (`flutter build web --release`):
 └── icons/
 ```
 
-## 🚀 Déploiement sur Hostinger
+## 🚀 Déploiement sur OVH VPS
 
-### Étape 1: Créer le sous-domaine
+Cible actuelle : **VPS OVH** `51.254.141.103` (hostname `newsletter.misy.email`), servi par **nginx** depuis `/var/www/book.misy.app/` (owner `www-data:www-data`). SSH user `ubuntu` avec passwordless sudo. Clé privée : `~/.ssh/id_rsa_misy`.
 
-1. Connectez-vous à **Hostinger**
-2. Allez dans **Domaines** → `misy.app`
-3. Créez le sous-domaine `book.misy.app`
-4. Pointez-le vers le dossier: `/public_html/book`
+### Étape 1: Build Flutter
 
-### Étape 2: Uploader les fichiers
-
-#### Option A: Via FTP
 ```bash
-# Connexion FTP
-Host: ftp.misy.app
-User: votre_utilisateur_hostinger
-Pass: votre_mot_de_passe
-
-# Uploader TOUT le contenu de:
-Source: /Users/stephane/StudioProjects/riderapp/build/web/
-Destination: /public_html/book/
+flutter build web --release
 ```
 
-#### Option B: Via File Manager Hostinger
-1. Ouvrez le **File Manager** dans Hostinger
-2. Naviguez vers `/public_html/`
-3. Créez le dossier `book/` si nécessaire
-4. Uploadez tous les fichiers de `build/web/` dans `book/`
+### Étape 2: Upload des fichiers via rsync
 
-### Étape 3: Configuration .htaccess
+```bash
+rsync -avz --delete --exclude='osrm-proxy.php' \
+  -e "ssh -i ~/.ssh/id_rsa_misy" \
+  --rsync-path="sudo rsync" \
+  build/web/ ubuntu@51.254.141.103:/var/www/book.misy.app/
+```
 
-Créez un fichier `.htaccess` dans `/public_html/book/`:
+> ⚠️ `--rsync-path="sudo rsync"` est indispensable car `/var/www/book.misy.app/` appartient à `www-data`.
+>
+> ⚠️ `--exclude='osrm-proxy.php'` préserve le proxy OSRM serveur (pas dans le build Flutter).
 
-```apache
-# Flutter Web Routing
-<IfModule mod_rewrite.c>
-  RewriteEngine On
+Alternative : `./deploy.sh` (script automatisé qui fait la même chose + vérif).
 
-  # Ne pas rediriger les fichiers existants
-  RewriteCond %{REQUEST_FILENAME} !-f
-  RewriteCond %{REQUEST_FILENAME} !-d
+### Étape 3: Configuration nginx
 
-  # Rediriger toutes les requêtes vers index.html
-  RewriteRule ^(.*)$ /index.html [L,QSA]
-</IfModule>
+Le vhost nginx est déjà configuré côté serveur (SPA fallback + gzip). Pour référence, le bloc de routing Flutter Web ressemble à :
 
-# Cache Control pour les assets
-<IfModule mod_expires.c>
-  ExpiresActive On
-  ExpiresByType image/jpg "access plus 1 year"
-  ExpiresByType image/jpeg "access plus 1 year"
-  ExpiresByType image/gif "access plus 1 year"
-  ExpiresByType image/png "access plus 1 year"
-  ExpiresByType image/svg+xml "access plus 1 year"
-  ExpiresByType text/css "access plus 1 month"
-  ExpiresByType application/javascript "access plus 1 month"
-  ExpiresByType application/wasm "access plus 1 month"
-</IfModule>
+```nginx
+server {
+  listen 443 ssl http2;
+  server_name book.misy.app;
+  root /var/www/book.misy.app;
+  index index.html;
 
-# Compression
-<IfModule mod_deflate.c>
-  AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/x-javascript application/json
-</IfModule>
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
 
-# MIME Types
-AddType application/wasm .wasm
+  location ~* \.(?:js|css|wasm)$ {
+    expires 30d;
+    add_header Cache-Control "public, no-transform";
+  }
+
+  location ~* \.(?:png|jpg|jpeg|gif|svg|ico)$ {
+    expires 1y;
+    add_header Cache-Control "public, no-transform";
+  }
+
+  # osrm-proxy.php → FastCGI PHP (proxy OSRM)
+  location = /osrm-proxy.php {
+    include snippets/fastcgi-php.conf;
+    fastcgi_pass unix:/run/php/php-fpm.sock;
+  }
+}
 ```
 
 ### Étape 4: Vérification
@@ -145,13 +135,14 @@ flutter build web --release
 ### 3. Déploiement
 
 ```bash
-# Option 1: Script SCP (à créer)
-scp -r build/web/* user@ftp.misy.app:/public_html/book/
+# Script automatisé (recommandé)
+./deploy.sh
 
-# Option 2: Rsync (plus rapide pour les mises à jour)
-rsync -avz --delete build/web/ user@ftp.misy.app:/public_html/book/
-
-# Option 3: File Manager Hostinger (interface web)
+# OU commande manuelle
+rsync -avz --delete --exclude='osrm-proxy.php' \
+  -e "ssh -i ~/.ssh/id_rsa_misy" \
+  --rsync-path="sudo rsync" \
+  build/web/ ubuntu@51.254.141.103:/var/www/book.misy.app/
 ```
 
 ### 4. Commit et push
@@ -194,8 +185,9 @@ Si certaines fonctionnalités ne marchent pas:
 
 **Solution:**
 - Vérifiez que tous les fichiers sont bien uploadés
-- Vérifiez le `.htaccess`
+- Vérifiez la config nginx (`sudo nginx -t && sudo systemctl reload nginx`)
 - Consultez la console Chrome (F12) pour les erreurs
+- Vérifiez que le service worker n'a pas caché une vieille version (DevTools → Application → Clear site data)
 
 ### Problème: Firebase ne se connecte pas
 
@@ -206,8 +198,8 @@ Si certaines fonctionnalités ne marchent pas:
 ### Problème: Routes ne fonctionnent pas
 
 **Solution:**
-- Vérifiez le `.htaccess`
-- Assurez-vous que mod_rewrite est activé sur Hostinger
+- Vérifiez le SPA fallback nginx : `try_files $uri $uri/ /index.html;`
+- Tester depuis la prod : `curl -I https://book.misy.app/transport-editor`
 
 ## 🔐 Sécurité Firebase
 
@@ -270,11 +262,14 @@ git commit -m "fix(web): ..."
 # 2. Rebuild
 flutter build web --release
 
-# 3. Déployer
-# Uploader build/web/* vers Hostinger
+# 3. Déployer (OVH)
+./deploy.sh
 
-# 4. Push
-git push origin web-booking-platform
+# 4. Vérifier
+curl -sI "https://book.misy.app/main.dart.js?$(date +%s)" | grep -i last-modified
+
+# 5. Push
+git push origin main
 ```
 
 ## 📝 Notes importantes
@@ -287,13 +282,13 @@ git push origin web-booking-platform
 ## 🆘 Support
 
 En cas de problème:
-1. Vérifier les logs Hostinger
+1. Vérifier les logs nginx : `ssh -i ~/.ssh/id_rsa_misy ubuntu@51.254.141.103 "sudo tail -f /var/log/nginx/error.log"`
 2. Vérifier la console Chrome (F12)
 3. Vérifier Firebase Console → Firestore → Usage
-4. Tester en local d'abord
+4. Tester en local d'abord (`flutter run -d chrome`)
 
 ---
 
-**Dernière mise à jour:** 2026-01-16
-**Branche:** web-booking-platform
-**Environnement:** Production (Hostinger)
+**Dernière mise à jour:** 2026-04-21
+**Branche:** main
+**Environnement:** Production (OVH VPS `51.254.141.103`)
