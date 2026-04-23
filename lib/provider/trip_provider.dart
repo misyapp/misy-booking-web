@@ -2874,6 +2874,8 @@ class TripProvider extends ChangeNotifier {
           : bookingId,
       "paymentMethod": paymentMethod,
       "requestBy": userData.value!.id,
+      // Entreprise B2B — tag la course si le réservateur est membre d'une entreprise
+      if (userData.value!.companyId != null) "companyId": userData.value!.companyId,
       // Shadow ban flag - if true, drivers won't see this booking
       "isShadowBanned": userData.value!.isShadowBanned,
       // Infos du passager pour le suivi en direct

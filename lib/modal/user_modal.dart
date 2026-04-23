@@ -33,6 +33,9 @@ class UserModal {
   bool luckyUser;                // Active les probabilités boostées
   bool newUserChestFlag;         // Active le mode 50/50 pour nouveaux utilisateurs
 
+  // Entreprise (portail B2B) — null si non rattaché
+  String? companyId;
+
   // Getter pour accéder facilement au numéro de téléphone avec le nom Firestore
   String? get phoneNo => phone.isEmpty ? null : phone;
 
@@ -67,6 +70,7 @@ class UserModal {
     // Propriétés spéciales des coffres avec valeurs par défaut
     this.luckyUser = false,          // Désactivé par défaut
     this.newUserChestFlag = true,    // Activé pour nouveaux utilisateurs
+    this.companyId,
   });
   factory UserModal.fromJson(Map json) {
     return UserModal(
@@ -100,6 +104,7 @@ class UserModal {
       // Propriétés spéciales des coffres (cachées à l'utilisateur)
       luckyUser: json['luckyUser'] ?? false,
       newUserChestFlag: json['newUserChestFlag'] ?? true, // true par défaut pour nouveaux utilisateurs
+      companyId: json['companyId'],
     );
   }
 }
