@@ -36,25 +36,27 @@ class Directory {
   Future<Directory> delete({bool recursive = false}) async => this;
 }
 
-/// Stub pour File sur le web
+/// Stub pour File sur le web.
+/// Peut porter des bytes en mémoire (file picker web, upload Firebase Storage).
 class File {
   final String path;
+  final Uint8List? bytes;
 
-  File(this.path);
+  File(this.path, {this.bytes});
 
   Directory get parent => Directory('');
-  Future<bool> exists() async => false;
+  Future<bool> exists() async => bytes != null;
   Future<File> delete({bool recursive = false}) async => this;
   Future<File> create({bool recursive = false}) async => this;
-  Future<Uint8List> readAsBytes() async => Uint8List(0);
+  Future<Uint8List> readAsBytes() async => bytes ?? Uint8List(0);
   Future<String> readAsString() async => '';
-  Future<int> length() async => 0;
+  Future<int> length() async => bytes?.length ?? 0;
   Future<void> writeAsBytes(List<int> bytes) async {}
   void writeAsBytesSync(List<int> bytes) {}
   Future<void> writeAsString(String contents) async {}
   void writeAsStringSync(String contents) {}
-  Future<File> copy(String newPath) async => File(newPath);
-  Future<File> rename(String newPath) async => File(newPath);
+  Future<File> copy(String newPath) async => File(newPath, bytes: bytes);
+  Future<File> rename(String newPath) async => File(newPath, bytes: bytes);
   Stream<List<int>> openRead([int? start, int? end]) => Stream.empty();
 }
 

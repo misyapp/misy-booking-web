@@ -28,6 +28,9 @@ import 'package:rider_ride_hailing_app/services/places_autocomplete_web.dart';
 import 'package:rider_ride_hailing_app/services/route_service.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/login_screen.dart' show LoginPage;
 import 'package:rider_ride_hailing_app/pages/auth_module/signup_screen.dart' show SignUpScreen;
+import 'package:rider_ride_hailing_app/pages/auth_module/edit_profile_screen.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/my_booking_screen.dart';
+import 'package:rider_ride_hailing_app/functions/navigation_functions.dart';
 import 'package:rider_ride_hailing_app/models/transport_line.dart';
 import 'package:rider_ride_hailing_app/models/route_planner.dart';
 import 'package:rider_ride_hailing_app/services/transport_lines_service.dart';
@@ -2538,6 +2541,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                 authProvider.logout(context);
               } else if (value == 'transport-editor') {
                 Navigator.of(context).pushNamed('/transport-editor');
+              } else if (value == 'profile') {
+                push(context: context, screen: const EditProfileScreen());
+              } else if (value == 'trips') {
+                push(context: context, screen: const MyBookingScreen());
               }
             },
             itemBuilder: (context) => [

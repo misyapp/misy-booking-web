@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'dart:typed_data';
 import 'package:rider_ride_hailing_app/utils/platform.dart';
 
-/// For web, we can't use FileImage, so return a transparent image
+/// Sur web, pas de FileImage : on lit les bytes portés par le stub File
+/// (alimentés par le picker web).
 ImageProvider getFileImageProvider(File file) {
-  // On web, File operations don't work properly, return a memory image with empty data
-  return MemoryImage(Uint8List(0));
+  return MemoryImage(file.bytes ?? Uint8List(0));
 }

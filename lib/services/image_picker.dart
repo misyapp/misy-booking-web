@@ -2,9 +2,11 @@
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:rider_ride_hailing_app/contants/language_strings.dart';
+import 'package:rider_ride_hailing_app/utils/file_factory.dart';
 import 'package:rider_ride_hailing_app/utils/platform.dart';
 
 Future pickImage(bool isGallery,
@@ -13,6 +15,25 @@ Future pickImage(bool isGallery,
     CropStyle? cropStyle,
     CropAspectRatio? aspectRatio}) async {
   final ImagePicker picker = ImagePicker();
+
+  // Web : pas de ImageCropper (non supporté), pas de path FS ; on lit les
+  // bytes du XFile et on emballe dans le stub File pour que uploadFile et
+  // getFileImageProvider trouvent les données.
+  if (kIsWeb) {
+    try {
+      final XFile? picked = await picker.pickImage(
+        source: isGallery ? ImageSource.gallery : ImageSource.camera,
+        imageQuality: 80,
+        maxHeight: 600,
+      );
+      if (picked == null) return null;
+      final bytes = await picked.readAsBytes();
+      return createFileFromBytes(picked.name, bytes);
+    } catch (e) {
+      print('Image picker error (web) $e');
+      return null;
+    }
+  }
 
   File? image;
   try {
