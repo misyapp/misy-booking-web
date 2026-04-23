@@ -7,8 +7,9 @@ import 'package:rider_ride_hailing_app/services/admin_auth_service.dart';
 import 'dart:js_util' as js_util;
 import 'dart:html' as html;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/my_colors.dart';
@@ -3042,29 +3043,51 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                 const SizedBox(height: 16),
 
                 // Onglets navigation - utilise ValueListenableBuilder pour mise à jour locale
+                // + StreamBuilder sur l'auth state pour révéler Transports/Carte
+                // uniquement au compte admin en prod. En dev (kReleaseMode=false)
+                // tout est toujours visible pour itération.
                 ValueListenableBuilder<int>(
                   valueListenable: _mainMode,
                   builder: (context, mode, _) {
-                    return Row(
-                      children: [
-                        _buildNavTab(
-                          label: 'Course',
-                          isSelected: mode == 0,
-                          onTap: () => _switchToMode(0),
-                        ),
-                        const SizedBox(width: 8),
-                        _buildNavTab(
-                          label: 'Transports',
-                          isSelected: mode == 1,
-                          onTap: () => _switchToMode(1),
-                        ),
-                        const SizedBox(width: 8),
-                        _buildNavTab(
-                          label: 'Carte',
-                          isSelected: mode == 2,
-                          onTap: () => _switchToMode(2),
-                        ),
-                      ],
+                    return StreamBuilder<User?>(
+                      stream: FirebaseAuth.instance.authStateChanges(),
+                      builder: (ctx, snap) {
+                        final email = snap.data?.email;
+                        final isAdmin = email == 'admin@misyapp.com';
+                        final showAdminTabs = !kReleaseMode || isAdmin;
+                        // Garde-fou : si l'user était sur Transports/Carte et
+                        // qu'il devient non-admin (logout, change de compte),
+                        // on le ramène sur Course pour ne pas le laisser sur
+                        // un onglet invisible.
+                        if (!showAdminTabs && _mainMode.value != 0) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) _mainMode.value = 0;
+                          });
+                        }
+                        return Row(
+                          children: [
+                            _buildNavTab(
+                              label: 'Course',
+                              isSelected: mode == 0,
+                              onTap: () => _switchToMode(0),
+                            ),
+                            if (showAdminTabs) ...[
+                              const SizedBox(width: 8),
+                              _buildNavTab(
+                                label: 'Transports',
+                                isSelected: mode == 1,
+                                onTap: () => _switchToMode(1),
+                              ),
+                              const SizedBox(width: 8),
+                              _buildNavTab(
+                                label: 'Carte',
+                                isSelected: mode == 2,
+                                onTap: () => _switchToMode(2),
+                              ),
+                            ],
+                          ],
+                        );
+                      },
                     );
                   },
                 ),
