@@ -1,7 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:rider_ride_hailing_app/models/transport_line_validation.dart';
-import 'package:rider_ride_hailing_app/pages/auth_module/login_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/admin_review_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/editor_new_line_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/editor_wizard_screen.dart';
@@ -112,6 +111,8 @@ class _DashboardBodyState extends State<_DashboardBody> {
               );
             },
           ),
+          _ProfileMenu(),
+          const SizedBox(width: 4),
         ],
       ),
       body: _loadingMeta
@@ -435,6 +436,78 @@ class _DashboardBodyState extends State<_DashboardBody> {
   }
 }
 
+class _ProfileMenu extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final email = user?.email ?? '—';
+    final initial = email.isNotEmpty ? email[0].toUpperCase() : '?';
+
+    return PopupMenuButton<String>(
+      tooltip: 'Compte',
+      offset: const Offset(0, 48),
+      icon: CircleAvatar(
+        radius: 15,
+        backgroundColor: Colors.white,
+        child: Text(
+          initial,
+          style: const TextStyle(
+            color: Color(0xFF1565C0),
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+        ),
+      ),
+      itemBuilder: (ctx) => [
+        PopupMenuItem<String>(
+          enabled: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Connecté en tant que',
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                email,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem<String>(
+          value: 'logout',
+          child: Row(
+            children: [
+              Icon(Icons.logout, color: Color(0xFFE53935), size: 20),
+              SizedBox(width: 10),
+              Text('Se déconnecter',
+                  style: TextStyle(color: Color(0xFFE53935))),
+            ],
+          ),
+        ),
+      ],
+      onSelected: (value) async {
+        if (value == 'logout') {
+          await FirebaseAuth.instance.signOut();
+          AdminAuthService.instance.invalidate();
+          if (!context.mounted) return;
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            '/transport-login',
+            (_) => false,
+          );
+        }
+      },
+    );
+  }
+}
+
 class _AccessDeniedScreen extends StatelessWidget {
   const _AccessDeniedScreen();
 
@@ -493,9 +566,9 @@ class _AccessDeniedScreen extends StatelessWidget {
                       await FirebaseAuth.instance.signOut();
                       AdminAuthService.instance.invalidate();
                       if (!context.mounted) return;
-                      Navigator.of(context).pushReplacement(
-                        MaterialPageRoute(
-                            builder: (_) => const LoginPage()),
+                      Navigator.of(context).pushNamedAndRemoveUntil(
+                        '/transport-login',
+                        (_) => false,
                       );
                     },
                     icon: const Icon(Icons.logout),
@@ -509,8 +582,9 @@ class _AccessDeniedScreen extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 24, vertical: 14),
                     ),
-                    onPressed: () => Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(builder: (_) => const LoginPage()),
+                    onPressed: () => Navigator.of(context).pushNamedAndRemoveUntil(
+                      '/transport-login',
+                      (_) => false,
                     ),
                     icon: const Icon(Icons.login),
                     label: const Text('Se connecter'),

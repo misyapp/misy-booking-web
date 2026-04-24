@@ -15,6 +15,15 @@ const axios = require("axios");
 const { google } = require("googleapis");
 
 admin.initializeApp();
+
+// IAM Transport — gestion comptes transport_editor / transport_admin
+const iam = require("./iam");
+exports.iamListTransportUsers = iam.iamListTransportUsers;
+exports.iamCreateTransportUser = iam.iamCreateTransportUser;
+exports.iamSetTransportClaims = iam.iamSetTransportClaims;
+exports.iamResetTransportPassword = iam.iamResetTransportPassword;
+exports.iamDeleteTransportUser = iam.iamDeleteTransportUser;
+
 const db = admin.firestore();
 const Timestamp = admin.firestore.Timestamp;
 // Create and deploy your first functions

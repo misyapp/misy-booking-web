@@ -17,6 +17,8 @@ import 'package:rider_ride_hailing_app/pages/auth_module/web_entry_screen.dart';
 import 'package:rider_ride_hailing_app/pages/test_invoice_regeneration_page.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/admin_review_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/editor_dashboard_screen.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/iam_screen.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/transport_login_screen.dart';
 import 'package:rider_ride_hailing_app/provider/admin_settings_provider.dart';
 import 'package:rider_ride_hailing_app/provider/airtel_money_payment_gateway_provider.dart';
 import 'package:rider_ride_hailing_app/provider/dark_theme_provider.dart';
@@ -604,8 +606,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 home: const SplashScreen(),
                 routes: {
                   '/test-invoice': (context) => const TestInvoiceRegenerationPage(),
+                  '/transport-login': (context) => const TransportLoginScreen(),
                   '/transport-editor': (context) => const EditorDashboardScreen(),
                   '/transport-admin': (context) => const AdminReviewScreen(),
+                  '/transport-iam': (context) => const IamScreen(),
                 },
                 builder: EasyLoading.init(),
               ));

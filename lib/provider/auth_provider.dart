@@ -23,6 +23,7 @@ import 'package:rider_ride_hailing_app/pages/view_module/main_navigation_screen.
 import 'package:rider_ride_hailing_app/pages/view_module/home_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/admin_review_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/editor_dashboard_screen.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/iam_screen.dart';
 import 'package:rider_ride_hailing_app/services/admin_auth_service.dart';
 import 'package:rider_ride_hailing_app/provider/trip_provider.dart';
 import 'package:rider_ride_hailing_app/provider/admin_settings_provider.dart';
@@ -240,16 +241,31 @@ class CustomAuthProvider with ChangeNotifier {
       final _url = Uri.base.toString();
       final _isAdminReview = _url.contains('transport-admin');
       final _isEditor = _url.contains('transport-editor');
-      if (_isAdminReview || _isEditor) {
+      final _isTransportLogin = _url.contains('transport-login');
+      final _isTransportIam = _url.contains('transport-iam');
+      if (_isAdminReview || _isEditor || _isTransportLogin || _isTransportIam) {
         await hideLoading();
+        // Sur la page login dédiée transport : on ne fait RIEN côté listener.
+        // L'utilisateur reste sur le formulaire même si un user anonyme
+        // Misy est loggué par ailleurs. La redirection vers editor/admin se
+        // fait dans TransportLoginScreen après vérification des claims.
+        if (_isTransportLogin) {
+          return;
+        }
         if (user != null) {
           currentUser = user;
           AdminAuthService.instance.invalidate();
+          final Widget target;
+          if (_isAdminReview) {
+            target = const AdminReviewScreen();
+          } else if (_isTransportIam) {
+            target = const IamScreen();
+          } else {
+            target = const EditorDashboardScreen();
+          }
           pushAndRemoveUntil(
             context: MyGlobalKeys.navigatorKey.currentContext!,
-            screen: _isAdminReview
-                ? const AdminReviewScreen()
-                : const EditorDashboardScreen(),
+            screen: target,
           );
         }
         return;

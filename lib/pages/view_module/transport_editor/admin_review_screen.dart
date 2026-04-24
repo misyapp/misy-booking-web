@@ -1,11 +1,12 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:rider_ride_hailing_app/models/transport_line.dart';
 import 'package:rider_ride_hailing_app/models/transport_line_validation.dart';
-import 'package:rider_ride_hailing_app/pages/auth_module/login_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/osm_base_map.dart';
 import 'package:rider_ride_hailing_app/services/admin_auth_service.dart';
 import 'package:rider_ride_hailing_app/services/transport_editor_service.dart';
@@ -51,11 +52,13 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
   String? _filterEmail;
   List<LineMetadata> _allMeta = [];
   bool _loadingMeta = true;
+  Future<List<TransportLineGroup>>? _linesFuture;
 
   @override
   void initState() {
     super.initState();
     _loadMetadata();
+    _linesFuture = TransportLinesService.instance.loadAllLines();
   }
 
   Future<void> _loadMetadata() async {
@@ -83,7 +86,25 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
         title: const Text('Review admin — Transport'),
         backgroundColor: const Color(0xFF5E35B1),
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            tooltip: 'Gérer les comptes (IAM)',
+            icon: const Icon(Icons.manage_accounts_outlined),
+            onPressed: () => Navigator.of(context).pushNamed('/transport-iam'),
+          ),
+          IconButton(
+            tooltip: 'Aller à l\'éditeur terrain',
+            icon: const Icon(Icons.edit_location_alt_outlined),
+            onPressed: () => Navigator.of(context).pushNamedAndRemoveUntil(
+              '/transport-editor',
+              (_) => false,
+            ),
+          ),
+          _AdminProfileMenu(),
+          const SizedBox(width: 4),
+        ],
       ),
+      backgroundColor: const Color(0xFFF3F4F6),
       body: _loadingMeta
           ? const Center(child: CircularProgressIndicator())
           : StreamBuilder<Map<String, TransportLineValidation>>(
@@ -99,26 +120,588 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
                         .where((i) => i.consultantEmail == _filterEmail)
                         .toList();
 
-                return Column(
-                  children: [
-                    _buildFilterBar(emails, items.length, filtered.length),
-                    if (filtered.isEmpty)
-                      const Expanded(child: _EmptyState())
-                    else
-                      Expanded(
-                        child: ListView.separated(
-                          padding: const EdgeInsets.all(12),
-                          itemCount: filtered.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 8),
-                          itemBuilder: (ctx, i) =>
-                              _buildReviewCard(filtered[i]),
-                        ),
+                return LayoutBuilder(
+                  builder: (ctx, constraints) {
+                    final isWide = constraints.maxWidth >= 1100;
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildKpiRow(validations, items),
+                          const SizedBox(height: 16),
+                          if (isWide)
+                            SizedBox(
+                              height: 520,
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Expanded(flex: 6, child: _buildMapCard()),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    flex: 4,
+                                    child: _buildPendingCard(
+                                        emails, items.length,
+                                        filtered.length, filtered),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else ...[
+                            SizedBox(height: 380, child: _buildMapCard()),
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              height: 460,
+                              child: _buildPendingCard(
+                                  emails, items.length, filtered.length,
+                                  filtered),
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          if (isWide)
+                            SizedBox(
+                              height: 420,
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Expanded(
+                                    flex: 5,
+                                    child: _buildConsultantsCard(validations),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    flex: 5,
+                                    child: _buildActivityCard(),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else ...[
+                            SizedBox(
+                              height: 360,
+                              child: _buildConsultantsCard(validations),
+                            ),
+                            const SizedBox(height: 16),
+                            SizedBox(height: 360, child: _buildActivityCard()),
+                          ],
+                        ],
                       ),
-                  ],
+                    );
+                  },
                 );
               },
             ),
+    );
+  }
+
+  /* ──────────────────── KPI ROW ──────────────────── */
+
+  Widget _buildKpiRow(
+      Map<String, TransportLineValidation> validations, List<ReviewItem> items) {
+    final total = _allMeta.length;
+    final published =
+        validations.values.where((v) => v.isPublished).length;
+    final pending = items
+        .where((i) => i.adminStatus == AdminStatus.pending)
+        .length;
+    final rejected = items
+        .where((i) => i.adminStatus == AdminStatus.rejected)
+        .length;
+    final activeConsultants = _distinctEmails(items).length;
+
+    final kpis = [
+      _Kpi('Lignes totales', '$total', Icons.directions_bus,
+          const Color(0xFF5E35B1)),
+      _Kpi('En prod', '$published', Icons.check_circle,
+          const Color(0xFF43A047)),
+      _Kpi('En attente', '$pending', Icons.pending_actions,
+          const Color(0xFFFB8C00)),
+      _Kpi('Rejetées', '$rejected', Icons.replay,
+          const Color(0xFFE53935)),
+      _Kpi('Consultants actifs', '$activeConsultants', Icons.people,
+          const Color(0xFF1565C0)),
+    ];
+
+    return LayoutBuilder(builder: (ctx, c) {
+      final narrow = c.maxWidth < 900;
+      if (narrow) {
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (var i = 0; i < kpis.length; i++) ...[
+                SizedBox(width: 200, child: _kpiCard(kpis[i])),
+                if (i != kpis.length - 1) const SizedBox(width: 12),
+              ],
+            ],
+          ),
+        );
+      }
+      return Row(
+        children: [
+          for (var i = 0; i < kpis.length; i++) ...[
+            Expanded(child: _kpiCard(kpis[i])),
+            if (i != kpis.length - 1) const SizedBox(width: 12),
+          ],
+        ],
+      );
+    });
+  }
+
+  Widget _kpiCard(_Kpi kpi) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: kpi.color.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(kpi.icon, color: kpi.color, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  kpi.value,
+                  style: const TextStyle(
+                      fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  kpi.label,
+                  style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /* ──────────────────── MAP CARD ──────────────────── */
+
+  Widget _buildMapCard() {
+    return _dashboardCard(
+      title: 'Carte des lignes',
+      icon: Icons.map_outlined,
+      child: FutureBuilder<List<TransportLineGroup>>(
+        future: _linesFuture,
+        builder: (ctx, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snap.hasError || snap.data == null) {
+            return Center(
+              child: Text('Erreur chargement lignes : ${snap.error ?? ""}',
+                  style: const TextStyle(color: Colors.red)),
+            );
+          }
+          return _buildMap(snap.data!);
+        },
+      ),
+    );
+  }
+
+  Widget _buildMap(List<TransportLineGroup> groups) {
+    final polylines = <Polyline>[];
+    for (final g in groups) {
+      final meta = _metaFor(g.lineNumber);
+      final color =
+          meta != null ? Color(meta.colorValue) : const Color(0xFF5E35B1);
+      for (final line in g.lines) {
+        if (line.coordinates.length < 2) continue;
+        polylines.add(Polyline(
+          points: line.coordinates
+              .map((c) => LatLng(c.latitude, c.longitude))
+              .toList(),
+          color: color.withOpacity(0.75),
+          strokeWidth: 3,
+        ));
+      }
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: FlutterMap(
+        options: const MapOptions(
+          initialCenter: LatLng(-18.8792, 47.5079), // Tana
+          initialZoom: 12,
+          interactionOptions: InteractionOptions(
+            flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+          ),
+        ),
+        children: [
+          TileLayer(
+            urlTemplate:
+                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            userAgentPackageName: 'app.misy.book',
+          ),
+          PolylineLayer(polylines: polylines),
+        ],
+      ),
+    );
+  }
+
+  /* ──────────────────── PENDING QUEUE CARD ──────────────────── */
+
+  Widget _buildPendingCard(
+      List<String> emails, int total, int shown, List<ReviewItem> filtered) {
+    return _dashboardCard(
+      title: 'File de review',
+      icon: Icons.inbox_outlined,
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: const Color(0xFF5E35B1),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text('$shown / $total',
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w600)),
+      ),
+      child: Column(
+        children: [
+          _buildFilterBar(emails, total, shown),
+          const SizedBox(height: 8),
+          Expanded(
+            child: filtered.isEmpty
+                ? const _EmptyState()
+                : ListView.separated(
+                    padding: EdgeInsets.zero,
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (ctx, i) => _buildReviewCard(filtered[i]),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /* ──────────────────── CONSULTANTS CARD ──────────────────── */
+
+  Widget _buildConsultantsCard(
+      Map<String, TransportLineValidation> validations) {
+    final stats = <String, _ConsultantStat>{};
+    for (final v in validations.values) {
+      final email = v.updatedByEmail;
+      if (email == null || email.isEmpty) continue;
+      final s = stats.putIfAbsent(email, () => _ConsultantStat(email));
+      for (final step in EditorStep.values) {
+        final consultant = v.statusFor(step);
+        final admin = v.adminReviewFor(step);
+        if (consultant == ValidationStatus.modified &&
+            admin.status != AdminStatus.approved) {
+          s.pending++;
+        }
+        if (admin.status == AdminStatus.approved) s.approved++;
+        if (admin.status == AdminStatus.rejected) s.rejected++;
+      }
+      if (v.updatedAt != null &&
+          (s.lastActivity == null ||
+              v.updatedAt!.isAfter(s.lastActivity!))) {
+        s.lastActivity = v.updatedAt;
+      }
+    }
+
+    final list = stats.values.toList()
+      ..sort((a, b) {
+        final ad = a.lastActivity?.millisecondsSinceEpoch ?? 0;
+        final bd = b.lastActivity?.millisecondsSinceEpoch ?? 0;
+        return bd.compareTo(ad);
+      });
+
+    return _dashboardCard(
+      title: 'Consultants',
+      icon: Icons.people_outline,
+      child: list.isEmpty
+          ? const Center(
+              child: Text('Aucune activité consultant enregistrée.',
+                  style: TextStyle(color: Colors.grey)),
+            )
+          : ListView.separated(
+              padding: EdgeInsets.zero,
+              itemCount: list.length,
+              separatorBuilder: (_, __) =>
+                  Divider(height: 1, color: Colors.grey.shade200),
+              itemBuilder: (ctx, i) => _buildConsultantRow(list[i]),
+            ),
+    );
+  }
+
+  Widget _buildConsultantRow(_ConsultantStat s) {
+    final initial =
+        s.email.isNotEmpty ? s.email[0].toUpperCase() : '?';
+    final dateStr = s.lastActivity == null
+        ? '—'
+        : DateFormat('dd/MM HH:mm').format(s.lastActivity!);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: const Color(0xFF1565C0),
+            child: Text(initial,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(s.email,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    _miniCount(s.pending, 'en attente',
+                        const Color(0xFFFB8C00)),
+                    const SizedBox(width: 8),
+                    _miniCount(
+                        s.approved, 'validés', const Color(0xFF43A047)),
+                    const SizedBox(width: 8),
+                    _miniCount(
+                        s.rejected, 'rejetés', const Color(0xFFE53935)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(dateStr,
+              style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniCount(int count, String label, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text('$count $label',
+            style: const TextStyle(fontSize: 11)),
+      ],
+    );
+  }
+
+  /* ──────────────────── ACTIVITY CARD (audit log) ──────────────────── */
+
+  Widget _buildActivityCard() {
+    return _dashboardCard(
+      title: 'Activité récente',
+      icon: Icons.history,
+      child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance
+            .collection('transport_edits_log')
+            .orderBy('timestamp', descending: true)
+            .limit(30)
+            .snapshots(),
+        builder: (ctx, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snap.hasError) {
+            return Center(
+              child: Text('Erreur : ${snap.error}',
+                  style: const TextStyle(color: Colors.red)),
+            );
+          }
+          final docs = snap.data?.docs ?? [];
+          if (docs.isEmpty) {
+            return const Center(
+              child: Text('Pas encore d\'activité.',
+                  style: TextStyle(color: Colors.grey)),
+            );
+          }
+          return ListView.separated(
+            padding: EdgeInsets.zero,
+            itemCount: docs.length,
+            separatorBuilder: (_, __) =>
+                Divider(height: 1, color: Colors.grey.shade200),
+            itemBuilder: (ctx, i) => _buildActivityRow(docs[i].data()),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildActivityRow(Map<String, dynamic> log) {
+    final action = (log['action'] as String?) ?? '?';
+    final kind = (log['kind'] as String?) ?? '';
+    final line = (log['line_number'] as String?) ?? '?';
+    final direction = (log['direction'] as String?) ?? '';
+    final email = (log['user_email'] as String?) ?? 'inconnu';
+    final ts = log['timestamp'];
+    DateTime? date;
+    if (ts is Timestamp) date = ts.toDate();
+    final dateStr =
+        date == null ? '' : DateFormat('dd/MM HH:mm').format(date);
+
+    Color color;
+    IconData icon;
+    String label;
+    switch (action) {
+      case 'approved':
+        color = const Color(0xFF43A047);
+        icon = Icons.check_circle;
+        label = 'Validé';
+        break;
+      case 'rejected':
+        color = const Color(0xFFE53935);
+        icon = Icons.replay;
+        label = 'Rejeté';
+        break;
+      case 'created':
+        color = const Color(0xFF1565C0);
+        icon = Icons.add_circle;
+        label = 'Créée';
+        break;
+      case 'rebuilt':
+        color = const Color(0xFFFB8C00);
+        icon = Icons.edit_location_alt;
+        label = 'Éditée';
+        break;
+      default:
+        color = Colors.grey;
+        icon = Icons.circle;
+        label = action;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(label,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        'Ligne $line${direction.isNotEmpty ? " · $direction" : ""}'
+                        '${kind == "new_line" ? " (nouvelle)" : ""}',
+                        style: const TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(email,
+                    style:
+                        TextStyle(fontSize: 11, color: Colors.grey[600]),
+                    overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(dateStr,
+              style: TextStyle(fontSize: 10, color: Colors.grey[600])),
+        ],
+      ),
+    );
+  }
+
+  /* ──────────────────── CARD WRAPPER ──────────────────── */
+
+  Widget _dashboardCard({
+    required String title,
+    required IconData icon,
+    required Widget child,
+    Widget? trailing,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding:
+                const EdgeInsets.fromLTRB(14, 12, 14, 8),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: const Color(0xFF5E35B1)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(title,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.bold)),
+                ),
+                if (trailing != null) trailing,
+              ],
+            ),
+          ),
+          Divider(height: 1, color: Colors.grey.shade200),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: child,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -171,32 +754,37 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
   Widget _buildFilterBar(
       List<String> emails, int total, int shown) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      color: const Color(0xFFEDE7F6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEDE7F6),
+        borderRadius: BorderRadius.circular(8),
+      ),
       child: Row(
         children: [
-          const Icon(Icons.filter_list, size: 18, color: Color(0xFF5E35B1)),
+          const Icon(Icons.filter_list, size: 16, color: Color(0xFF5E35B1)),
           const SizedBox(width: 6),
-          const Text('Consultant :',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-          const SizedBox(width: 8),
           Expanded(
             child: DropdownButton<String?>(
               isExpanded: true,
               value: _filterEmail,
-              hint: const Text('Tous', style: TextStyle(fontSize: 13)),
+              underline: const SizedBox.shrink(),
+              hint: const Text('Tous les consultants',
+                  style: TextStyle(fontSize: 12)),
               items: [
                 const DropdownMenuItem<String?>(
-                    value: null, child: Text('Tous')),
+                  value: null,
+                  child: Text('Tous les consultants',
+                      style: TextStyle(fontSize: 12)),
+                ),
                 for (final e in emails)
-                  DropdownMenuItem<String?>(value: e, child: Text(e)),
+                  DropdownMenuItem<String?>(
+                    value: e,
+                    child: Text(e, style: const TextStyle(fontSize: 12)),
+                  ),
               ],
               onChanged: (v) => setState(() => _filterEmail = v),
             ),
           ),
-          const SizedBox(width: 8),
-          Text('$shown / $total',
-              style: TextStyle(fontSize: 12, color: Colors.grey[700])),
         ],
       ),
     );
@@ -854,6 +1442,78 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
+class _AdminProfileMenu extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final email = user?.email ?? '—';
+    final initial = email.isNotEmpty ? email[0].toUpperCase() : '?';
+
+    return PopupMenuButton<String>(
+      tooltip: 'Compte',
+      offset: const Offset(0, 48),
+      icon: CircleAvatar(
+        radius: 15,
+        backgroundColor: Colors.white,
+        child: Text(
+          initial,
+          style: const TextStyle(
+            color: Color(0xFF5E35B1),
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+        ),
+      ),
+      itemBuilder: (ctx) => [
+        PopupMenuItem<String>(
+          enabled: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Connecté en tant que',
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                email,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem<String>(
+          value: 'logout',
+          child: Row(
+            children: [
+              Icon(Icons.logout, color: Color(0xFFE53935), size: 20),
+              SizedBox(width: 10),
+              Text('Se déconnecter',
+                  style: TextStyle(color: Color(0xFFE53935))),
+            ],
+          ),
+        ),
+      ],
+      onSelected: (value) async {
+        if (value == 'logout') {
+          await FirebaseAuth.instance.signOut();
+          AdminAuthService.instance.invalidate();
+          if (!context.mounted) return;
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            '/transport-login',
+            (_) => false,
+          );
+        }
+      },
+    );
+  }
+}
+
 class _AdminAccessDenied extends StatelessWidget {
   const _AdminAccessDenied();
 
@@ -889,10 +1549,28 @@ class _AdminAccessDenied extends StatelessWidget {
                   ElevatedButton.icon(
                     icon: const Icon(Icons.login),
                     label: const Text('Se connecter'),
-                    onPressed: () => Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(
-                          builder: (_) => const LoginPage()),
+                    onPressed: () => Navigator.of(context).pushNamedAndRemoveUntil(
+                      '/transport-login',
+                      (_) => false,
                     ),
+                  )
+                else
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Se déconnecter + reconnecter'),
+                    onPressed: () async {
+                      await FirebaseAuth.instance.signOut();
+                      AdminAuthService.instance.invalidate();
+                      if (!context.mounted) return;
+                      Navigator.of(context).pushNamedAndRemoveUntil(
+                        '/transport-login',
+                        (_) => false,
+                      );
+                    },
                   ),
               ],
             ),
@@ -901,4 +1579,21 @@ class _AdminAccessDenied extends StatelessWidget {
       ),
     );
   }
+}
+
+class _Kpi {
+  _Kpi(this.label, this.value, this.icon, this.color);
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+}
+
+class _ConsultantStat {
+  _ConsultantStat(this.email);
+  final String email;
+  int pending = 0;
+  int approved = 0;
+  int rejected = 0;
+  DateTime? lastActivity;
 }

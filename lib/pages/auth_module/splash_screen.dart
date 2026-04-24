@@ -30,12 +30,15 @@ class _SplashScreenState extends State<SplashScreen> {
   // Vérifie si on est en mode test-invoice
   bool get _isTestInvoiceMode => _currentUrl().contains('test-invoice');
 
-  // Vérifie si on est en mode éditeur terrain transport (consultant)
-  /// ou en mode review admin (review par admin). Les deux routes partagent
-  /// le même flow auth (skip splash lourd, setAuthListener léger).
+  // Vérifie si on est en mode éditeur terrain transport (consultant),
+  /// en mode review admin (review par admin), ou sur la page de login
+  /// dédiée transport. Ces routes partagent le même flow auth
+  /// (skip splash lourd, setAuthListener léger).
   bool get _isTransportEditorMode =>
       _currentUrl().contains('transport-editor') ||
-      _currentUrl().contains('transport-admin');
+      _currentUrl().contains('transport-admin') ||
+      _currentUrl().contains('transport-login') ||
+      _currentUrl().contains('transport-iam');
 
   @override
   void initState() {
