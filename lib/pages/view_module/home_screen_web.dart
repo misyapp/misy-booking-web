@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:ui';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:rider_ride_hailing_app/services/admin_auth_service.dart';
 import 'dart:js_util' as js_util;
 import 'dart:html' as html;
@@ -3039,12 +3040,21 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Logo Misy - grande taille
-                Image.asset(
-                  MyImagesUrl.misyLogoRose,
-                  height: 42,
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.high,
+                // Logo Misy - grande taille (cliquable → misy.app)
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () => launchUrl(
+                      Uri.parse('https://misy.app'),
+                      mode: LaunchMode.externalApplication,
+                    ),
+                    child: Image.asset(
+                      MyImagesUrl.misyLogoRose,
+                      height: 42,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                    ),
+                  ),
                 ),
 
                 const SizedBox(height: 16),
