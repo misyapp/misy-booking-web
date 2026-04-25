@@ -11,6 +11,7 @@ import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/editor
 
 import '../../../contants/my_image_url.dart';
 import '../../../provider/auth_provider.dart';
+import 'phone_number_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -40,6 +41,12 @@ class _SplashScreenState extends State<SplashScreen> {
       _currentUrl().contains('transport-login') ||
       _currentUrl().contains('transport-iam');
 
+  // Force l'écran de login (depuis beta.misy.app → "Connexion" ou "S'inscrire")
+  // login=1 et signup=1 partagent le même flow (PhoneNumberScreen) car l'inscription
+  // se fait via numéro de téléphone, identique à la connexion.
+  bool get _isForceLoginMode =>
+      _currentUrl().contains('login=1') || _currentUrl().contains('signup=1');
+
   @override
   void initState() {
     super.initState();
@@ -67,6 +74,18 @@ class _SplashScreenState extends State<SplashScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         auth = Provider.of<CustomAuthProvider>(context, listen: false);
         auth.setAuthListener(context);
+      });
+      return;
+    }
+
+    // Mode "force login" : l'utilisateur arrive depuis le CTA "Connectez-vous"
+    // de beta.misy.app. On push directement PhoneNumberScreen, peu importe
+    // l'état d'auth en cache.
+    if (_isForceLoginMode) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const PhoneNumberScreen()),
+        );
       });
       return;
     }

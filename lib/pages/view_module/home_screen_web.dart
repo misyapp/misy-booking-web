@@ -30,8 +30,11 @@ import 'package:rider_ride_hailing_app/services/route_service.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/login_screen.dart' show LoginPage;
 import 'package:rider_ride_hailing_app/pages/auth_module/signup_screen.dart' show SignUpScreen;
 import 'package:rider_ride_hailing_app/pages/auth_module/edit_profile_screen.dart';
+import 'package:rider_ride_hailing_app/pages/auth_module/phone_number_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/my_booking_screen.dart';
 import 'package:rider_ride_hailing_app/functions/navigation_functions.dart';
+import 'package:rider_ride_hailing_app/services/guest_storage_service.dart';
+import 'package:rider_ride_hailing_app/models/guest_session.dart';
 import 'package:rider_ride_hailing_app/models/transport_line.dart';
 import 'package:rider_ride_hailing_app/models/route_planner.dart';
 import 'package:rider_ride_hailing_app/services/transport_lines_service.dart';
@@ -211,6 +214,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _setupFocusListeners();
     _initializeAndSubscribe();
     _readUrlParameters();
+    _restorePendingScheduledBooking();
     _createCustomMarkers();
     _checkTransportEditorRole();
 
@@ -250,6 +254,64 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
   }
 
+  /// Restaure une réservation planifiée laissée en attente avant le login
+  /// (cas : l'user a fait "Planifier" sur beta.misy.app, a été redirigé vers
+  /// l'écran de connexion, puis revient ici une fois authentifié).
+  Future<void> _restorePendingScheduledBooking() async {
+    if (!kIsWeb) return;
+    try {
+      // Si déjà restauré via _readUrlParameters (URL params toujours présents),
+      // on s'arrête là — pas besoin de doubler la logique.
+      if (_pickupLocation['lat'] != null && _destinationLocation['lat'] != null) return;
+
+      final auth = Provider.of<CustomAuthProvider>(context, listen: false);
+      final fbUser = auth.currentUser;
+      // Ne pas restaurer si toujours anonyme : l'user n'a pas finalisé son login
+      if (fbUser == null || fbUser.isAnonymous) return;
+
+      final svc = GuestStorageService();
+      final saved = await svc.getBookingData();
+      if (saved == null) return;
+
+      final additional = saved['additionalData'] as Map<String, dynamic>?;
+      final scheduledAtIso = additional?['scheduledAt'] as String?;
+      if (scheduledAtIso == null) return; // pas un trajet planifié
+
+      print('🔁 Restauration réservation planifiée post-login: $scheduledAtIso');
+
+      final pickupLoc = saved['pickupLocation'] as Map?;
+      final destLoc = saved['destinationLocation'] as Map?;
+      if (pickupLoc != null && pickupLoc['lat'] != null && pickupLoc['lng'] != null) {
+        _pickupLocation = Map<String, dynamic>.from(pickupLoc);
+        _pickupLatLng = LatLng(pickupLoc['lat'] as double, pickupLoc['lng'] as double);
+        _pickupController.text = (pickupLoc['address'] ?? saved['pickupAddress'] ?? '').toString();
+      }
+      if (destLoc != null && destLoc['lat'] != null && destLoc['lng'] != null) {
+        _destinationLocation = Map<String, dynamic>.from(destLoc);
+        _destinationController.text = (destLoc['address'] ?? saved['destinationAddress'] ?? '').toString();
+      }
+      try {
+        final parsed = DateTime.parse(scheduledAtIso).toLocal();
+        if (parsed.isAfter(DateTime.now())) {
+          final tripProvider = Provider.of<TripProvider>(context, listen: false);
+          tripProvider.rideScheduledTime = parsed;
+        }
+      } catch (e) {
+        debugPrint('Invalid pending scheduledAt: $e');
+      }
+
+      // Effacer la persistance + auto-search
+      await svc.clearBookingData();
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (mounted && _pickupLocation['lat'] != null && _destinationLocation['lat'] != null) {
+          _onSearch();
+        }
+      });
+    } catch (e) {
+      debugPrint('Error restoring pending booking: $e');
+    }
+  }
+
   /// Lit les paramètres URL pour pré-remplir les champs (depuis le widget misy.app)
   void _readUrlParameters() {
     if (!kIsWeb) return;
@@ -271,8 +333,25 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         final pickupLng = params['pickupLng'];
         final destLat = params['destLat'];
         final destLng = params['destLng'];
+        final scheduledAtStr = params['scheduledAt'];
 
-        print('📍 URL params: pickup=$pickup, destination=$destination');
+        print('📍 URL params: pickup=$pickup, destination=$destination, scheduledAt=$scheduledAtStr');
+
+        // Trajet planifié (deep-link depuis beta.misy.app → "Planifier mon trajet")
+        if (scheduledAtStr != null && scheduledAtStr.isNotEmpty) {
+          try {
+            final parsed = DateTime.parse(scheduledAtStr).toLocal();
+            if (parsed.isAfter(DateTime.now())) {
+              final tripProvider = Provider.of<TripProvider>(context, listen: false);
+              tripProvider.rideScheduledTime = parsed;
+              print('📅 Scheduled deep-link → rideScheduledTime = $parsed');
+            } else {
+              print('⚠️ scheduledAt déjà dans le passé, ignoré: $parsed');
+            }
+          } catch (e) {
+            print('❌ scheduledAt invalide: $scheduledAtStr ($e)');
+          }
+        }
 
         // Pré-remplir le champ pickup
         if (pickup != null && pickup.isNotEmpty) {
@@ -306,6 +385,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         // Focus sur le champ approprié et déclencher l'autocomplete
         Future.delayed(const Duration(milliseconds: 800), () async {
           if (mounted) {
+            // Si les 2 champs ont des coordonnées (ex: deep-link depuis beta.misy.app) → auto-search
+            if (_pickupLocation['lat'] != null && _destinationLocation['lat'] != null) {
+              print('📍 Deep-link complet → _onSearch() auto (→ choix véhicule)');
+              _onSearch();
+              return;
+            }
             if (_pickupController.text.isNotEmpty && _pickupLocation['lat'] == null) {
               // Pickup rempli mais pas de coordonnées → focus + déclencher autocomplete
               print('📍 Déclenchement autocomplete pickup: ${_pickupController.text}');
@@ -9564,6 +9649,42 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         time: durationMinutes,
         distance: distanceKm,
       );
+
+      // Auth check : trajet planifié + utilisateur anonyme/absent → forcer login
+      // Les params (pickup, destination, scheduledAt) sont persistés dans la
+      // session invité pour être rejoués automatiquement après authentification.
+      final auth = Provider.of<CustomAuthProvider>(context, listen: false);
+      final fbUser = auth.currentUser;
+      final isAnonymous = fbUser == null || fbUser.isAnonymous;
+      if (tripProvider.rideScheduledTime != null && isAnonymous) {
+        try {
+          final svc = GuestStorageService();
+          GuestSession? current = await svc.getGuestSession();
+          current ??= GuestSession.create();
+          await svc.updateBookingData(
+            currentSession: current,
+            bookingData: {
+              'pickupLocation': tripProvider.pickLocation,
+              'pickupAddress': tripProvider.pickLocation?['address'],
+              'destinationLocation': tripProvider.dropLocation,
+              'destinationAddress': tripProvider.dropLocation?['address'],
+              'hasActiveBooking': true,
+              'additionalData': {
+                'scheduledAt': tripProvider.rideScheduledTime!.toIso8601String(),
+              },
+            },
+          );
+        } catch (e) {
+          debugPrint('GuestStorage save failed: $e');
+        }
+        if (mounted) {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const PhoneNumberScreen()),
+          );
+        }
+        _isSearching.value = false;
+        return;
+      }
 
       // Passer à l'étape de sélection de véhicule
       tripProvider.currentStep = CustomTripType.chooseVehicle;
