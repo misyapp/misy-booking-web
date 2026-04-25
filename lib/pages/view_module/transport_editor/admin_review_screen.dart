@@ -1420,16 +1420,18 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                                 ),
                               ],
                             ),
-                          // Autre direction (calque optionnel) — couleur de ligne, opacité réduite
+                          // Autre direction (calque optionnel) — même couleur
+                          // de ligne, stroke plus fin que la direction
+                          // reviewée (5 vs 3) pour rester distinguable.
                           if (otherPts.isNotEmpty)
                             PolylineLayer(
                               polylines: [
                                 Polyline(
                                   points: otherPts,
                                   strokeWidth: 3,
-                                  color: _lineColor.withOpacity(0.45),
+                                  color: _lineColor,
                                   borderStrokeWidth: 1,
-                                  borderColor: Colors.white.withOpacity(0.6),
+                                  borderColor: Colors.white,
                                 ),
                               ],
                             ),
@@ -1446,7 +1448,9 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                                 ),
                               ],
                             ),
-                          // Markers de l'autre direction (cercle ouvert)
+                          // Markers de l'autre direction (cercle ouvert,
+                          // bordure couleur de ligne) — distincts des arrêts
+                          // numérotés de la direction reviewée.
                           if (otherStops.isNotEmpty)
                             MarkerLayer(
                               markers: [
@@ -1460,9 +1464,7 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                                         color: Colors.white,
                                         shape: BoxShape.circle,
                                         border: Border.all(
-                                            color:
-                                                _lineColor.withOpacity(0.55),
-                                            width: 2),
+                                            color: _lineColor, width: 2),
                                       ),
                                     ),
                                   ),
@@ -1543,15 +1545,10 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Container(
-                          width: 20,
-                          height: 3,
-                          color: _lineColor.withOpacity(0.45)),
+                      Container(width: 20, height: 3, color: _lineColor),
                       const SizedBox(width: 8),
                       Text('Autre direction ($_otherDirection)',
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: _lineColor.withOpacity(0.85))),
+                          style: TextStyle(fontSize: 11, color: _lineColor)),
                     ],
                   ),
                 ],
