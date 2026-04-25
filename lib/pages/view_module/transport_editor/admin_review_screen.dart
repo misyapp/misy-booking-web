@@ -1130,13 +1130,14 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
   final MapController _mapController = MapController();
   Map<String, dynamic>? _editedFc;
   Map<String, dynamic>? _bundledFc;
-  // Autre direction — 2 sources distinctes pour comparaison :
-  //  - _otherDirFc        : ce que le consultant a proposé (Firestore edited)
-  //  - _otherDirBundledFc : ce qui est en prod aujourd'hui (asset bundlé)
+  // Autre direction (= aller si on reviewe le retour, et inversement) telle
+  // que proposée par le consultant — depuis transport_lines_edited Firestore.
   Map<String, dynamic>? _otherDirFc;
-  Map<String, dynamic>? _otherDirBundledFc;
   bool _showOtherDir = false;
-  bool _showOtherDirProd = false;
+  // Surlignage de la prod actuelle (MÊME direction que celle reviewée) en
+  // couleur vive et trait épais, pour comparer proposé vs prod d'un coup
+  // d'œil. Source = _bundledFc (asset).
+  bool _showProdHighlight = false;
   bool _loading = true;
   bool _acting = false;
   String? _error;
@@ -1173,25 +1174,11 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
         } catch (_) {}
       }
 
-      // Asset bundlé de l'autre direction (= prod actuelle pour cette dir).
-      Map<String, dynamic>? otherBundled;
-      final otherRoute = _otherDirection == 'aller'
-          ? widget.meta?.aller
-          : widget.meta?.retour;
-      if (otherRoute?.assetPath != null) {
-        try {
-          final raw =
-              await rootBundle.loadString(otherRoute!.assetPath!);
-          otherBundled = json.decode(raw) as Map<String, dynamic>;
-        } catch (_) {}
-      }
-
       if (!mounted) return;
       setState(() {
         _editedFc = fc;
         _bundledFc = bundled;
         _otherDirFc = otherFc;
-        _otherDirBundledFc = otherBundled;
         _loading = false;
       });
       _fitToEdited();
@@ -1402,15 +1389,13 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
         _showOtherDir ? _extractLineString(_otherDirFc) : const <LatLng>[];
     final otherStops =
         _showOtherDir ? _extractStops(_otherDirFc) : const [];
-    final otherProdPts = _showOtherDirProd
-        ? _extractLineString(_otherDirBundledFc)
-        : const <LatLng>[];
-    final otherProdStops = _showOtherDirProd
-        ? _extractStops(_otherDirBundledFc)
-        : const [];
     final hasOtherDir = (_otherDirFc?['features'] as List?)?.isNotEmpty == true;
-    final hasOtherDirProd =
-        (_otherDirBundledFc?['features'] as List?)?.isNotEmpty == true;
+    final hasProd = bundledPts.isNotEmpty;
+    final prodHighlightPts =
+        _showProdHighlight ? bundledPts : const <LatLng>[];
+    final prodHighlightStops = _showProdHighlight
+        ? _extractStops(_bundledFc)
+        : const [];
 
     return Scaffold(
       appBar: AppBar(
@@ -1429,7 +1414,7 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                     SizedBox(
                       width: 320,
                       child: _buildSidebar(
-                          editedStops, hasOtherDir, hasOtherDirProd),
+                          editedStops, hasOtherDir, hasProd),
                     ),
                     Expanded(
                       child: OsmBaseMap(
@@ -1448,6 +1433,23 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                                 ),
                               ],
                             ),
+                          // Surlignage de la prod actuelle (MÊME direction
+                          // que celle reviewée) — orange vif et trait épais
+                          // pour comparer proposé vs prod. Posé AVANT
+                          // l'édition pour que le proposé reste lisible
+                          // au-dessus là où il diffère.
+                          if (prodHighlightPts.isNotEmpty)
+                            PolylineLayer(
+                              polylines: [
+                                Polyline(
+                                  points: prodHighlightPts,
+                                  strokeWidth: 7,
+                                  color: const Color(0xFFFF6F00),
+                                  borderStrokeWidth: 2,
+                                  borderColor: Colors.white,
+                                ),
+                              ],
+                            ),
                           // Autre direction (calque optionnel) — même couleur
                           // de ligne, stroke plus fin que la direction
                           // reviewée (5 vs 3) pour rester distinguable.
@@ -1460,23 +1462,6 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                                   color: _lineColor,
                                   borderStrokeWidth: 1,
                                   borderColor: Colors.white,
-                                ),
-                              ],
-                            ),
-                          // Autre direction en prod (asset bundlé) — gris
-                          // semi-transparent comme la version prod de la
-                          // direction reviewée, pour cohérence visuelle.
-                          if (otherProdPts.isNotEmpty)
-                            PolylineLayer(
-                              polylines: [
-                                Polyline(
-                                  points: otherProdPts,
-                                  strokeWidth: 3,
-                                  color: const Color(0xFF888888)
-                                      .withOpacity(0.55),
-                                  borderStrokeWidth: 1,
-                                  borderColor:
-                                      Colors.white.withOpacity(0.5),
                                 ),
                               ],
                             ),
@@ -1515,25 +1500,25 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                                   ),
                               ],
                             ),
-                          // Markers de l'autre direction en prod : cercles
-                          // gris (cohérent avec la polyline prod en gris).
-                          if (otherProdStops.isNotEmpty)
+                          // Markers de la prod surlignée : cercles orange
+                          // bien visibles, posés sous les stops édités pour
+                          // que ces derniers restent au-dessus.
+                          if (prodHighlightStops.isNotEmpty)
                             MarkerLayer(
                               markers: [
                                 for (int i = 0;
-                                    i < otherProdStops.length;
+                                    i < prodHighlightStops.length;
                                     i++)
                                   Marker(
-                                    point: otherProdStops[i].pos,
-                                    width: 14,
-                                    height: 14,
+                                    point: prodHighlightStops[i].pos,
+                                    width: 22,
+                                    height: 22,
                                     child: Container(
                                       decoration: BoxDecoration(
-                                        color: Colors.white,
+                                        color: const Color(0xFFFF6F00),
                                         shape: BoxShape.circle,
                                         border: Border.all(
-                                            color: const Color(0xFF888888),
-                                            width: 1.5),
+                                            color: Colors.white, width: 2),
                                       ),
                                     ),
                                   ),
@@ -1577,7 +1562,7 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
   Widget _buildSidebar(
       List<({LatLng pos, String name})> stops,
       bool hasOtherDir,
-      bool hasOtherDirProd) {
+      bool hasProd) {
     return Material(
       color: const Color(0xFFFAFAFA),
       elevation: 4,
@@ -1623,18 +1608,20 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                     ],
                   ),
                 ],
-                if (_showOtherDirProd) ...[
+                if (_showProdHighlight) ...[
                   const SizedBox(height: 4),
                   Row(
                     children: [
                       Container(
                           width: 20,
-                          height: 3,
-                          color: const Color(0xFF888888).withOpacity(0.55)),
+                          height: 6,
+                          color: const Color(0xFFFF6F00)),
                       const SizedBox(width: 8),
-                      const Text('autre direction (en prod)',
-                          style: TextStyle(
-                              fontSize: 11, color: Colors.black54)),
+                      Text('${widget.item.direction} en prod (surligné)',
+                          style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFFFF6F00),
+                              fontWeight: FontWeight.w600)),
                     ],
                   ),
                 ],
@@ -1671,34 +1658,34 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                   ),
                 ),
                 const SizedBox(height: 6),
-                // Bouton 2 : autre direction telle qu'elle est en prod
-                // aujourd'hui (asset bundlé). Permet à l'admin de comparer
-                // proposition vs prod actuelle pour la direction non reviewée.
+                // Bouton 2 : surligne la prod actuelle de la MÊME direction
+                // (asset bundlé) en orange vif et trait épais. Permet de
+                // comparer d'un coup d'œil proposé vs prod sur la même dir.
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF555555),
-                      side: BorderSide(color: Colors.grey.shade400),
+                      foregroundColor: const Color(0xFFFF6F00),
+                      side: const BorderSide(color: Color(0xFFFF6F00)),
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       visualDensity: VisualDensity.compact,
                     ),
-                    onPressed: hasOtherDirProd
+                    onPressed: hasProd
                         ? () => setState(
-                            () => _showOtherDirProd = !_showOtherDirProd)
+                            () => _showProdHighlight = !_showProdHighlight)
                         : null,
                     icon: Icon(
-                      _showOtherDirProd
-                          ? Icons.layers_clear_outlined
-                          : Icons.layers_outlined,
+                      _showProdHighlight
+                          ? Icons.highlight_off
+                          : Icons.highlight,
                       size: 16,
                     ),
                     label: Text(
-                      _showOtherDirProd
-                          ? 'Masquer le $_otherDirection (en prod)'
-                          : hasOtherDirProd
-                              ? 'Afficher le $_otherDirection (en prod)'
-                              : 'Pas de $_otherDirection en prod',
+                      _showProdHighlight
+                          ? 'Masquer la prod (${widget.item.direction})'
+                          : hasProd
+                              ? 'Surligner la prod (${widget.item.direction})'
+                              : 'Pas de prod pour cette ligne',
                       style: const TextStyle(fontSize: 12),
                     ),
                   ),
