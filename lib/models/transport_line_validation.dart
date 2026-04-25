@@ -1,4 +1,73 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart' show Color;
+
+/// Drapeau couleur perso posé par le consultant sur une direction. Sert de
+/// signal visuel dans la liste des lignes (dashboard) et dans la queue admin.
+enum ConsultantFlag { red, orange, yellow, green, blue }
+
+extension ConsultantFlagX on ConsultantFlag {
+  String get code {
+    switch (this) {
+      case ConsultantFlag.red:
+        return 'red';
+      case ConsultantFlag.orange:
+        return 'orange';
+      case ConsultantFlag.yellow:
+        return 'yellow';
+      case ConsultantFlag.green:
+        return 'green';
+      case ConsultantFlag.blue:
+        return 'blue';
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case ConsultantFlag.red:
+        return 'À revoir / problème';
+      case ConsultantFlag.orange:
+        return 'À vérifier sur place';
+      case ConsultantFlag.yellow:
+        return 'À discuter';
+      case ConsultantFlag.green:
+        return 'Confirmé';
+      case ConsultantFlag.blue:
+        return 'Note neutre';
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case ConsultantFlag.red:
+        return const Color(0xFFE53935);
+      case ConsultantFlag.orange:
+        return const Color(0xFFFB8C00);
+      case ConsultantFlag.yellow:
+        return const Color(0xFFFDD835);
+      case ConsultantFlag.green:
+        return const Color(0xFF43A047);
+      case ConsultantFlag.blue:
+        return const Color(0xFF1E88E5);
+    }
+  }
+
+  static ConsultantFlag? fromCode(String? code) {
+    switch (code) {
+      case 'red':
+        return ConsultantFlag.red;
+      case 'orange':
+        return ConsultantFlag.orange;
+      case 'yellow':
+        return ConsultantFlag.yellow;
+      case 'green':
+        return ConsultantFlag.green;
+      case 'blue':
+        return ConsultantFlag.blue;
+      default:
+        return null;
+    }
+  }
+}
 
 /// Statut de validation d'un élément d'une ligne (tracé ou arrêts).
 enum ValidationStatus { pending, validated, modified }
@@ -146,6 +215,13 @@ class TransportLineValidation {
   final DateTime? updatedAt;
   final String? updatedBy;
   final String? updatedByEmail;
+  // Annotations consultant par direction (note libre + drapeau couleur).
+  // Visibles dans la liste dashboard ET dans la queue admin pour signaler
+  // les directions à revoir/discuter sans changer leur statut.
+  final String? allerNote;
+  final String? retourNote;
+  final ConsultantFlag? allerFlag;
+  final ConsultantFlag? retourFlag;
 
   const TransportLineValidation({
     required this.lineNumber,
@@ -156,6 +232,10 @@ class TransportLineValidation {
     this.updatedAt,
     this.updatedBy,
     this.updatedByEmail,
+    this.allerNote,
+    this.retourNote,
+    this.allerFlag,
+    this.retourFlag,
   });
 
   factory TransportLineValidation.empty(String lineNumber) =>
@@ -178,7 +258,19 @@ class TransportLineValidation {
       updatedAt: ts is Timestamp ? ts.toDate() : null,
       updatedBy: data['updated_by'] as String?,
       updatedByEmail: data['updated_by_email'] as String?,
+      allerNote: _readNote(data['aller_consultant_note']),
+      retourNote: _readNote(data['retour_consultant_note']),
+      allerFlag:
+          ConsultantFlagX.fromCode(data['aller_consultant_flag'] as String?),
+      retourFlag:
+          ConsultantFlagX.fromCode(data['retour_consultant_flag'] as String?),
     );
+  }
+
+  static String? _readNote(dynamic raw) {
+    if (raw is! String) return null;
+    final trimmed = raw.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 
   static ValidationStatus _readStatus(
@@ -219,6 +311,15 @@ class TransportLineValidation {
         return retourAdmin;
     }
   }
+
+  String? noteFor(EditorStep step) =>
+      step.isAller ? allerNote : retourNote;
+
+  ConsultantFlag? flagFor(EditorStep step) =>
+      step.isAller ? allerFlag : retourFlag;
+
+  bool hasAnnotationFor(EditorStep step) =>
+      noteFor(step) != null || flagFor(step) != null;
 
   bool get isFullyValidated => aller.isDone && retour.isDone;
 

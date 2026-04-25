@@ -50,6 +50,7 @@ class _AdminReviewBody extends StatefulWidget {
 
 class _AdminReviewBodyState extends State<_AdminReviewBody> {
   String? _filterEmail;
+  String? _mapFilterLine; // null = toutes les lignes
   List<LineMetadata> _allMeta = [];
   bool _loadingMeta = true;
   Future<List<TransportLineGroup>>? _linesFuture;
@@ -315,37 +316,130 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
                   style: const TextStyle(color: Colors.red)),
             );
           }
-          return _buildMap(snap.data!);
+          final groups = snap.data!;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildMapFilterBar(groups),
+              const SizedBox(height: 8),
+              Expanded(child: _buildMap(groups)),
+            ],
+          );
         },
       ),
     );
   }
 
+  Widget _buildMapFilterBar(List<TransportLineGroup> groups) {
+    final sorted = [...groups]
+      ..sort((a, b) => a.lineNumber.compareTo(b.lineNumber));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEDE7F6),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.filter_list, size: 16, color: Color(0xFF5E35B1)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: DropdownButton<String?>(
+              isExpanded: true,
+              value: _mapFilterLine,
+              underline: const SizedBox.shrink(),
+              hint: const Text('Toutes les lignes',
+                  style: TextStyle(fontSize: 12)),
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('Toutes les lignes',
+                      style: TextStyle(fontSize: 12)),
+                ),
+                for (final g in sorted)
+                  DropdownMenuItem<String?>(
+                    value: g.lineNumber,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: Color(_metaFor(g.lineNumber)?.colorValue ??
+                                0xFF5E35B1),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Ligne ${g.lineNumber} — ${g.displayName}',
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+              onChanged: (v) => setState(() => _mapFilterLine = v),
+            ),
+          ),
+          if (_mapFilterLine != null)
+            IconButton(
+              tooltip: 'Réinitialiser',
+              icon: const Icon(Icons.close, size: 16),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              onPressed: () => setState(() => _mapFilterLine = null),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMap(List<TransportLineGroup> groups) {
+    final filtered = _mapFilterLine == null
+        ? groups
+        : groups.where((g) => g.lineNumber == _mapFilterLine).toList();
+
     final polylines = <Polyline>[];
-    for (final g in groups) {
+    final allPoints = <LatLng>[];
+    for (final g in filtered) {
       final meta = _metaFor(g.lineNumber);
       final color =
           meta != null ? Color(meta.colorValue) : const Color(0xFF5E35B1);
       for (final line in g.lines) {
         if (line.coordinates.length < 2) continue;
+        final pts = line.coordinates
+            .map((c) => LatLng(c.latitude, c.longitude))
+            .toList();
         polylines.add(Polyline(
-          points: line.coordinates
-              .map((c) => LatLng(c.latitude, c.longitude))
-              .toList(),
+          points: pts,
           color: color.withOpacity(0.75),
           strokeWidth: 3,
         ));
+        allPoints.addAll(pts);
       }
     }
+
+    final initialCamera = (_mapFilterLine != null && allPoints.isNotEmpty)
+        ? CameraFit.bounds(
+            bounds: LatLngBounds.fromPoints(allPoints),
+            padding: const EdgeInsets.all(40),
+          )
+        : null;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
       child: FlutterMap(
-        options: const MapOptions(
-          initialCenter: LatLng(-18.8792, 47.5079), // Tana
+        // ValueKey force le rebuild + auto-fit quand on change le filtre.
+        key: ValueKey('admin-map-${_mapFilterLine ?? "all"}'),
+        options: MapOptions(
+          initialCenter: const LatLng(-18.8792, 47.5079), // Tana
           initialZoom: 12,
-          interactionOptions: InteractionOptions(
+          initialCameraFit: initialCamera,
+          interactionOptions: const InteractionOptions(
             flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
           ),
         ),
@@ -595,6 +689,11 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
         icon = Icons.edit_location_alt;
         label = 'Éditée';
         break;
+      case 'noted':
+        color = const Color(0xFF1E88E5);
+        icon = Icons.sticky_note_2_outlined;
+        label = 'Note';
+        break;
       default:
         color = Colors.grey;
         icon = Icons.circle;
@@ -724,6 +823,8 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
           adminStatus: admin.status,
           rejectionReason: admin.rejectionReason,
           updatedAt: v.updatedAt,
+          consultantNote: v.noteFor(step),
+          consultantFlag: v.flagFor(step),
         ));
       }
     }
@@ -839,6 +940,10 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
                           fontWeight: FontWeight.bold, fontSize: 14),
                     ),
                   ),
+                  if (item.consultantFlag != null) ...[
+                    _consultantFlagPastille(item.consultantFlag!),
+                    const SizedBox(width: 6),
+                  ],
                   _buildAdminBadge(item.adminStatus),
                 ],
               ),
@@ -848,6 +953,37 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
                 '${dateStr.isEmpty ? "" : " · $dateStr"}',
                 style: TextStyle(fontSize: 12, color: Colors.grey[700]),
               ),
+              if (item.consultantNote != null) ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: (item.consultantFlag?.color ??
+                            const Color(0xFF1E88E5))
+                        .withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: (item.consultantFlag?.color ??
+                              const Color(0xFF1E88E5))
+                          .withOpacity(0.4),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.sticky_note_2_outlined,
+                          size: 14, color: Colors.black54),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          item.consultantNote!,
+                          style: const TextStyle(
+                              fontSize: 11, color: Colors.black87),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               if (isRejectedBefore && item.rejectionReason != null) ...[
                 const SizedBox(height: 6),
                 Container(
@@ -876,6 +1012,40 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _consultantFlagPastille(ConsultantFlag flag) {
+    return Tooltip(
+      message: 'Drapeau consultant : ${flag.label}',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        decoration: BoxDecoration(
+          color: flag.color.withOpacity(0.18),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: flag.color, width: 1.5),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration:
+                  BoxDecoration(color: flag.color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              flag.label,
+              style: TextStyle(
+                fontSize: 10,
+                color: flag.color,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -926,6 +1096,8 @@ class ReviewItem {
   final AdminStatus adminStatus;
   final String? rejectionReason;
   final DateTime? updatedAt;
+  final String? consultantNote;
+  final ConsultantFlag? consultantFlag;
 
   const ReviewItem({
     required this.lineNumber,
@@ -935,6 +1107,8 @@ class ReviewItem {
     required this.adminStatus,
     required this.rejectionReason,
     required this.updatedAt,
+    this.consultantNote,
+    this.consultantFlag,
   });
 }
 
@@ -956,9 +1130,14 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
   final MapController _mapController = MapController();
   Map<String, dynamic>? _editedFc;
   Map<String, dynamic>? _bundledFc;
+  Map<String, dynamic>? _otherDirFc;
+  bool _showOtherDir = false;
   bool _loading = true;
   bool _acting = false;
   String? _error;
+
+  String get _otherDirection =>
+      widget.item.direction == 'aller' ? 'retour' : 'aller';
 
   @override
   void initState() {
@@ -972,6 +1151,11 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
           .loadOrBootstrap(widget.item.lineNumber);
       final dir = doc[widget.item.direction] as Map<String, dynamic>?;
       final fc = dir?['feature_collection'] as Map<String, dynamic>?;
+
+      // Autre direction (depuis le même doc) — pour calque optionnel.
+      final otherDir = doc[_otherDirection] as Map<String, dynamic>?;
+      final otherFc =
+          otherDir?['feature_collection'] as Map<String, dynamic>?;
 
       Map<String, dynamic>? bundled;
       final route = widget.item.direction == 'aller'
@@ -988,6 +1172,7 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
       setState(() {
         _editedFc = fc;
         _bundledFc = bundled;
+        _otherDirFc = otherFc;
         _loading = false;
       });
       _fitToEdited();
@@ -1194,6 +1379,11 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
     final editedPts = _extractLineString(_editedFc);
     final editedStops = _extractStops(_editedFc);
     final bundledPts = _extractLineString(_bundledFc);
+    final otherPts =
+        _showOtherDir ? _extractLineString(_otherDirFc) : const <LatLng>[];
+    final otherStops =
+        _showOtherDir ? _extractStops(_otherDirFc) : const [];
+    final hasOtherDir = (_otherDirFc?['features'] as List?)?.isNotEmpty == true;
 
     return Scaffold(
       appBar: AppBar(
@@ -1209,7 +1399,10 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
               ? Center(child: Text(_error!))
               : Row(
                   children: [
-                    SizedBox(width: 320, child: _buildSidebar(editedStops)),
+                    SizedBox(
+                      width: 320,
+                      child: _buildSidebar(editedStops, hasOtherDir),
+                    ),
                     Expanded(
                       child: OsmBaseMap(
                         controller: _mapController,
@@ -1227,6 +1420,19 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                                 ),
                               ],
                             ),
+                          // Autre direction (calque optionnel) — couleur de ligne, opacité réduite
+                          if (otherPts.isNotEmpty)
+                            PolylineLayer(
+                              polylines: [
+                                Polyline(
+                                  points: otherPts,
+                                  strokeWidth: 3,
+                                  color: _lineColor.withOpacity(0.45),
+                                  borderStrokeWidth: 1,
+                                  borderColor: Colors.white.withOpacity(0.6),
+                                ),
+                              ],
+                            ),
                           // Édité (proposé par le consultant) en couleur de ligne
                           if (editedPts.isNotEmpty)
                             PolylineLayer(
@@ -1238,6 +1444,28 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                                   borderStrokeWidth: 2,
                                   borderColor: Colors.white,
                                 ),
+                              ],
+                            ),
+                          // Markers de l'autre direction (cercle ouvert)
+                          if (otherStops.isNotEmpty)
+                            MarkerLayer(
+                              markers: [
+                                for (int i = 0; i < otherStops.length; i++)
+                                  Marker(
+                                    point: otherStops[i].pos,
+                                    width: 18,
+                                    height: 18,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                            color:
+                                                _lineColor.withOpacity(0.55),
+                                            width: 2),
+                                      ),
+                                    ),
+                                  ),
                               ],
                             ),
                           MarkerLayer(
@@ -1275,7 +1503,8 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
     );
   }
 
-  Widget _buildSidebar(List<({LatLng pos, String name})> stops) {
+  Widget _buildSidebar(
+      List<({LatLng pos, String name})> stops, bool hasOtherDir) {
     return Material(
       color: const Color(0xFFFAFAFA),
       elevation: 4,
@@ -1310,6 +1539,52 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                             fontWeight: FontWeight.w600)),
                   ],
                 ),
+                if (_showOtherDir) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Container(
+                          width: 20,
+                          height: 3,
+                          color: _lineColor.withOpacity(0.45)),
+                      const SizedBox(width: 8),
+                      Text('Autre direction ($_otherDirection)',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: _lineColor.withOpacity(0.85))),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _lineColor,
+                      side: BorderSide(color: _lineColor.withOpacity(0.4)),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: hasOtherDir
+                        ? () =>
+                            setState(() => _showOtherDir = !_showOtherDir)
+                        : null,
+                    icon: Icon(
+                      _showOtherDir
+                          ? Icons.layers_clear_outlined
+                          : Icons.layers_outlined,
+                      size: 16,
+                    ),
+                    label: Text(
+                      _showOtherDir
+                          ? 'Masquer le $_otherDirection'
+                          : hasOtherDir
+                              ? 'Afficher le $_otherDirection'
+                              : 'Pas de $_otherDirection',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -1329,6 +1604,14 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                 Text('Arrêts : ${stops.length}',
                     style:
                         const TextStyle(fontSize: 12, color: Colors.black87)),
+                if (widget.item.consultantFlag != null ||
+                    widget.item.consultantNote != null) ...[
+                  const SizedBox(height: 8),
+                  _AdminConsultantNoteBlock(
+                    note: widget.item.consultantNote,
+                    flag: widget.item.consultantFlag,
+                  ),
+                ],
               ],
             ),
           ),
@@ -1408,6 +1691,64 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Bloc lecture-seule "Note du consultant" pour la sidebar du détail ───
+
+class _AdminConsultantNoteBlock extends StatelessWidget {
+  final String? note;
+  final ConsultantFlag? flag;
+  const _AdminConsultantNoteBlock({this.note, this.flag});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = flag?.color ?? const Color(0xFF1E88E5);
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (flag != null) ...[
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                      color: flag!.color, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 6),
+              ],
+              const Text('Note consultant',
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87)),
+            ],
+          ),
+          if (flag != null) ...[
+            const SizedBox(height: 2),
+            Text(flag!.label,
+                style: TextStyle(
+                    fontSize: 11,
+                    color: flag!.color,
+                    fontWeight: FontWeight.w600)),
+          ],
+          if (note != null) ...[
+            const SizedBox(height: 4),
+            Text(note!,
+                style: const TextStyle(
+                    fontSize: 11, color: Colors.black87)),
+          ],
         ],
       ),
     );

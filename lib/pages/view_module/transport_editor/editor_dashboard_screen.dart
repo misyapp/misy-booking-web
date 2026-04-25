@@ -4,6 +4,7 @@ import 'package:rider_ride_hailing_app/models/transport_line_validation.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/admin_review_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/editor_new_line_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/editor_wizard_screen.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/annotation_dialog.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/tutorial_helpers.dart';
 import 'package:rider_ride_hailing_app/services/admin_auth_service.dart';
 import 'package:rider_ride_hailing_app/services/transport_editor_service.dart';
@@ -49,7 +50,12 @@ class _DashboardBodyState extends State<_DashboardBody> {
   final GlobalKey _searchKey = GlobalKey();
   final GlobalKey _cardKey = GlobalKey();
   final GlobalKey _pastillesKey = GlobalKey();
+  final GlobalKey _annotationKey = GlobalKey();
   final GlobalKey _fabKey = GlobalKey();
+
+  // Bumped à v2 pour relancer auto chez les consultants existants → leur
+  // montrer le bouton Note + drapeau ajouté.
+  static const String _tourId = 'dashboard_v2_annotation';
 
   String _query = '';
   List<LineMetadata> _allMeta = [];
@@ -61,8 +67,14 @@ class _DashboardBodyState extends State<_DashboardBody> {
     _loadMetadata();
     TutorialHelper.autoStartOnce(
       context: context,
-      tourId: 'dashboard_v1',
-      keys: [_searchKey, _cardKey, _pastillesKey, _fabKey],
+      tourId: _tourId,
+      keys: [
+        _searchKey,
+        _cardKey,
+        _pastillesKey,
+        _annotationKey,
+        _fabKey,
+      ],
     );
   }
 
@@ -104,11 +116,15 @@ class _DashboardBodyState extends State<_DashboardBody> {
             tooltip: 'Revoir le tuto',
             icon: const Icon(Icons.school_outlined),
             onPressed: () async {
-              await TutorialHelper.reset('dashboard_v1');
+              await TutorialHelper.reset(_tourId);
               if (!mounted) return;
-              ShowCaseWidget.of(context).startShowCase(
-                [_searchKey, _cardKey, _pastillesKey, _fabKey],
-              );
+              ShowCaseWidget.of(context).startShowCase([
+                _searchKey,
+                _cardKey,
+                _pastillesKey,
+                _annotationKey,
+                _fabKey,
+              ]);
             },
           ),
           _ProfileMenu(),
@@ -311,9 +327,11 @@ class _DashboardBodyState extends State<_DashboardBody> {
       {bool withTutoKey = false}) {
     final pastilles = Row(
       children: [
-        _pastille('Aller', v.aller, v.allerAdmin),
+        _pastilleWithAnnotation(EditorStep.aller, 'Aller', v.aller,
+            v.allerAdmin, v, withTutoKey: withTutoKey),
         const SizedBox(width: 6),
-        _pastille('Retour', v.retour, v.retourAdmin),
+        _pastilleWithAnnotation(EditorStep.retour, 'Retour', v.retour,
+            v.retourAdmin, v),
       ],
     );
     if (withTutoKey) {
@@ -328,6 +346,121 @@ class _DashboardBodyState extends State<_DashboardBody> {
       );
     }
     return pastilles;
+  }
+
+  /// Pastille standard + drapeau couleur + bouton 📝 pour annoter cette
+  /// direction. Le bouton porte le tuto-key annotation si c'est la première
+  /// carte (paramètre `withTutoKey` reusé pour l'aller du 1er item).
+  Widget _pastilleWithAnnotation(
+    EditorStep step,
+    String label,
+    ValidationStatus status,
+    AdminReview admin,
+    TransportLineValidation v, {
+    bool withTutoKey = false,
+  }) {
+    final note = v.noteFor(step);
+    final flag = v.flagFor(step);
+    final hasAnnotation = note != null || flag != null;
+
+    final annotationButton = InkWell(
+      onTap: () => _editAnnotation(v.lineNumber, step, note, flag),
+      borderRadius: BorderRadius.circular(12),
+      child: Tooltip(
+        message: hasAnnotation
+            ? '${flag?.label ?? ""}${flag != null && note != null ? "\n" : ""}${note ?? ""}'
+            : 'Ajouter une note ou un drapeau',
+        child: Container(
+          padding: const EdgeInsets.all(3),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Icon(
+                hasAnnotation ? Icons.edit_note : Icons.note_add_outlined,
+                size: 18,
+                color: hasAnnotation
+                    ? (flag?.color ?? const Color(0xFF1565C0))
+                    : Colors.grey,
+              ),
+              if (flag != null)
+                Positioned(
+                  right: -1,
+                  top: -1,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: flag.color,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.5),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final wrapped = withTutoKey
+        ? TutoStep(
+            stepKey: _annotationKey,
+            title: 'Note + drapeau couleur (perso)',
+            description:
+                'Tape l\'icône 📝 à côté de Aller ou Retour pour poser un '
+                'drapeau couleur (rouge/orange/jaune/vert/bleu) ou une note '
+                'libre. Visible dans la liste pour toi ET pour l\'admin '
+                'reviewer. Sert à signaler "à confirmer sur place" sans '
+                'changer le statut.',
+            child: annotationButton,
+          )
+        : annotationButton;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _pastille(label, status, admin),
+        const SizedBox(width: 2),
+        wrapped,
+      ],
+    );
+  }
+
+  Future<void> _editAnnotation(
+    String lineNumber,
+    EditorStep step,
+    String? currentNote,
+    ConsultantFlag? currentFlag,
+  ) async {
+    final direction = step.isAller ? 'aller' : 'retour';
+    final result = await AnnotationDialog.show(
+      context: context,
+      lineNumber: lineNumber,
+      directionLabel: direction,
+      initialNote: currentNote,
+      initialFlag: currentFlag,
+    );
+    if (result == null || !mounted) return;
+    try {
+      await TransportEditorService.instance.setConsultantAnnotation(
+        lineNumber: lineNumber,
+        direction: direction,
+        note: result.note,
+        flag: result.flag,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Note enregistrée ✓'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur: $e')),
+      );
+    }
   }
 
   Widget _pastille(String label, ValidationStatus status, AdminReview admin) {

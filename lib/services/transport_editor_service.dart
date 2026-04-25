@@ -294,6 +294,39 @@ class TransportEditorService {
     }
   }
 
+  // ───────────────────────── Annotations consultant ─────────────────────────
+
+  /// Pose / met à jour la note libre + le drapeau couleur d'une direction.
+  /// Passer `note: null` (ou chaîne vide) ou `flag: null` les efface.
+  /// Ne touche PAS aux autres champs (status, admin review).
+  Future<void> setConsultantAnnotation({
+    required String lineNumber,
+    required String direction, // 'aller' | 'retour'
+    String? note,
+    ConsultantFlag? flag,
+  }) async {
+    final cleanNote = note?.trim();
+    final ref = _db.collection(collValidations).doc(lineNumber);
+    await ref.set({
+      '${direction}_consultant_note':
+          (cleanNote == null || cleanNote.isEmpty)
+              ? FieldValue.delete()
+              : cleanNote,
+      '${direction}_consultant_flag':
+          flag == null ? FieldValue.delete() : flag.code,
+      'updated_at': FieldValue.serverTimestamp(),
+      'updated_by': AdminAuthService.instance.currentUid,
+      'updated_by_email': AdminAuthService.instance.currentEmail,
+    }, SetOptions(merge: true));
+
+    await _appendLog(
+      lineNumber: lineNumber,
+      direction: direction,
+      kind: 'annotation',
+      action: 'noted',
+    );
+  }
+
   // ───────────────────────── Nouvelle ligne ─────────────────────────
 
   Future<void> createNewLine({

@@ -4,11 +4,14 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/models/transport_line_validation.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/build_line_flow_screen.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/annotation_dialog.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/editable_polyline_layer.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/editable_stops_layer.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/osm_base_map.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/tutorial_helpers.dart';
+import 'package:rider_ride_hailing_app/provider/build_line_flow_provider.dart';
 import 'package:rider_ride_hailing_app/provider/transport_editor_provider.dart';
+import 'package:rider_ride_hailing_app/services/transport_editor_service.dart';
 import 'package:showcaseview/showcaseview.dart';
 
 /// Wizard 2 étapes : tracé aller → tracé retour.
@@ -51,14 +54,27 @@ class _WizardBodyState extends State<_WizardBody> {
   final GlobalKey _mapKey = GlobalKey();
   final GlobalKey _toolbarKey = GlobalKey();
   final GlobalKey _modifyKey = GlobalKey();
+  final GlobalKey _rebuildKey = GlobalKey();
+  final GlobalKey _annotationKey = GlobalKey();
+
+  // Nouveau tour ID : déclenche automatiquement chez les consultants
+  // existants pour leur montrer "Modifier rapide" + note/drapeau.
+  static const String _tourId = 'wizard_v2_partial';
 
   @override
   void initState() {
     super.initState();
     TutorialHelper.autoStartOnce(
       context: context,
-      tourId: 'wizard_v1',
-      keys: [_stepperKey, _mapKey, _toolbarKey, _modifyKey],
+      tourId: _tourId,
+      keys: [
+        _stepperKey,
+        _mapKey,
+        _toolbarKey,
+        _modifyKey,
+        _rebuildKey,
+        _annotationKey,
+      ],
     );
   }
 
@@ -114,11 +130,16 @@ class _WizardBodyState extends State<_WizardBody> {
           tooltip: 'Revoir le tuto',
           icon: const Icon(Icons.school_outlined),
           onPressed: () async {
-            await TutorialHelper.reset('wizard_v1');
+            await TutorialHelper.reset(_tourId);
             if (!mounted) return;
-            ShowCaseWidget.of(context).startShowCase(
-              [_stepperKey, _mapKey, _toolbarKey, _modifyKey],
-            );
+            ShowCaseWidget.of(context).startShowCase([
+              _stepperKey,
+              _mapKey,
+              _toolbarKey,
+              _modifyKey,
+              _rebuildKey,
+              _annotationKey,
+            ]);
           },
         ),
       ],
@@ -312,6 +333,8 @@ class _WizardBodyState extends State<_WizardBody> {
           'Arrêts : ${p.stops.length}',
           style: const TextStyle(fontSize: 12, color: Colors.black87),
         ),
+        const SizedBox(height: 12),
+        _buildAnnotationEncart(p),
         if (p.stops.isNotEmpty) ...[
           const SizedBox(height: 12),
           const Text(
@@ -357,26 +380,72 @@ class _WizardBodyState extends State<_WizardBody> {
   }
 
   Widget _viewActions(TransportEditorProvider p) {
+    final direction = p.step.isAller ? 'aller' : 'retour';
+    final directionDoc =
+        p.editedDoc?[direction] as Map<String, dynamic>?;
+    final referenceFc =
+        directionDoc?['feature_collection'] as Map<String, dynamic>?;
+    final hasExisting = referenceFc != null &&
+        ((referenceFc['features'] as List?)?.isNotEmpty ?? false);
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Bouton 1 : Modifier rapide (saut direct à Vérifier). Visible
+        // uniquement si la direction a déjà des données — sinon pas de FC à
+        // pré-charger.
+        if (hasExisting) ...[
+          TutoStep(
+            stepKey: _modifyKey,
+            title: 'Modifier (sans tout refaire)',
+            description:
+                'Le plus simple : ouvre directement l\'étape "Vérifier" avec '
+                'la ligne actuelle pré-chargée. Tu peux faire glisser un '
+                'arrêt, déplacer le départ ou l\'arrivée, renommer, '
+                'supprimer, insérer. Recalcule le tracé à la fin.',
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1565C0),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: p.isSaving
+                  ? null
+                  : () => _launchBuildFlow(p, mode: _BuildMode.editFast),
+              icon: const Icon(Icons.tune),
+              label: const Text('Modifier (sans tout refaire)'),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        // Bouton 2 : Reconstruire from scratch (5 étapes). Toujours visible —
+        // pour les nouvelles lignes c'est l'unique option.
         TutoStep(
-          stepKey: _modifyKey,
-          title: 'Construire la ligne ${p.lineNumber ?? ""}',
-          description:
-              'Le tracé affiché en fond n\'est qu\'un repère visuel. Tu dois '
-              'tout reconstruire via le sub-flow guidé (départ → arrivée → '
-              'arrêts → affiner). Pas de validation "tel quel".',
-          child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1565C0),
-              foregroundColor: Colors.white,
+          stepKey: _rebuildKey,
+          title: hasExisting
+              ? 'Reconstruire la ligne ${p.lineNumber ?? ""}'
+              : 'Construire la ligne ${p.lineNumber ?? ""}',
+          description: hasExisting
+              ? 'Refait la direction depuis zéro (départ → arrivée → arrêts → '
+                  'affiner → vérifier). À utiliser si la ligne existante est '
+                  'globalement à jeter. Le tracé actuel reste affiché en '
+                  'orange clignotant comme repère.'
+              : 'Construit la direction via le sub-flow guidé (départ → '
+                  'arrivée → arrêts → affiner → vérifier).',
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF1565C0),
+              side: const BorderSide(color: Color(0xFF1565C0)),
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
-            onPressed: p.isSaving ? null : () => _launchBuildFlow(p),
+            onPressed: p.isSaving
+                ? null
+                : () => _launchBuildFlow(p, mode: _BuildMode.rebuildFull),
             icon: const Icon(Icons.edit_road),
-            label: Text('Construire la ligne ${p.lineNumber ?? ""}'),
+            label: Text(hasExisting
+                ? 'Reconstruire la ligne ${p.lineNumber ?? ""}'
+                : 'Construire la ligne ${p.lineNumber ?? ""}'),
           ),
         ),
         if (p.step.next != null) ...[
@@ -397,10 +466,16 @@ class _WizardBodyState extends State<_WizardBody> {
   // ─────────── Actions ───────────
 
   /// Lance le sub-flow "Construire la ligne" pour la direction courante et
-  /// persiste le résultat à la fin. Remplace l'ancien mode édition drag-drop.
-  /// Passe la FC actuelle comme référence pour qu'elle apparaisse en
-  /// arrière-fond semi-transparent dans le sub-flow (toggle-able).
-  Future<void> _launchBuildFlow(TransportEditorProvider p) async {
+  /// persiste le résultat à la fin.
+  ///
+  /// - `mode = editFast` : ouvre directement à l'étape Vérifier avec la FC
+  ///   actuelle pré-chargée. Le consultant ajuste, puis sauve.
+  /// - `mode = rebuildFull` : démarre à l'étape origin (5 sous-étapes from
+  ///   scratch). La FC actuelle reste affichée en arrière-fond comme repère.
+  Future<void> _launchBuildFlow(
+    TransportEditorProvider p, {
+    required _BuildMode mode,
+  }) async {
     final line = p.lineNumber;
     if (line == null) return;
     final direction = p.step.isAller ? 'aller' : 'retour';
@@ -418,6 +493,11 @@ class _WizardBodyState extends State<_WizardBody> {
           directionLabel: directionLabel,
           referenceFeatureCollection: referenceFc,
           referenceColorHex: colorHex,
+          prefilledFeatureCollection:
+              mode == _BuildMode.editFast ? referenceFc : null,
+          initialStep: mode == _BuildMode.editFast
+              ? BuildLineStep.review
+              : BuildLineStep.origin,
         ),
       ),
     );
@@ -494,9 +574,159 @@ class _WizardBodyState extends State<_WizardBody> {
     }
   }
 
+  /// Encart "Note + drapeau" pour la direction courante. Stream-based pour
+  /// rester sync avec le doc Firestore (édition depuis dashboard reflétée
+  /// instantanément ici aussi).
+  Widget _buildAnnotationEncart(TransportEditorProvider p) {
+    final lineNumber = p.lineNumber;
+    if (lineNumber == null) return const SizedBox.shrink();
+    final direction = p.step.isAller ? 'aller' : 'retour';
+    final directionLabel = direction;
+
+    return TutoStep(
+      stepKey: _annotationKey,
+      title: 'Note + drapeau (perso)',
+      description:
+          'Pose un drapeau couleur ou une note libre sur cette direction. '
+          'Visible dans la liste pour toi ET pour l\'admin reviewer. '
+          'Idéal pour signaler "à confirmer sur place" ou "changement '
+          'récent à discuter".',
+      child: StreamBuilder<Map<String, TransportLineValidation>>(
+        stream: TransportEditorService.instance.streamAllValidations(),
+        builder: (ctx, snap) {
+          final v = snap.data?[lineNumber] ??
+              TransportLineValidation.empty(lineNumber);
+          final note = v.noteFor(p.step);
+          final flag = v.flagFor(p.step);
+          final hasAnnotation = note != null || flag != null;
+
+          return Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: hasAnnotation
+                  ? (flag?.color.withOpacity(0.08) ??
+                      const Color(0xFFF5F5F5))
+                  : const Color(0xFFF5F5F5),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: flag?.color.withOpacity(0.5) ??
+                    Colors.grey.shade300,
+                width: 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    if (flag != null) ...[
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: flag.color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    const Expanded(
+                      child: Text(
+                        'Note de cette direction',
+                        style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () => _editAnnotation(
+                        lineNumber: lineNumber,
+                        direction: direction,
+                        directionLabel: directionLabel,
+                        currentNote: note,
+                        currentFlag: flag,
+                      ),
+                      borderRadius: BorderRadius.circular(4),
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Icon(
+                          hasAnnotation
+                              ? Icons.edit_note
+                              : Icons.add_circle_outline,
+                          size: 18,
+                          color: const Color(0xFF1565C0),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (flag != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    flag.label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: flag.color,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+                if (note != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    note,
+                    style: const TextStyle(
+                        fontSize: 11, color: Colors.black87),
+                  ),
+                ],
+                if (!hasAnnotation)
+                  const Text(
+                    'Aucune note. Tape ➕ pour en ajouter une.',
+                    style: TextStyle(
+                        fontSize: 11, color: Colors.black54),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _editAnnotation({
+    required String lineNumber,
+    required String direction,
+    required String directionLabel,
+    required String? currentNote,
+    required ConsultantFlag? currentFlag,
+  }) async {
+    final result = await AnnotationDialog.show(
+      context: context,
+      lineNumber: lineNumber,
+      directionLabel: directionLabel,
+      initialNote: currentNote,
+      initialFlag: currentFlag,
+    );
+    if (result == null || !mounted) return;
+    try {
+      await TransportEditorService.instance.setConsultantAnnotation(
+        lineNumber: lineNumber,
+        direction: direction,
+        note: result.note,
+        flag: result.flag,
+      );
+      if (!mounted) return;
+      _snack(context, 'Note enregistrée ✓');
+    } catch (e) {
+      if (!mounted) return;
+      _snack(context, 'Erreur: $e');
+    }
+  }
+
   void _snack(BuildContext ctx, String msg) {
     ScaffoldMessenger.of(ctx).showSnackBar(
       SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
     );
   }
 }
+
+enum _BuildMode { editFast, rebuildFull }

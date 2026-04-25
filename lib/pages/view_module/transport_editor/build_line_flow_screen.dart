@@ -23,11 +23,16 @@ class BuildLineFlowResult {
   });
 }
 
-/// Sub-flow à 4 sous-étapes pour construire (ou refaire) une direction de ligne.
+/// Sub-flow à 5 sous-étapes pour construire (ou refaire) une direction de ligne.
 ///
-/// Appelé depuis le wizard (bouton Modifier/Recommencer) ou depuis le flow
+/// Appelé depuis le wizard (bouton Modifier/Reconstruire) ou depuis le flow
 /// "Nouvelle ligne". Retourne un [BuildLineFlowResult] avec le FeatureCollection
 /// prêt à être persisté, ou null si l'user annule.
+///
+/// **Mode "édition rapide"** : si [prefilledFeatureCollection] est non-null,
+/// le state du provider est hydraté depuis ce FC et on saute directement à
+/// [initialStep] (typiquement [BuildLineStep.review]). Le consultant peut
+/// ainsi déplacer un arrêt ou l'arrivée sans repasser par les 4 étapes.
 class BuildLineFlowScreen extends StatefulWidget {
   final String lineNumber;
   final String direction; // 'aller' | 'retour'
@@ -43,6 +48,14 @@ class BuildLineFlowScreen extends StatefulWidget {
   /// le calque de référence pour le rendre reconnaissable. Fallback : bleu.
   final String? referenceColorHex;
 
+  /// Si non-null, hydrate le provider avec ce FC (origin/destination/stops/
+  /// route) au lieu de partir d'un état vide. Couplé à [initialStep] pour
+  /// ouvrir directement à l'étape Vérifier.
+  final Map<String, dynamic>? prefilledFeatureCollection;
+
+  /// Étape de départ. Ignoré si [prefilledFeatureCollection] est null.
+  final BuildLineStep initialStep;
+
   const BuildLineFlowScreen({
     super.key,
     required this.lineNumber,
@@ -50,6 +63,8 @@ class BuildLineFlowScreen extends StatefulWidget {
     required this.directionLabel,
     this.referenceFeatureCollection,
     this.referenceColorHex,
+    this.prefilledFeatureCollection,
+    this.initialStep = BuildLineStep.origin,
   });
 
   @override
@@ -224,7 +239,19 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => BuildLineFlowProvider(),
+      create: (_) {
+        final p = BuildLineFlowProvider();
+        // Mode "édition rapide" : on saute directement à l'étape demandée
+        // (typiquement Vérifier) avec la ligne pré-chargée.
+        final pre = widget.prefilledFeatureCollection;
+        if (pre != null) {
+          p.hydrateFromFeatureCollection(
+            fc: pre,
+            startStep: widget.initialStep,
+          );
+        }
+        return p;
+      },
       child: Consumer<BuildLineFlowProvider>(
         builder: (context, p, _) => Scaffold(
           appBar: AppBar(
@@ -331,8 +358,12 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
                               // repositionner, avec tap=renommer et
                               // longpress=supprimer. DragMarkers doit venir
                               // après MarkerLayer pour rester au-dessus.
-                              if (p.step == BuildLineStep.review)
+                              if (p.step == BuildLineStep.review) ...[
                                 _buildReviewStopsDragLayer(p),
+                                // D et A draggables aussi (cas "déplacer
+                                // l'arrivée sans tout refaire").
+                                _buildReviewTerminiDragLayer(p),
+                              ],
                             ],
                           ),
                           if (_pendingSearchName != null)
@@ -377,19 +408,19 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
     // est animé avec un anneau pulsant pour attirer l'œil sur la carte.
     final activeOrigin = p.step == BuildLineStep.origin;
     final activeDest = p.step == BuildLineStep.destination;
+    final isReview = p.step == BuildLineStep.review;
 
-    if (p.origin != null) {
-      markers.add(_pinMarker(p.origin!, 'D', const Color(0xFF2E7D32),
-          pulse: activeOrigin));
-    }
-    if (p.destination != null) {
-      markers.add(_pinMarker(p.destination!, 'A', const Color(0xFFC62828),
-          pulse: activeDest));
-    }
-    // En étape review, les arrêts sont rendus via DragMarkers (drag + tap
-    // rename + long press delete) — voir _buildReviewStopsDragLayer. Dans
-    // les autres étapes, on garde des Markers simples.
-    if (p.step != BuildLineStep.review) {
+    // En étape review, D/A et arrêts sont rendus via DragMarkers (drag).
+    // Voir _buildReviewTerminiDragLayer + _buildReviewStopsDragLayer.
+    if (!isReview) {
+      if (p.origin != null) {
+        markers.add(_pinMarker(p.origin!, 'D', const Color(0xFF2E7D32),
+            pulse: activeOrigin));
+      }
+      if (p.destination != null) {
+        markers.add(_pinMarker(p.destination!, 'A', const Color(0xFFC62828),
+            pulse: activeDest));
+      }
       for (int i = 0; i < p.stops.length; i++) {
         markers.add(_pinMarker(
           p.stops[i].position,
@@ -426,6 +457,49 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
       height: 74,
       alignment: Alignment.topCenter,
       child: _AnimatedPin(label: label, color: color, pulse: pulse),
+    );
+  }
+
+  /// Layer DragMarkers pour D et A en étape review : permet au consultant de
+  /// déplacer le départ ou l'arrivée sans repasser par les étapes 1/2.
+  /// Marque la route comme dirty → "Recalculer le tracé" devient nécessaire.
+  Widget _buildReviewTerminiDragLayer(BuildLineFlowProvider p) {
+    return DragMarkers(
+      alignment: Alignment.topCenter,
+      markers: [
+        if (p.origin != null)
+          DragMarker(
+            key: const ValueKey('review-origin'),
+            point: p.origin!,
+            size: const Size(64, 74),
+            alignment: Alignment.topCenter,
+            builder: (ctx, pos, isDragging) => _AnimatedPin(
+              label: 'D',
+              color: isDragging
+                  ? const Color(0xFF66BB6A)
+                  : const Color(0xFF2E7D32),
+              pulse: false,
+            ),
+            onDragEnd: (_, newPos) =>
+                p.setOrigin(newPos, name: p.originName),
+          ),
+        if (p.destination != null)
+          DragMarker(
+            key: const ValueKey('review-destination'),
+            point: p.destination!,
+            size: const Size(64, 74),
+            alignment: Alignment.topCenter,
+            builder: (ctx, pos, isDragging) => _AnimatedPin(
+              label: 'A',
+              color: isDragging
+                  ? const Color(0xFFEF5350)
+                  : const Color(0xFFC62828),
+              pulse: false,
+            ),
+            onDragEnd: (_, newPos) =>
+                p.setDestination(newPos, name: p.destinationName),
+          ),
+      ],
     );
   }
 

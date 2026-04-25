@@ -489,4 +489,91 @@ class BuildLineFlowProvider extends ChangeNotifier {
     _routeDirty = false;
     notifyListeners();
   }
+
+  /// Charge le state depuis un FeatureCollection existant (inverse de
+  /// [toFeatureCollection]). Utilisé pour le mode "Modifier (sans tout refaire)" :
+  /// on hydrate origin/destination/stops/waypoints/route, on positionne
+  /// `_routeDirty=false` (la route reflète déjà les arrêts), et on saute
+  /// directement à [startStep] (typiquement [BuildLineStep.review]).
+  ///
+  /// Le format attendu suit celui produit par [_stopFeature] :
+  ///   - LineString → routeCoords
+  ///   - Point properties.role='origin' → origin
+  ///   - Point properties.role='destination' → destination
+  ///   - Point properties.type='stop' (sans role) → stop régulier
+  ///   - Point properties.type='waypoint' + after_stop → waypoint
+  void hydrateFromFeatureCollection({
+    required Map<String, dynamic> fc,
+    BuildLineStep startStep = BuildLineStep.review,
+  }) {
+    // Reset complet d'abord pour partir d'un état propre, sans pousser de
+    // snapshot (on ne veut pas que cette hydration soit "annulable").
+    _origin = null;
+    _originName = null;
+    _destination = null;
+    _destinationName = null;
+    _stops.clear();
+    _waypoints.clear();
+    _routeCoords = const [];
+    _undoStack.clear();
+    _error = null;
+
+    final features = fc['features'] as List? ?? const [];
+
+    // Stops intermédiaires : on collecte d'abord par order pour préserver l'ordre.
+    final intermediates = <({int order, FlowStop stop})>[];
+    final waypointEntries = <FlowWaypoint>[];
+
+    for (final f in features) {
+      final geom = f['geometry'] as Map?;
+      if (geom == null) continue;
+      final props = (f['properties'] as Map?) ?? const {};
+
+      if (geom['type'] == 'LineString') {
+        final coords = geom['coordinates'] as List? ?? const [];
+        _routeCoords = [
+          for (final c in coords)
+            <double>[(c[0] as num).toDouble(), (c[1] as num).toDouble()],
+        ];
+      } else if (geom['type'] == 'Point') {
+        final c = geom['coordinates'] as List;
+        final pos = LatLng(
+          (c[1] as num).toDouble(),
+          (c[0] as num).toDouble(),
+        );
+        final pType = props['type'] as String?;
+        final role = props['role'] as String?;
+        final name = (props['name'] as String?)?.trim() ?? '';
+        final osmId = props['osm_id'] as String?;
+
+        if (pType == 'waypoint') {
+          final after = (props['after_stop'] as num?)?.toInt() ?? -1;
+          waypointEntries.add(
+              FlowWaypoint(position: pos, afterStopIndex: after));
+        } else if (role == 'origin') {
+          _origin = pos;
+          _originName = name.isEmpty ? null : name;
+        } else if (role == 'destination') {
+          _destination = pos;
+          _destinationName = name.isEmpty ? null : name;
+        } else {
+          // stop régulier
+          final order = (props['order'] as num?)?.toInt() ?? 999;
+          intermediates.add((
+            order: order,
+            stop: FlowStop(name: name, position: pos, osmId: osmId),
+          ));
+        }
+      }
+    }
+
+    intermediates.sort((a, b) => a.order.compareTo(b.order));
+    _stops.addAll(intermediates.map((e) => e.stop));
+    _waypoints.addAll(waypointEntries);
+
+    _step = startStep;
+    // Le tracé existe déjà et reflète les arrêts → pas dirty.
+    _routeDirty = false;
+    notifyListeners();
+  }
 }
