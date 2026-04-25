@@ -1158,10 +1158,20 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
       final dir = doc[widget.item.direction] as Map<String, dynamic>?;
       final fc = dir?['feature_collection'] as Map<String, dynamic>?;
 
-      // Autre direction (depuis le même doc) — pour calque optionnel.
-      final otherDir = doc[_otherDirection] as Map<String, dynamic>?;
-      final otherFc =
-          otherDir?['feature_collection'] as Map<String, dynamic>?;
+      // Autre direction : on ne l'affiche QUE si le consultant l'a vraiment
+      // proposée (status == modified). Sinon `loadOrBootstrap` renvoie le
+      // bootstrap depuis l'asset bundlé (= prod actuelle), ce qui donnerait
+      // l'illusion d'une "proposition" inexistante.
+      final validation = await TransportEditorService.instance
+          .getValidation(widget.item.lineNumber);
+      final otherStep = widget.item.direction == 'aller'
+          ? EditorStep.retour
+          : EditorStep.aller;
+      Map<String, dynamic>? otherFc;
+      if (validation.statusFor(otherStep) == ValidationStatus.modified) {
+        final otherDir = doc[_otherDirection] as Map<String, dynamic>?;
+        otherFc = otherDir?['feature_collection'] as Map<String, dynamic>?;
+      }
 
       Map<String, dynamic>? bundled;
       final route = widget.item.direction == 'aller'
