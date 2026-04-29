@@ -22,8 +22,9 @@ class StopMarkerFactory {
   static final Map<String, BitmapDescriptor> _cache = {};
 
   // Tailles logiques (× devicePixelRatio en sortie). Calibrées pour rester
-  // lisibles sans saturer la carte type IDF Mobilités.
-  static const double _dotSize = 12; // diamètre extérieur (anneau)
+  // lisibles sans saturer la carte type IDF Mobilités. Volontairement
+  // petites pour que les markers ne masquent pas le trait de la ligne.
+  static const double _dotSize = 9; // diamètre extérieur (anneau)
   static const double _labelWidth = 17;
   static const double _labelHeight = 13;
   static const double _bigLabelWidth = 24;
@@ -94,17 +95,10 @@ class StopMarkerFactory {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
 
-    // Drop shadow douce sous le carré.
-    final shadowRect = Rect.fromLTWH(0, h * 0.04, w, h);
-    final shadowRRect =
-        RRect.fromRectAndRadius(shadowRect, Radius.circular(radius));
-    canvas.drawRRect(
-      shadowRRect,
-      Paint()
-        ..color = Colors.black.withOpacity(0.18)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 2 * devicePixelRatio),
-    );
-
+    // Pas de drop shadow : un shadow décalé vers le bas (même léger)
+    // décentre visuellement le marker par rapport à son centre géométrique
+    // (utilisé comme ancre par Google Maps), donc le numéro se retrouve
+    // visuellement à côté du trait de la ligne au lieu d'être pile dessus.
     // Fond couleur de la ligne.
     final fillRect = Rect.fromLTWH(0, 0, w, h);
     final fillRRect =
@@ -157,12 +151,19 @@ class StopMarkerFactory {
   }
 
   /// Petit point blanc avec anneau couleur de la ligne. Utilisé à zoom
-  /// intermédiaire (14-15) pour montrer la position des arrêts sans
+  /// intermédiaire (13-14.5) pour montrer la position des arrêts sans
   /// encombrer la carte avec les numéros.
+  ///
+  /// Le bitmap est strictement symétrique autour de (size/2, size/2) — pas
+  /// de drop shadow décalée — pour que le marker apparaisse centré pile
+  /// sur le LatLng (lui-même snappé sur la polyline). Sans cette symétrie
+  /// stricte, l'anchor 0.5,0.5 de Google Maps positionne le centre
+  /// géométrique du bitmap au LatLng, mais un shadow ou padding asymétrique
+  /// décale le centre visuel.
   static Future<BitmapDescriptor> _renderDot(
       Color color, double devicePixelRatio) async {
     final size = _dotSize * devicePixelRatio;
-    final ringWidth = 2.0 * devicePixelRatio;
+    final ringWidth = 1.5 * devicePixelRatio;
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
@@ -171,17 +172,7 @@ class StopMarkerFactory {
     final outerRadius = size / 2;
     final innerRadius = outerRadius - ringWidth;
 
-    // Drop shadow.
-    canvas.drawCircle(
-      center.translate(0, ringWidth * 0.3),
-      outerRadius,
-      Paint()
-        ..color = Colors.black.withOpacity(0.2)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, ringWidth * 0.6),
-    );
-    // Anneau couleur de ligne.
     canvas.drawCircle(center, outerRadius, Paint()..color = color);
-    // Centre blanc.
     canvas.drawCircle(center, innerRadius, Paint()..color = Colors.white);
 
     final picture = recorder.endRecording();
