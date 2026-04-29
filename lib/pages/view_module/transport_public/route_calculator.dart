@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
@@ -5,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/transit_strings.dart';
 import 'package:rider_ride_hailing_app/models/route_planner.dart';
 import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
+import 'package:rider_ride_hailing_app/services/nominatim_service.dart';
 import 'package:rider_ride_hailing_app/services/public_transport_service.dart';
 
 /// Calculateur d'itinéraire multimodal pour le bandeau Transport en commun.
@@ -41,7 +44,9 @@ class _RouteCalculatorState extends State<RouteCalculator> {
 
   // Autocomplete state.
   String? _activeField; // 'origin' | 'destination' | null
-  List<TransportNode> _suggestions = const [];
+  List<_Suggestion> _suggestions = const [];
+  Timer? _debounce;
+  String _lastFetchedQuery = '';
 
   @override
   void initState() {
@@ -56,6 +61,7 @@ class _RouteCalculatorState extends State<RouteCalculator> {
     _destCtrl.dispose();
     _originFocus.dispose();
     _destFocus.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
@@ -77,25 +83,30 @@ class _RouteCalculatorState extends State<RouteCalculator> {
     // tap propage). Cleared via _hideSuggestions().
   }
 
-  void _hideSuggestions() {
-    if (!mounted) return;
-    setState(() {
-      _activeField = null;
-      _suggestions = const [];
-    });
-  }
-
   void _refreshSuggestions(String query) {
-    final svc = PublicTransportService.instance;
-    final groups = svc.allLines;
-    final q = query.trim().toLowerCase();
+    final q = query.trim();
     if (q.isEmpty) {
       _suggestions = const [];
+      _debounce?.cancel();
       return;
     }
-    // Collecte des nœuds uniques (par nom normalisé).
+    // 1. Suggestions immédiates depuis le bundle (sync, rapide).
+    _suggestions = _searchBundleStops(q);
+    // 2. En parallèle, fetch Nominatim avec debounce 400 ms et merge.
+    _debounce?.cancel();
+    if (q.length >= 3) {
+      _debounce = Timer(const Duration(milliseconds: 400), () {
+        _fetchNominatim(q);
+      });
+    }
+  }
+
+  List<_Suggestion> _searchBundleStops(String query) {
+    final svc = PublicTransportService.instance;
+    final groups = svc.allLines;
+    final q = query.toLowerCase();
     final seen = <String>{};
-    final hits = <TransportNode>[];
+    final hits = <_Suggestion>[];
     for (final group in groups) {
       for (final stop in [...?group.aller?.stops, ...?group.retour?.stops]) {
         final n = stop.name.trim();
@@ -104,17 +115,50 @@ class _RouteCalculatorState extends State<RouteCalculator> {
         if (!lower.contains(q)) continue;
         if (seen.contains(lower)) continue;
         seen.add(lower);
-        hits.add(TransportNode(
-          id: '${stop.position.latitude},${stop.position.longitude}',
-          name: n,
+        hits.add(_Suggestion(
+          label: n,
+          subtitle: null,
           position: stop.position,
-          lineNumbers: const [],
+          isStop: true,
         ));
-        if (hits.length >= 8) break;
+        if (hits.length >= 6) break;
       }
-      if (hits.length >= 8) break;
+      if (hits.length >= 6) break;
     }
-    _suggestions = hits;
+    return hits;
+  }
+
+  Future<void> _fetchNominatim(String query) async {
+    if (query == _lastFetchedQuery) return;
+    _lastFetchedQuery = query;
+    try {
+      final results =
+          await NominatimService.instance.search(query, limit: 5);
+      if (!mounted) return;
+      // Merge : on garde les hits bundle au-dessus puis les adresses
+      // Nominatim. Pas de dédup sur la position (les noms d'arrêts et
+      // d'adresses sont des concepts différents même si proches).
+      final merged = <_Suggestion>[
+        ..._searchBundleStops(query),
+        for (final r in results)
+          _Suggestion(
+            label: r.shortName,
+            subtitle: r.displayName,
+            position: LatLng(r.lat, r.lon),
+            isStop: false,
+          ),
+      ];
+      // Ne mettre à jour que si la query est toujours la même.
+      final activeText = _activeField == 'origin'
+          ? _originCtrl.text.trim()
+          : (_activeField == 'destination'
+              ? _destCtrl.text.trim()
+              : '');
+      if (activeText != query) return;
+      setState(() => _suggestions = merged);
+    } catch (_) {
+      // Silencieux — l'utilisateur garde au moins les suggestions bundle.
+    }
   }
 
   Future<void> _useMyLocation() async {
@@ -156,14 +200,14 @@ class _RouteCalculatorState extends State<RouteCalculator> {
     });
   }
 
-  void _selectSuggestion(TransportNode stop) {
+  void _selectSuggestion(_Suggestion s) {
     setState(() {
       if (_activeField == 'origin') {
-        _originCtrl.text = stop.name;
-        _originPos = stop.position;
+        _originCtrl.text = s.label;
+        _originPos = s.position;
       } else if (_activeField == 'destination') {
-        _destCtrl.text = stop.name;
-        _destPos = stop.position;
+        _destCtrl.text = s.label;
+        _destPos = s.position;
       }
       _activeField = null;
       _suggestions = const [];
@@ -381,7 +425,7 @@ class _RouteCalculatorState extends State<RouteCalculator> {
 
   Widget _buildSuggestions() {
     return Container(
-      constraints: const BoxConstraints(maxHeight: 220),
+      constraints: const BoxConstraints(maxHeight: 260),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
@@ -392,23 +436,45 @@ class _RouteCalculatorState extends State<RouteCalculator> {
         padding: EdgeInsets.zero,
         itemCount: _suggestions.length,
         itemBuilder: (ctx, i) {
-          final stop = _suggestions[i];
+          final s = _suggestions[i];
           return InkWell(
-            onTap: () => _selectSuggestion(stop),
+            onTap: () => _selectSuggestion(s),
             child: Padding(
               padding:
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Row(
                 children: [
-                  const Icon(Icons.location_on_outlined,
-                      size: 14, color: Color(0xFF6B7280)),
+                  Icon(
+                    s.isStop
+                        ? Icons.directions_bus_outlined
+                        : Icons.location_on_outlined,
+                    size: 14,
+                    color: s.isStop
+                        ? const Color(0xFFFF5357)
+                        : const Color(0xFF6B7280),
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      stop.name,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 12, color: Color(0xFF1D3557)),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          s.label,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFF1D3557)),
+                        ),
+                        if (s.subtitle != null && s.subtitle!.isNotEmpty)
+                          Text(
+                            s.subtitle!,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ],
@@ -535,4 +601,23 @@ class _RouteCalculatorState extends State<RouteCalculator> {
       ),
     );
   }
+}
+
+/// Suggestion d'autocomplete polymorphe : soit un arrêt du bundle (isStop=true),
+/// soit une adresse OSM via Nominatim (isStop=false). Pour le calcul
+/// d'itinéraire, on a juste besoin de la position. Le `subtitle` n'est
+/// rempli que pour les adresses Nominatim (display_name complet) — il
+/// disparaît une fois sélectionné.
+class _Suggestion {
+  final String label;
+  final String? subtitle;
+  final LatLng position;
+  final bool isStop;
+
+  const _Suggestion({
+    required this.label,
+    required this.subtitle,
+    required this.position,
+    required this.isStop,
+  });
 }

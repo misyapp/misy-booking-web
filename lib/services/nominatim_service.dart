@@ -18,13 +18,12 @@ class NominatimPlace {
   });
 }
 
-/// Recherche / autocomplete de lieu via Nominatim (OSM) — API gratuite, sans
-/// clé. Remplace Google Places pour l'éditeur terrain transport.
+/// Recherche / autocomplete de lieu via Nominatim (OSM) — utilisée par
+/// l'éditeur terrain transport et par le calculateur d'itinéraire public.
 ///
-/// Respect de la Nominatim Usage Policy :
-///   - max ~1 req/sec (debounce côté UI)
-///   - User-Agent obligatoire identifiant l'app
-///   - Pas d'abus volumétrique (ok pour une saisie interactive)
+/// Endpoint : instance Misy auto-hébergée sur `nominatim.misy.app`. Pas
+/// de rate limit ni de policy stricte côté usage public — on reste poli
+/// avec un User-Agent identifiable et un debounce côté UI (400 ms).
 ///
 /// Biaisé Madagascar (`countrycodes=mg`) avec viewbox large autour de Tana
 /// pour remonter les résultats locaux en priorité.
@@ -33,7 +32,7 @@ class NominatimService {
   static final NominatimService instance = NominatimService._();
 
   static const String _endpoint =
-      'https://nominatim.openstreetmap.org/search';
+      'https://nominatim.misy.app/search';
   static const String _userAgent =
       'Misy-Booking-Web/1.0 (https://book.misy.app; contact@misyapp.com)';
 
