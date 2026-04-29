@@ -145,17 +145,17 @@ class StopMarkerFactory {
     final image = await picture.toImage(w.toInt(), h.toInt());
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     final bytes = byteData!.buffer.asUint8List();
-    // BitmapDescriptor.bytes (= BytesMapBitmap) au lieu du legacy
-    // BitmapDescriptor.fromBytes : sur web, le code path legacy ignore
-    // silencieusement Marker.anchor (cf. google_maps_flutter_web 0.5.14
-    // lib/src/convert.dart:472-494) → marker affiché ancré bottom-center
-    // au lieu de center, d'où le décalage vertical visuel d'env. la moitié
-    // de la hauteur du bitmap. Avec BitmapDescriptor.bytes, _setIconAnchor
-    // est appelé correctement et le centre logique du bitmap atterrit pile
-    // sur la LatLng (= sur la polyline, grâce au snap).
+    // BitmapDescriptor.bytes avec width/height EXPLICITES en pixels
+    // logiques. Sans width/height, gmaps web tente de fetch les dims du
+    // bitmap via une img tag async ; si ce fetch échoue ou retourne 0,
+    // _setIconAnchor n'est jamais appelé et l'anchor de notre Marker
+    // (0.5, 0.5) est silencieusement ignoré → marker décalé. Avec
+    // width/height, _getBitmapSize court-circuite immédiatement et
+    // l'anchor est posé correctement.
     final descriptor = BitmapDescriptor.bytes(
       bytes,
-      imagePixelRatio: devicePixelRatio,
+      width: baseW,
+      height: baseH,
     );
     _cache[key] = descriptor;
     return descriptor;
@@ -191,7 +191,8 @@ class StopMarkerFactory {
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     return BitmapDescriptor.bytes(
       byteData!.buffer.asUint8List(),
-      imagePixelRatio: devicePixelRatio,
+      width: _dotSize,
+      height: _dotSize,
     );
   }
 
