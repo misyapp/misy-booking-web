@@ -145,7 +145,18 @@ class StopMarkerFactory {
     final image = await picture.toImage(w.toInt(), h.toInt());
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     final bytes = byteData!.buffer.asUint8List();
-    final descriptor = BitmapDescriptor.fromBytes(bytes);
+    // BitmapDescriptor.bytes (= BytesMapBitmap) au lieu du legacy
+    // BitmapDescriptor.fromBytes : sur web, le code path legacy ignore
+    // silencieusement Marker.anchor (cf. google_maps_flutter_web 0.5.14
+    // lib/src/convert.dart:472-494) → marker affiché ancré bottom-center
+    // au lieu de center, d'où le décalage vertical visuel d'env. la moitié
+    // de la hauteur du bitmap. Avec BitmapDescriptor.bytes, _setIconAnchor
+    // est appelé correctement et le centre logique du bitmap atterrit pile
+    // sur la LatLng (= sur la polyline, grâce au snap).
+    final descriptor = BitmapDescriptor.bytes(
+      bytes,
+      imagePixelRatio: devicePixelRatio,
+    );
     _cache[key] = descriptor;
     return descriptor;
   }
@@ -178,7 +189,10 @@ class StopMarkerFactory {
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.fromBytes(byteData!.buffer.asUint8List());
+    return BitmapDescriptor.bytes(
+      byteData!.buffer.asUint8List(),
+      imagePixelRatio: devicePixelRatio,
+    );
   }
 
   /// Renvoie noir ou blanc selon la luminance du fond (contrast WCAG-ish).
