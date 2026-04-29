@@ -29,6 +29,8 @@ import 'package:rider_ride_hailing_app/services/places_autocomplete_web.dart';
 import 'package:rider_ride_hailing_app/services/route_service.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/login_screen.dart' show LoginPage;
 import 'package:rider_ride_hailing_app/pages/auth_module/signup_screen.dart' show SignUpScreen;
+import 'package:rider_ride_hailing_app/pages/auth_module/web_auth_screen.dart'
+    show WebAuthMode, WebAuthScreen;
 import 'package:rider_ride_hailing_app/pages/auth_module/edit_profile_screen.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/phone_number_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/my_booking_screen.dart';
@@ -9755,7 +9757,31 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     );
   }
 
+  void _showWebAuthDialog(WebAuthMode mode) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: "Auth",
+      barrierColor: Colors.black.withOpacity(0.45),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (_, __, ___) => WebAuthScreen(initialMode: mode),
+      transitionBuilder: (_, anim, __, child) => FadeTransition(
+        opacity: anim,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.97, end: 1.0).animate(
+            CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+
   void _navigateToLogin() {
+    if (kIsWeb) {
+      _showWebAuthDialog(WebAuthMode.login);
+      return;
+    }
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const LoginPage()),
@@ -9763,6 +9789,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   void _navigateToSignUp() {
+    if (kIsWeb) {
+      _showWebAuthDialog(WebAuthMode.signup);
+      return;
+    }
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const SignUpScreen()),
