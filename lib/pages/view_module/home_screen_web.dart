@@ -42,7 +42,7 @@ import 'package:rider_ride_hailing_app/bottom_sheet_widget/drive_on_way.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_public/stop_card.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_public/transport_public_panel.dart';
 import 'package:rider_ride_hailing_app/services/public_transport_service.dart';
-import 'package:rider_ride_hailing_app/models/transport_line.dart' show TransportLine;
+import 'package:rider_ride_hailing_app/models/transport_line.dart' show TransportLine, TransportLineGroup;
 import 'package:rider_ride_hailing_app/functions/print_function.dart' show myCustomPrintStatement;
 import 'package:rider_ride_hailing_app/widget/home_mode_toggle.dart';
 import 'package:rider_ride_hailing_app/widget/transport/stop_marker_factory.dart';
@@ -2322,7 +2322,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   ///   qu'une fois (lookup par position arrondie).
   Future<void> _rebuildPublicTransportLayers() async {
     final svc = PublicTransportService.instance;
-    final groups = svc.allLines;
     final selected = _publicSelectedLine;
     final selectedStop = _publicSelectedStop;
     final dpr =
@@ -2342,17 +2341,34 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
 
     final polylines = <Polyline>{};
-    final stopsByKey = <String, _PublicStopAggregate>{};
     final showStops = _publicMapZoom >= 13;
 
-    for (final group in groups) {
+    // Liste plate avant clustering. Permet de dédupliquer un arrêt aller +
+    // son équivalent retour qui sont à des positions légèrement décalées
+    // (typiquement 15-30m, de chaque côté de la rue).
+    final rawStops = <_RawStop>[];
+
+    // Ordre d'itération : on dessine les lignes les MOINS importantes en
+    // premier pour que les plus longues (= les axes) passent par-dessus
+    // visuellement. Le marker d'un cluster prend la couleur/numéro de la
+    // ligne la plus importante (cf. plus bas).
+    final byImportance = svc.linesByImportance;
+    final renderOrder = [
+      for (var i = byImportance.length - 1; i >= 0; i--) byImportance[i],
+    ];
+    final orderedGroups = <TransportLineGroup>[
+      for (final ln in renderOrder)
+        if (svc.getLineGroup(ln) != null) svc.getLineGroup(ln)!,
+    ];
+
+    for (final group in orderedGroups) {
       if (!visible.contains(group.lineNumber)) continue;
 
       final meta = svc.metadataFor(group.lineNumber);
       final color =
           meta != null ? Color(meta.colorValue) : const Color(0xFF1565C0);
       final isSelected = selected != null;
-      final lineOpacity = 0.62;
+      const lineOpacity = 0.62;
       final width = isSelected ? 8 : 6;
 
       void addPolyline(TransportLine? line, String dir) {
@@ -2367,34 +2383,91 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         ));
       }
 
-      void aggregateStops(TransportLine? line) {
+      void collectStops(TransportLine? line) {
         if (line == null) return;
         if (!showStops) return;
         for (final stop in line.stops) {
-          final key = _stopKey(stop.position);
-          final agg = stopsByKey.putIfAbsent(
-            key,
-            () => _PublicStopAggregate(
-              key: key,
-              position: stop.position,
-              name: stop.name,
-              primaryLine: group.lineNumber,
-              primaryColor: color,
-            ),
-          );
-          agg.lines.add(group.lineNumber);
-          if (isSelected) {
-            agg.primaryLine = group.lineNumber;
-            agg.primaryColor = color;
-          }
+          rawStops.add(_RawStop(
+            position: stop.position,
+            name: stop.name,
+            lineNumber: group.lineNumber,
+            color: color,
+          ));
         }
       }
 
       addPolyline(group.aller, 'aller');
       addPolyline(group.retour, 'retour');
-      aggregateStops(group.aller);
-      aggregateStops(group.retour);
+      collectStops(group.aller);
+      collectStops(group.retour);
     }
+
+    // Clustering proximité 35m : un arrêt servi en aller + retour (positions
+    // souvent légèrement décalées des 2 côtés de la rue) ne donne qu'1 seul
+    // marker. Si plusieurs lignes desservent le même point, on les agrège
+    // sur le même cluster.
+    final clusters = <_PublicStopAggregate>[];
+    for (final raw in rawStops) {
+      _PublicStopAggregate? match;
+      for (final c in clusters) {
+        if (_metersBetween(c.position, raw.position) <= 35.0) {
+          match = c;
+          break;
+        }
+      }
+      if (match != null) {
+        match.lines.add(raw.lineNumber);
+        // Conserve le nom le plus informatif (priorité au plus long non-vide).
+        if (raw.name.length > match.name.length) match.name = raw.name;
+      } else {
+        clusters.add(_PublicStopAggregate(
+          key: _stopKey(raw.position),
+          position: raw.position,
+          name: raw.name,
+          primaryLine: raw.lineNumber,
+          primaryColor: raw.color,
+        ));
+      }
+    }
+
+    // Choix de la "ligne primaire" pour chaque cluster :
+    // - Si une ligne est sélectionnée et passe par ce cluster → c'est elle.
+    // - Sinon : la ligne la PLUS importante (= longueur totale max) qui
+    //   passe par ce cluster. Cohérent avec l'ordre de dessin des polylines
+    //   (la plus importante est posée en dernier → visible au-dessus).
+    final importanceRank = <String, int>{
+      for (var i = 0; i < byImportance.length; i++) byImportance[i]: i,
+    };
+    for (final c in clusters) {
+      if (selected != null && c.lines.contains(selected)) {
+        final selectedMeta = svc.metadataFor(selected);
+        c.primaryLine = selected;
+        c.primaryColor = selectedMeta != null
+            ? Color(selectedMeta.colorValue)
+            : const Color(0xFF1565C0);
+        continue;
+      }
+      String? best;
+      var bestRank = 1 << 30;
+      for (final ln in c.lines) {
+        final rank = importanceRank[ln] ?? (1 << 30);
+        if (rank < bestRank) {
+          bestRank = rank;
+          best = ln;
+        }
+      }
+      if (best != null && best != c.primaryLine) {
+        final meta = svc.metadataFor(best);
+        c.primaryLine = best;
+        c.primaryColor = meta != null
+            ? Color(meta.colorValue)
+            : const Color(0xFF1565C0);
+      }
+    }
+
+    final stopsByKey = <String, _PublicStopAggregate>{
+      for (final c in clusters) c.key: c,
+    };
 
     // Génération des markers custom pour les stops collectés.
     final markers = <Marker>{};
@@ -2438,6 +2511,20 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   static String _stopKey(LatLng p) =>
       '${p.latitude.toStringAsFixed(5)},${p.longitude.toStringAsFixed(5)}';
+
+  /// Distance Haversine en mètres entre 2 points. Utilisée pour dédupliquer
+  /// les arrêts aller/retour d'une même ligne (souvent décalés 15-30m car
+  /// posés de chaque côté d'une route à 2 voies).
+  static double _metersBetween(LatLng a, LatLng b) {
+    const r = 6371000.0;
+    final dLat = (b.latitude - a.latitude) * 3.141592653589793 / 180.0;
+    final dLng = (b.longitude - a.longitude) * 3.141592653589793 / 180.0;
+    final lat1 = a.latitude * 3.141592653589793 / 180.0;
+    final lat2 = b.latitude * 3.141592653589793 / 180.0;
+    final h = (1 - cos(dLat)) / 2 +
+        cos(lat1) * cos(lat2) * (1 - cos(dLng)) / 2;
+    return 2 * r * asin(sqrt(h));
+  }
 
   /// Reagit au déplacement de caméra : tracking de zoom pour le filtrage.
   /// Recompute les couches uniquement quand on franchit un seuil entier
@@ -3862,14 +3949,29 @@ class _SchedulePickerDialogState extends State<_SchedulePickerDialog> {
   }
 }
 
+/// Stop "brut" en sortie d'un GeoJSON, avant clustering par proximité.
+class _RawStop {
+  final LatLng position;
+  final String name;
+  final String lineNumber;
+  final Color color;
+
+  const _RawStop({
+    required this.position,
+    required this.name,
+    required this.lineNumber,
+    required this.color,
+  });
+}
+
 /// Aggregate utilisé pour dédupliquer les arrêts du réseau public sur la carte.
-/// Plusieurs lignes peuvent desservir le même point (~1m près) — on n'affiche
-/// qu'un seul marker, taggé avec la "ligne primaire" (= ligne sélectionnée si
-/// applicable, sinon la 1re rencontrée).
+/// Plusieurs lignes peuvent desservir le même point — et l'aller / le retour
+/// d'une même ligne sont souvent à 15-30m l'un de l'autre. On clusterise dans
+/// un rayon de 35m (cf. `_metersBetween`) → 1 seul marker.
 class _PublicStopAggregate {
   final String key;
   final LatLng position;
-  final String name;
+  String name;
   String primaryLine;
   Color primaryColor;
   final Set<String> lines = <String>{};
