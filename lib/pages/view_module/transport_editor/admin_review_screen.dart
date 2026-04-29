@@ -7,7 +7,9 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:rider_ride_hailing_app/models/transport_line.dart';
 import 'package:rider_ride_hailing_app/models/transport_line_validation.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/build_line_flow_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/osm_base_map.dart';
+import 'package:rider_ride_hailing_app/provider/build_line_flow_provider.dart';
 import 'package:rider_ride_hailing_app/services/admin_auth_service.dart';
 import 'package:rider_ride_hailing_app/services/transport_editor_service.dart';
 import 'package:rider_ride_hailing_app/services/transport_lines_service.dart';
@@ -51,6 +53,17 @@ class _AdminReviewBody extends StatefulWidget {
 class _AdminReviewBodyState extends State<_AdminReviewBody> {
   String? _filterEmail;
   String? _mapFilterLine; // null = toutes les lignes
+  String? _mapFilterConsultant; // null = pas de filtre par consultant
+  // Par défaut on cache les lignes "préalables" (asset bundlé OSM, jamais
+  // touchées par le consultant) — la carte admin sert à reviewer le travail
+  // consultant, pas à comparer avec l'historique. Toggle pour les ré-afficher
+  // en surcouche grise tiretée.
+  bool _mapShowBaseline = false;
+  // Cache des FCs éditées pour le consultant filtré (pour rendre les
+  // directions non-approved en pointillé). Recalculé à chaque changement
+  // de filtre consultant via [_loadEditedForFilter].
+  Map<String, Map<String, Map<String, dynamic>>> _editedForConsultant = {};
+  String? _loadedEditedFor; // l'email pour lequel _editedForConsultant est cohérent
   List<LineMetadata> _allMeta = [];
   bool _loadingMeta = true;
   Future<List<TransportLineGroup>>? _linesFuture;
@@ -137,7 +150,10 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  Expanded(flex: 6, child: _buildMapCard()),
+                                  Expanded(
+                                      flex: 6,
+                                      child: _buildMapCard(
+                                          validations, emails)),
                                   const SizedBox(width: 16),
                                   Expanded(
                                     flex: 4,
@@ -149,7 +165,9 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
                               ),
                             )
                           else ...[
-                            SizedBox(height: 380, child: _buildMapCard()),
+                            SizedBox(
+                                height: 380,
+                                child: _buildMapCard(validations, emails)),
                             const SizedBox(height: 16),
                             SizedBox(
                               height: 460,
@@ -300,7 +318,13 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
 
   /* ──────────────────── MAP CARD ──────────────────── */
 
-  Widget _buildMapCard() {
+  Widget _buildMapCard(
+      Map<String, TransportLineValidation> validations, List<String> emails) {
+    // Si le filtre consultant change, charger les FCs éditées de ce
+    // consultant (pour rendre les directions non-approved en pointillé).
+    if (_mapFilterConsultant != _loadedEditedFor) {
+      _loadEditedForFilter(_mapFilterConsultant, validations);
+    }
     return _dashboardCard(
       title: 'Carte des lignes',
       icon: Icons.map_outlined,
@@ -320,9 +344,9 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildMapFilterBar(groups),
+              _buildMapFilterBar(groups, emails),
               const SizedBox(height: 8),
-              Expanded(child: _buildMap(groups)),
+              Expanded(child: _buildMap(groups, validations)),
             ],
           );
         },
@@ -330,100 +354,297 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
     );
   }
 
-  Widget _buildMapFilterBar(List<TransportLineGroup> groups) {
+  /// Charge en cache les FCs éditées du consultant `email`. No-op si
+  /// `email == null` (clear le cache). Schédulé après le frame courant
+  /// pour ne pas appeler setState pendant build.
+  void _loadEditedForFilter(
+      String? email, Map<String, TransportLineValidation> validations) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      if (email == null) {
+        if (_loadedEditedFor != null) {
+          setState(() {
+            _editedForConsultant = {};
+            _loadedEditedFor = null;
+          });
+        }
+        return;
+      }
+      try {
+        final docs = await TransportEditorService.instance
+            .loadEditedForConsultant(email, validations);
+        if (!mounted || _mapFilterConsultant != email) return;
+        setState(() {
+          _editedForConsultant = docs;
+          _loadedEditedFor = email;
+        });
+      } catch (_) {
+        // Tant pis — la carte affichera juste vide pour les non-approved.
+      }
+    });
+  }
+
+  Widget _buildMapFilterBar(
+      List<TransportLineGroup> groups, List<String> emails) {
     final sorted = [...groups]
       ..sort((a, b) => a.lineNumber.compareTo(b.lineNumber));
+    final lineDropdown = DropdownButton<String?>(
+      isExpanded: true,
+      value: _mapFilterLine,
+      underline: const SizedBox.shrink(),
+      hint: const Text('Toutes les lignes', style: TextStyle(fontSize: 12)),
+      items: [
+        const DropdownMenuItem<String?>(
+          value: null,
+          child: Text('Toutes les lignes', style: TextStyle(fontSize: 12)),
+        ),
+        for (final g in sorted)
+          DropdownMenuItem<String?>(
+            value: g.lineNumber,
+            child: Row(
+              children: [
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: Color(_metaFor(g.lineNumber)?.colorValue ??
+                        0xFF5E35B1),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Ligne ${g.lineNumber} — ${g.displayName}',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+      onChanged: (v) => setState(() => _mapFilterLine = v),
+    );
+
+    final consultantDropdown = DropdownButton<String?>(
+      isExpanded: true,
+      value: _mapFilterConsultant,
+      underline: const SizedBox.shrink(),
+      hint: const Text('Tous les consultants',
+          style: TextStyle(fontSize: 12)),
+      items: [
+        const DropdownMenuItem<String?>(
+          value: null,
+          child: Text('Tous les consultants',
+              style: TextStyle(fontSize: 12)),
+        ),
+        for (final e in emails)
+          DropdownMenuItem<String?>(
+            value: e,
+            child: Text(e,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12)),
+          ),
+      ],
+      onChanged: (v) => setState(() => _mapFilterConsultant = v),
+    );
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: const Color(0xFFEDE7F6),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.filter_list, size: 16, color: Color(0xFF5E35B1)),
-          const SizedBox(width: 6),
-          Expanded(
-            child: DropdownButton<String?>(
-              isExpanded: true,
-              value: _mapFilterLine,
-              underline: const SizedBox.shrink(),
-              hint: const Text('Toutes les lignes',
-                  style: TextStyle(fontSize: 12)),
-              items: [
-                const DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text('Toutes les lignes',
-                      style: TextStyle(fontSize: 12)),
+          Row(
+            children: [
+              const Icon(Icons.filter_list,
+                  size: 16, color: Color(0xFF5E35B1)),
+              const SizedBox(width: 6),
+              Expanded(child: lineDropdown),
+              if (_mapFilterLine != null)
+                IconButton(
+                  tooltip: 'Reset ligne',
+                  icon: const Icon(Icons.close, size: 14),
+                  padding: EdgeInsets.zero,
+                  constraints:
+                      const BoxConstraints(minWidth: 24, minHeight: 24),
+                  onPressed: () => setState(() => _mapFilterLine = null),
                 ),
-                for (final g in sorted)
-                  DropdownMenuItem<String?>(
-                    value: g.lineNumber,
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: Color(_metaFor(g.lineNumber)?.colorValue ??
-                                0xFF5E35B1),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Ligne ${g.lineNumber} — ${g.displayName}',
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-              onChanged: (v) => setState(() => _mapFilterLine = v),
+              const SizedBox(width: 8),
+              const Icon(Icons.person_outline,
+                  size: 16, color: Color(0xFF5E35B1)),
+              const SizedBox(width: 6),
+              Expanded(child: consultantDropdown),
+              if (_mapFilterConsultant != null)
+                IconButton(
+                  tooltip: 'Reset consultant',
+                  icon: const Icon(Icons.close, size: 14),
+                  padding: EdgeInsets.zero,
+                  constraints:
+                      const BoxConstraints(minWidth: 24, minHeight: 24),
+                  onPressed: () =>
+                      setState(() => _mapFilterConsultant = null),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilterChip(
+              label: Text(
+                _mapShowBaseline
+                    ? 'Ligne préalable ✓'
+                    : 'Ligne préalable',
+                style: const TextStyle(fontSize: 11),
+              ),
+              selected: _mapShowBaseline,
+              showCheckmark: false,
+              avatar: Icon(
+                Icons.history,
+                size: 14,
+                color: _mapShowBaseline
+                    ? Colors.white
+                    : const Color(0xFF5E35B1),
+              ),
+              backgroundColor: Colors.white,
+              selectedColor: const Color(0xFF607D8B),
+              labelStyle: TextStyle(
+                color: _mapShowBaseline
+                    ? Colors.white
+                    : const Color(0xFF5E35B1),
+                fontWeight: FontWeight.w600,
+              ),
+              onSelected: (v) => setState(() => _mapShowBaseline = v),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+              visualDensity: VisualDensity.compact,
+              tooltip:
+                  'Affiche les tracés OSM d\'origine (gris tireté), avant édition consultant',
             ),
           ),
-          if (_mapFilterLine != null)
-            IconButton(
-              tooltip: 'Réinitialiser',
-              icon: const Icon(Icons.close, size: 16),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-              onPressed: () => setState(() => _mapFilterLine = null),
-            ),
         ],
       ),
     );
   }
 
-  Widget _buildMap(List<TransportLineGroup> groups) {
-    final filtered = _mapFilterLine == null
+  Widget _buildMap(List<TransportLineGroup> groups,
+      Map<String, TransportLineValidation> validations) {
+    final filteredByLine = _mapFilterLine == null
         ? groups
         : groups.where((g) => g.lineNumber == _mapFilterLine).toList();
 
     final polylines = <Polyline>[];
     final allPoints = <LatLng>[];
-    for (final g in filtered) {
+
+    // Calques distincts pour pouvoir dessiner les "préalables" (gris tireté)
+    // d'abord, puis les validés / submissions par-dessus pour qu'ils soient
+    // visuellement prioritaires.
+    final baselineLayer = <Polyline>[];
+    final activeLayer = <Polyline>[];
+
+    final touchedByConsultant = _mapFilterConsultant == null
+        ? null
+        : <String>{
+            for (final v in validations.values)
+              if (v.updatedByEmail == _mapFilterConsultant) v.lineNumber,
+          };
+
+    for (final g in filteredByLine) {
+      // En mode consultant, ignorer les lignes que ce consultant n'a pas
+      // touchées (sauf si baseline activé : on les montre en gris pour
+      // contexte).
+      final inConsultantScope =
+          touchedByConsultant?.contains(g.lineNumber) ?? true;
+      if (touchedByConsultant != null &&
+          !inConsultantScope &&
+          !_mapShowBaseline) {
+        continue;
+      }
+
+      final v = validations[g.lineNumber];
       final meta = _metaFor(g.lineNumber);
       final color =
           meta != null ? Color(meta.colorValue) : const Color(0xFF5E35B1);
-      for (final line in g.lines) {
-        if (line.coordinates.length < 2) continue;
-        final pts = line.coordinates
-            .map((c) => LatLng(c.latitude, c.longitude))
-            .toList();
-        polylines.add(Polyline(
-          points: pts,
-          color: color.withOpacity(0.75),
-          strokeWidth: 3,
-        ));
-        allPoints.addAll(pts);
+
+      for (final step in EditorStep.values) {
+        final dirKey = step.isAller ? 'aller' : 'retour';
+        final adminApproved =
+            v?.adminReviewFor(step).status == AdminStatus.approved;
+
+        if (adminApproved) {
+          // Trait plein depuis groups (= version publiée Firestore).
+          for (final line in g.lines) {
+            if (line.direction != dirKey) continue;
+            if (line.coordinates.length < 2) continue;
+            final pts = line.coordinates
+                .map((c) => LatLng(c.latitude, c.longitude))
+                .toList();
+            activeLayer.add(Polyline(
+              points: pts,
+              color: color.withOpacity(0.85),
+              strokeWidth: 3.5,
+            ));
+            allPoints.addAll(pts);
+          }
+        } else {
+          // Direction non-approuvée. Deux cas qui peuvent coexister :
+          // 1. Mode consultant + ligne touchée + submission existe → dashed
+          //    coloré (= ce que le consultant a réellement soumis).
+          // 2. _mapShowBaseline ON → tracé OSM d'origine en gris tireté.
+          var drewSubmission = false;
+          if (touchedByConsultant != null && inConsultantScope) {
+            final fc = _editedForConsultant[g.lineNumber]?[dirKey];
+            if (fc != null) {
+              final pts = _extractLineStringFromFc(fc);
+              if (pts.length >= 2) {
+                activeLayer.add(Polyline(
+                  points: pts,
+                  color: color.withOpacity(0.85),
+                  strokeWidth: 3,
+                  pattern:
+                      StrokePattern.dashed(segments: const [10.0, 6.0]),
+                ));
+                allPoints.addAll(pts);
+                drewSubmission = true;
+              }
+            }
+          }
+
+          if (_mapShowBaseline) {
+            // groups[direction] non-publié = l'asset OSM bundlé (préalable).
+            for (final line in g.lines) {
+              if (line.direction != dirKey) continue;
+              if (line.coordinates.length < 2) continue;
+              final pts = line.coordinates
+                  .map((c) => LatLng(c.latitude, c.longitude))
+                  .toList();
+              baselineLayer.add(Polyline(
+                points: pts,
+                color: const Color(0xFF607D8B).withOpacity(0.55),
+                strokeWidth: 2.5,
+                pattern:
+                    StrokePattern.dashed(segments: const [6.0, 6.0]),
+              ));
+              if (!drewSubmission) allPoints.addAll(pts);
+            }
+          }
+        }
       }
     }
 
-    final initialCamera = (_mapFilterLine != null && allPoints.isNotEmpty)
+    polylines.addAll(baselineLayer);
+    polylines.addAll(activeLayer);
+
+    final shouldFit = (_mapFilterLine != null ||
+            _mapFilterConsultant != null ||
+            _mapShowBaseline) &&
+        allPoints.isNotEmpty;
+    final initialCamera = shouldFit
         ? CameraFit.bounds(
             bounds: LatLngBounds.fromPoints(allPoints),
             padding: const EdgeInsets.all(40),
@@ -433,8 +654,9 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
       child: FlutterMap(
-        // ValueKey force le rebuild + auto-fit quand on change le filtre.
-        key: ValueKey('admin-map-${_mapFilterLine ?? "all"}'),
+        // ValueKey force le rebuild + auto-fit quand on change un filtre.
+        key: ValueKey(
+            'admin-map-${_mapFilterLine ?? "all"}-${_mapFilterConsultant ?? "all"}-$_mapShowBaseline'),
         options: MapOptions(
           initialCenter: const LatLng(-18.8792, 47.5079), // Tana
           initialZoom: 12,
@@ -453,6 +675,23 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
         ],
       ),
     );
+  }
+
+  /// Extrait les points LatLng du LineString d'une FeatureCollection brute
+  /// (lit `[lng, lat]` GeoJSON, retourne LatLng latlong2).
+  List<LatLng> _extractLineStringFromFc(Map<String, dynamic> fc) {
+    final pts = <LatLng>[];
+    for (final f in (fc['features'] as List? ?? [])) {
+      final g = f['geometry'] as Map?;
+      if (g == null || g['type'] != 'LineString') continue;
+      for (final c in (g['coordinates'] as List? ?? [])) {
+        pts.add(LatLng(
+          (c[1] as num).toDouble(),
+          (c[0] as num).toDouble(),
+        ));
+      }
+    }
+    return pts;
   }
 
   /* ──────────────────── PENDING QUEUE CARD ──────────────────── */
@@ -678,6 +917,11 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
         color = const Color(0xFFE53935);
         icon = Icons.replay;
         label = 'Rejeté';
+        break;
+      case 'admin_edited':
+        color = const Color(0xFF7E57C2);
+        icon = Icons.edit_location_alt;
+        label = 'Modifié admin';
         break;
       case 'created':
         color = const Color(0xFF1565C0);
@@ -1339,6 +1583,56 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
     }
   }
 
+  /// Admin retouche le tracé/arrêts du consultant et publie directement.
+  /// Ouvre le sub-flow `BuildLineFlowScreen` à l'étape Vérifier avec la FC
+  /// du consultant pré-chargée → drag stops, drag D/A, insert, recalc OSRM.
+  /// Au retour, écrit Firestore via `adminEditAndPublish`.
+  Future<void> _adminEdit() async {
+    if (_editedFc == null || _acting) return;
+    final result = await Navigator.of(context).push<BuildLineFlowResult>(
+      MaterialPageRoute(
+        builder: (_) => BuildLineFlowScreen(
+          lineNumber: widget.item.lineNumber,
+          direction: widget.item.direction,
+          directionLabel: widget.item.direction,
+          referenceFeatureCollection: _editedFc,
+          referenceColorHex: widget.meta?.colorHex,
+          prefilledFeatureCollection: _editedFc,
+          initialStep: BuildLineStep.review,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() => _acting = true);
+    try {
+      await TransportEditorService.instance.adminEditAndPublish(
+        lineNumber: widget.item.lineNumber,
+        direction: widget.item.direction,
+        featureCollection: result.featureCollection,
+        lineMetadata: widget.meta == null
+            ? null
+            : {
+                'display_name': widget.meta!.displayName,
+                'transport_type': widget.meta!.transportType,
+                'color': widget.meta!.colorHex,
+              },
+        numStops: result.numStops,
+        numVertices: result.numVertices,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Modifié et publié en prod ✓')),
+      );
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _acting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur: $e')),
+      );
+    }
+  }
+
   Future<String?> _promptReason() {
     final ctrl = TextEditingController();
     return showDialog<String>(
@@ -1772,35 +2066,60 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFC62828),
-                      side: const BorderSide(color: Color(0xFFC62828)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Tooltip(
+                    message: 'Demander au consultant de refaire avec un motif',
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFC62828),
+                        side: const BorderSide(color: Color(0xFFC62828)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: _acting ? null : _reject,
+                      icon: const Icon(Icons.replay, size: 16),
+                      label: const Text('Refaire',
+                          overflow: TextOverflow.ellipsis),
                     ),
-                    onPressed: _acting ? null : _reject,
-                    icon: const Icon(Icons.replay, size: 16),
-                    label: const Text('Demander refaire'),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF43A047),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Tooltip(
+                    message: 'Modifier le tracé/arrêts proposés et publier',
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF1565C0),
+                        side: const BorderSide(color: Color(0xFF1565C0)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: _acting ? null : _adminEdit,
+                      icon: const Icon(Icons.edit_location_alt, size: 16),
+                      label: const Text('Modifier',
+                          overflow: TextOverflow.ellipsis),
                     ),
-                    onPressed: _acting ? null : _approve,
-                    icon: _acting
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.check, size: 16),
-                    label: const Text('Valider'),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Tooltip(
+                    message: 'Publier la submission du consultant tel quel',
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF43A047),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: _acting ? null : _approve,
+                      icon: _acting
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.check, size: 16),
+                      label: const Text('Valider',
+                          overflow: TextOverflow.ellipsis),
+                    ),
                   ),
                 ),
               ],

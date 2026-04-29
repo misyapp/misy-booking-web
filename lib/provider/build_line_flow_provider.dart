@@ -108,10 +108,10 @@ class BuildLineFlowProvider extends ChangeNotifier {
       case BuildLineStep.refine:
         return hasRoute;
       case BuildLineStep.review:
-        // Terminer ne doit JAMAIS publier un tracé qui ne reflète plus les
-        // arrêts (ex: l'user a supprimé un arrêt et pas recalculé). La seule
-        // façon de valider est de partir d'un état où le tracé est à jour.
-        return hasRoute && !_routeDirty && _stops.length >= 2;
+        // Terminer reste actif même si dirty : `_onFinish` tente un dernier
+        // recompute, et si OSRM échoue, demande confirmation à l'user
+        // (sinon on bloque l'user en cas d'OSRM down).
+        return hasRoute && _stops.length >= 2;
     }
   }
 
@@ -317,6 +317,18 @@ class BuildLineFlowProvider extends ChangeNotifier {
     _stops.insert(newIdx > oldIdx ? newIdx - 1 : newIdx, s);
     _routeDirty = true;
     notifyListeners();
+  }
+
+  /// Déplace l'arrêt à `currentIdx` pour qu'il finisse à l'index `desiredIdx`
+  /// (les deux 0-based). Variante "ergonomique" de [reorderStops] qui prend
+  /// directement la position finale visée plutôt que la sémantique Flutter
+  /// onReorder. No-op si la position est inchangée ou hors bornes.
+  void setStopOrder(int currentIdx, int desiredIdx) {
+    if (currentIdx < 0 || currentIdx >= _stops.length) return;
+    final clamped = desiredIdx.clamp(0, _stops.length - 1);
+    if (clamped == currentIdx) return;
+    final reorderIdx = clamped > currentIdx ? clamped + 1 : clamped;
+    reorderStops(currentIdx, reorderIdx);
   }
 
   /// Ajoute un waypoint en l'insérant dans le segment (arrêt A → arrêt B)

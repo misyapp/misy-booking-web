@@ -274,6 +274,128 @@ class TransportEditorService {
     );
   }
 
+  /// Admin retouche le tracé/arrêts proposés par le consultant et publie
+  /// directement. Combine [saveDirectionEdit] + [approveDirection] : écrit
+  /// la FC dans transport_lines_edited (pour que le consultant voie la
+  /// version admin la prochaine fois), publie en prod, marque
+  /// admin_status=approved. Garde le statut consultant à `modified` —
+  /// l'audit `admin_edited` trace le fait que l'admin a modifié.
+  Future<void> adminEditAndPublish({
+    required String lineNumber,
+    required String direction, // 'aller' | 'retour'
+    required Map<String, dynamic> featureCollection,
+    Map<String, dynamic>? lineMetadata,
+    int? numStops,
+    int? numVertices,
+  }) async {
+    final now = FieldValue.serverTimestamp();
+    final uid = AdminAuthService.instance.currentUid;
+    final email = AdminAuthService.instance.currentEmail;
+    final encoded = json.encode(featureCollection);
+
+    // 1. Écrit dans transport_lines_edited (la prochaine ouverture du
+    // wizard côté consultant chargera la version admin).
+    await _db.collection(collEdited).doc(lineNumber).set({
+      direction: {
+        'feature_collection_json': encoded,
+        'updated_at': now,
+        'updated_by': uid,
+      },
+      'last_updated': now,
+      'last_updated_by': uid,
+    }, SetOptions(merge: true));
+
+    // 2. Publie en prod (transport_lines_published).
+    await _db.collection(collPublished).doc(lineNumber).set({
+      'line_number': lineNumber,
+      if (lineMetadata != null) ...{
+        if (lineMetadata['display_name'] != null)
+          'display_name': lineMetadata['display_name'],
+        if (lineMetadata['transport_type'] != null)
+          'transport_type': lineMetadata['transport_type'],
+        if (lineMetadata['color'] != null) 'color': lineMetadata['color'],
+      },
+      direction: {
+        'feature_collection_json': encoded,
+        'published_at': now,
+        'published_by_uid': uid,
+        'published_by_email': email,
+      },
+      'last_updated': now,
+    }, SetOptions(merge: true));
+
+    // 3. Marque admin_status=approved + efface motif rejet précédent.
+    await _db.collection(collValidations).doc(lineNumber).set({
+      '${direction}_admin_status': AdminStatus.approved.code,
+      '${direction}_reviewed_at': now,
+      '${direction}_reviewed_by_email': email,
+      '${direction}_rejection_reason': FieldValue.delete(),
+      'updated_at': now,
+    }, SetOptions(merge: true));
+
+    // 4. Audit
+    await _appendLog(
+      lineNumber: lineNumber,
+      direction: direction,
+      kind: 'admin_review',
+      action: 'admin_edited',
+      verticesAfter: numVertices,
+      stopsAfter: numStops,
+    );
+  }
+
+  /// Charge les FC éditées (transport_lines_edited) pour les lignes touchées
+  /// par un consultant donné. Retourne `{lineNumber: {direction: fc}}`.
+  /// Hydrate les `feature_collection_json` en Map. Utilisé par la carte
+  /// admin filtrée par profil consultant.
+  Future<Map<String, Map<String, Map<String, dynamic>>>>
+      loadEditedForConsultant(
+    String email,
+    Map<String, TransportLineValidation> validations,
+  ) async {
+    final lineNumbers = <String>{
+      for (final v in validations.values)
+        if (v.updatedByEmail == email) v.lineNumber,
+    };
+    return loadEditedForLines(lineNumbers);
+  }
+
+  /// Charge les FC éditées (transport_lines_edited) pour un set de lignes
+  /// donné. Retourne `{lineNumber: {direction: fc}}`. Hydrate les
+  /// `feature_collection_json` en Map. Utilisé par la carte éditeur pour
+  /// afficher les submissions en cours en pointillé.
+  Future<Map<String, Map<String, Map<String, dynamic>>>>
+      loadEditedForLines(Iterable<String> lineNumbersIter) async {
+    final lineNumbers = lineNumbersIter.toList();
+    if (lineNumbers.isEmpty) return {};
+
+    final out = <String, Map<String, Map<String, dynamic>>>{};
+    // Firestore whereIn accepte 30 valeurs max → chunker.
+    for (var i = 0; i < lineNumbers.length; i += 30) {
+      final chunk = lineNumbers.sublist(
+          i, i + 30 > lineNumbers.length ? lineNumbers.length : i + 30);
+      final snap = await _db
+          .collection(collEdited)
+          .where(FieldPath.documentId, whereIn: chunk)
+          .get();
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final perDir = <String, Map<String, dynamic>>{};
+        for (final key in ['aller', 'retour']) {
+          final dir = data[key];
+          if (dir is! Map) continue;
+          final encoded = dir['feature_collection_json'];
+          if (encoded is! String) continue;
+          try {
+            perDir[key] = json.decode(encoded) as Map<String, dynamic>;
+          } catch (_) {}
+        }
+        if (perDir.isNotEmpty) out[doc.id] = perDir;
+      }
+    }
+    return out;
+  }
+
   /// Charge la FC publiée pour une direction donnée (null si pas publiée).
   /// Utilisé par TransportLinesService pour lire la prod Firestore en
   /// priorité sur l'asset bundlé.

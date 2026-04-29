@@ -631,18 +631,103 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
         'Arrêt inséré en position ${insertedAt + 1} — recalcule le tracé avant de terminer');
   }
 
-  /// Tap sur un pin existant en étape review : renommer.
+  /// Tap sur un pin existant en étape review : éditer nom + numéro.
+  /// Permet de réordonner sans drag — utile quand on ajoute un arrêt oublié
+  /// entre deux autres (l'arrêt s'insère selon la géométrie ; si OSRM le
+  /// numérote mal, on corrige ici puis on recalcule le tracé).
   Future<void> _onReviewStopTap(BuildLineFlowProvider p, int index) async {
-    final current = p.stops[index].name;
-    final newName = await _promptStopName(
+    final stop = p.stops[index];
+    final result = await _promptStopRenameAndReorder(
       context,
-      initialName: current,
-      title: 'Renommer l\'arrêt ${index + 1}',
+      initialName: stop.name,
+      currentOrder: index + 1,
+      totalStops: p.stops.length,
     );
-    if (newName == null) return;
-    final trimmed = newName.trim();
-    if (trimmed.isEmpty) return;
-    p.renameStop(index, trimmed);
+    if (result == null) return;
+
+    final nameChanged = result.name != stop.name;
+    if (nameChanged) p.renameStop(index, result.name);
+
+    final desiredIdx = result.order - 1;
+    if (desiredIdx != index) {
+      p.setStopOrder(index, desiredIdx);
+      if (mounted) {
+        _snack(context,
+            'Arrêt déplacé en position ${result.order} — recalcule le tracé avant de terminer');
+      }
+    }
+  }
+
+  /// Dialog combiné nom + numéro pour réordonner un arrêt sans drag.
+  /// Le numéro est clampé sur `[1, totalStops]` au submit.
+  Future<({String name, int order})?> _promptStopRenameAndReorder(
+    BuildContext context, {
+    required String initialName,
+    required int currentOrder,
+    required int totalStops,
+  }) {
+    final nameController = TextEditingController(text: initialName);
+    nameController.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: initialName.length,
+    );
+    final orderController =
+        TextEditingController(text: currentOrder.toString());
+
+    void submit(BuildContext ctx) {
+      final name = nameController.text.trim();
+      if (name.isEmpty) return;
+      final parsed = int.tryParse(orderController.text.trim());
+      final order = (parsed ?? currentOrder).clamp(1, totalStops);
+      Navigator.of(ctx).pop((name: name, order: order));
+    }
+
+    return showDialog<({String name, int order})>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Modifier l\'arrêt $currentOrder'),
+        content: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: nameController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Nom',
+                  hintText: 'Ex: Ankadifotsy',
+                ),
+                onSubmitted: (_) => submit(ctx),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: orderController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Numéro (1 à $totalStops)',
+                  helperText:
+                      'Modifie le numéro pour réordonner sans déplacer le pin',
+                  helperMaxLines: 2,
+                ),
+                onSubmitted: (_) => submit(ctx),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () => submit(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Long press sur un pin existant en étape review : supprimer (avec confirm).
@@ -822,10 +907,43 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
     }
   }
 
-  void _onFinish(BuildLineFlowProvider p) {
+  Future<void> _onFinish(BuildLineFlowProvider p) async {
     if (!p.hasRoute || p.stops.length < 2) {
       _snack(context, 'Tracé ou arrêts incomplets');
       return;
+    }
+    // Si dirty : tente un dernier recompute OSRM. Si échec, demande
+    // confirmation à l'user (route périmée mais sauvable quand même).
+    if (p.isRouteDirty) {
+      final ok = await p.recomputeFullRoute();
+      if (!mounted) return;
+      if (!ok) {
+        final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (c) => AlertDialog(
+                title: const Text('Tracé non recalculé'),
+                content: const Text(
+                    'OSRM n\'a pas pu recalculer le tracé. Le tracé '
+                    'actuellement affiché peut ne pas refléter exactement la '
+                    'séquence des arrêts.\n\nSauver quand même ?'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(c, false),
+                      child: const Text('Annuler')),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1565C0),
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () => Navigator.pop(c, true),
+                    child: const Text('Sauver tel quel'),
+                  ),
+                ],
+              ),
+            ) ??
+            false;
+        if (!confirmed || !mounted) return;
+      }
     }
     final fc = p.buildFeatureCollection(
       lineNumber: widget.lineNumber,
