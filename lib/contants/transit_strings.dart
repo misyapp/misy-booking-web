@@ -99,6 +99,23 @@ class TransitStrings {
       AppLocale.en: 'stops',
     },
 
+    // ───────── Branches (plan tramway) ─────────
+    'branch.aller': {
+      AppLocale.fr: 'Aller',
+      AppLocale.mg: 'Mandeha',
+      AppLocale.en: 'Outbound',
+    },
+    'branch.retour': {
+      AppLocale.fr: 'Retour',
+      AppLocale.mg: 'Miverina',
+      AppLocale.en: 'Return',
+    },
+    'branch.toward': {
+      AppLocale.fr: 'vers',
+      AppLocale.mg: 'mankany',
+      AppLocale.en: 'toward',
+    },
+
     // ───────── Stop card ─────────
     'stop.lines.served': {
       AppLocale.fr: 'Lignes desservant cet arrêt',

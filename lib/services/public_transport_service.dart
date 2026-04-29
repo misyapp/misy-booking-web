@@ -52,6 +52,7 @@ class PublicTransportService {
 
     await Future.wait(lines.map(_loadLine));
     _computeImportance();
+    _computeAllBranches();
     myCustomPrintStatement(
       'PublicTransportService: ${_linesCache.length}/${lines.length} lignes chargées',
     );
@@ -238,6 +239,73 @@ class PublicTransportService {
   int uniqueStopCountFor(String lineNumber) =>
       uniqueStopNamesFor(lineNumber).length;
 
+  /// Cache des branches calculées (linéaire vs circulaire) par lineNumber.
+  /// Rempli au load. Évite la détection à chaque expand de la sidebar.
+  final Map<String, LineBranches> _branchesCache = {};
+
+  /// Renvoie le découpage de la ligne en branches pour le rendu type "plan
+  /// tramway" dans la sidebar. Linéaire = aller ≈ retour inversé →
+  /// 1 branche unique. Circulaire = aller et retour empruntent des routes
+  /// différentes (boucle, fourche) → 2 branches explicites.
+  ///
+  /// Voir [_computeBranches] pour l'algorithme de détection (ratio de
+  /// match aller[i] vs retour[len-1-i] sur nom + proximité).
+  LineBranches lineBranchesFor(String lineNumber) {
+    return _branchesCache[lineNumber] ?? LineBranches.empty();
+  }
+
+  void _computeAllBranches() {
+    for (final group in _linesCache.values) {
+      _branchesCache[group.lineNumber] = _computeBranches(group);
+    }
+  }
+
+  static LineBranches _computeBranches(TransportLineGroup group) {
+    final aller = group.aller?.stops ?? const <TransportStop>[];
+    final retour = group.retour?.stops ?? const <TransportStop>[];
+
+    BranchStop wrap(TransportStop s) =>
+        BranchStop(name: s.name, position: s.position);
+
+    if (aller.isEmpty && retour.isEmpty) return LineBranches.empty();
+
+    if (aller.isEmpty) {
+      return LineBranches.linear(retour.map(wrap).toList());
+    }
+    if (retour.isEmpty) {
+      return LineBranches.linear(aller.map(wrap).toList());
+    }
+
+    // Détection : aller ≈ retour inversé ?
+    final retourReversed = retour.reversed.toList();
+    final maxLen = aller.length > retour.length ? aller.length : retour.length;
+    final minLen = aller.length < retour.length ? aller.length : retour.length;
+    var matches = 0;
+    for (var i = 0; i < minLen; i++) {
+      if (_stopsLikelySame(aller[i], retourReversed[i])) matches++;
+    }
+    final ratio = matches / maxLen;
+
+    if (ratio >= 0.80) {
+      // Linéaire : on prend l'aller comme représentation canonique (ordre
+      // origine → terminus). Le retour est juste le sens inverse.
+      return LineBranches.linear(aller.map(wrap).toList());
+    }
+
+    // Circulaire : 2 branches distinctes.
+    return LineBranches.split(
+      allerBranch: aller.map(wrap).toList(),
+      retourBranch: retour.map(wrap).toList(),
+    );
+  }
+
+  static bool _stopsLikelySame(TransportStop a, TransportStop b) {
+    final na = _normalizeName(a.name);
+    final nb = _normalizeName(b.name);
+    if (na.isNotEmpty && nb.isNotEmpty && na == nb) return true;
+    return _haversineKm(a.position, b.position) * 1000 <= 80.0;
+  }
+
   static String _normalizeName(String name) {
     var s = name.trim().toLowerCase();
     if (s.isEmpty) return s;
@@ -283,4 +351,73 @@ class _SeenStop {
   final String nameNorm;
   final LatLng position;
   const _SeenStop(this.nameNorm, this.position);
+}
+
+/// Représentation d'un arrêt dans une branche (subset minimaliste de
+/// [TransportStop]) pour le rendu sidebar type "plan tramway".
+class BranchStop {
+  final String name;
+  final LatLng position;
+  const BranchStop({required this.name, required this.position});
+}
+
+/// Découpage d'une ligne en branches pour le rendu type plan tramway.
+///
+/// - [isLinear] true quand aller ≈ retour inversé : on n'affiche qu'1 seule
+///   colonne d'arrêts (= [mainBranch]). [allerBranch] / [retourBranch] sont
+///   alors vides.
+/// - [isLinear] false quand la ligne est circulaire / branchée : on rend 2
+///   sections explicites avec [allerBranch] et [retourBranch] dans leur
+///   propre ordre.
+class LineBranches {
+  final bool isLinear;
+  final List<BranchStop> mainBranch;
+  final List<BranchStop> allerBranch;
+  final List<BranchStop> retourBranch;
+
+  const LineBranches._({
+    required this.isLinear,
+    required this.mainBranch,
+    required this.allerBranch,
+    required this.retourBranch,
+  });
+
+  factory LineBranches.empty() => const LineBranches._(
+        isLinear: true,
+        mainBranch: [],
+        allerBranch: [],
+        retourBranch: [],
+      );
+
+  factory LineBranches.linear(List<BranchStop> stops) => LineBranches._(
+        isLinear: true,
+        mainBranch: stops,
+        allerBranch: const [],
+        retourBranch: const [],
+      );
+
+  factory LineBranches.split({
+    required List<BranchStop> allerBranch,
+    required List<BranchStop> retourBranch,
+  }) =>
+      LineBranches._(
+        isLinear: false,
+        mainBranch: const [],
+        allerBranch: allerBranch,
+        retourBranch: retourBranch,
+      );
+
+  /// Nom du dernier arrêt de l'aller (terminus) — utilisé comme header de
+  /// la branche dans la sidebar. Null si la liste est vide ou le nom vide.
+  String? get allerTerminusName {
+    if (allerBranch.isEmpty) return null;
+    final n = allerBranch.last.name.trim();
+    return n.isEmpty ? null : n;
+  }
+
+  String? get retourTerminusName {
+    if (retourBranch.isEmpty) return null;
+    final n = retourBranch.last.name.trim();
+    return n.isEmpty ? null : n;
+  }
 }

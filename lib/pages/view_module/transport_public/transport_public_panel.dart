@@ -368,9 +368,12 @@ class _LineRow extends StatelessWidget {
   }
 }
 
-/// Liste expansible des arrêts d'une ligne — affichée juste sous le row
-/// de la ligne quand elle est sélectionnée. Type IDFM : timeline verticale
-/// avec un trait coloré le long du parcours et chaque arrêt nommé.
+/// Liste expansible des arrêts d'une ligne sous forme de "plan tramway".
+///
+/// Cas LINÉAIRE (aller ≈ retour inversé) : 1 colonne d'arrêts du début au
+/// terminus. Cas CIRCULAIRE (aller et retour empruntent des routes
+/// différentes) : 2 sections empilées avec headers de terminus, chacune
+/// avec son propre tracé coloré continu et ses arrêts en ordre.
 class _LineStopList extends StatelessWidget {
   final String lineNumber;
 
@@ -378,82 +381,198 @@ class _LineStopList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final locale = context.watch<LocaleProvider>().locale;
     final svc = PublicTransportService.instance;
     final meta = svc.metadataFor(lineNumber);
-    final color = meta != null
-        ? Color(meta.colorValue)
-        : const Color(0xFF1565C0);
-    final stops = svc.uniqueStopNamesFor(lineNumber);
+    final color =
+        meta != null ? Color(meta.colorValue) : const Color(0xFF1565C0);
+    final branches = svc.lineBranchesFor(lineNumber);
 
-    if (stops.isEmpty) {
-      return const SizedBox.shrink();
+    if (branches.isLinear) {
+      if (branches.mainBranch.isEmpty) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(46, 4, 8, 10),
+        child: _BranchView(
+          stops: branches.mainBranch,
+          color: color,
+        ),
+      );
     }
 
+    final allerHeader = branches.allerTerminusName ??
+        TransitStrings.t('branch.aller', locale);
+    final retourHeader = branches.retourTerminusName ??
+        TransitStrings.t('branch.retour', locale);
+    final towardLabel = TransitStrings.t('branch.toward', locale);
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(46, 4, 8, 6),
+      padding: const EdgeInsets.fromLTRB(46, 6, 8, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (var i = 0; i < stops.length; i++)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+          if (branches.allerBranch.isNotEmpty) ...[
+            _BranchHeader(
+              label: '$towardLabel $allerHeader',
+              color: color,
+            ),
+            const SizedBox(height: 2),
+            _BranchView(
+              stops: branches.allerBranch,
+              color: color,
+            ),
+          ],
+          if (branches.retourBranch.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            _BranchHeader(
+              label: '$towardLabel $retourHeader',
+              color: color,
+            ),
+            const SizedBox(height: 2),
+            _BranchView(
+              stops: branches.retourBranch,
+              color: color,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Header d'une branche : flèche + nom du terminus en couleur de la ligne.
+class _BranchHeader extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _BranchHeader({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(Icons.arrow_forward, size: 12, color: color),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            label,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: color,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Tracé vertical type plan tramway : 1 trait coloré continu de haut en
+/// bas + 1 bullet rond blanc bordé couleur ligne pour chaque arrêt.
+/// Le 1er et le dernier arrêt (terminus) sont mis en évidence (font w600).
+class _BranchView extends StatelessWidget {
+  final List<BranchStop> stops;
+  final Color color;
+
+  const _BranchView({required this.stops, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    if (stops.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < stops.length; i++)
+          _BranchStopRow(
+            name: stops[i].name,
+            color: color,
+            isFirst: i == 0,
+            isLast: i == stops.length - 1,
+            isTerminus: i == 0 || i == stops.length - 1,
+          ),
+      ],
+    );
+  }
+}
+
+class _BranchStopRow extends StatelessWidget {
+  final String name;
+  final Color color;
+  final bool isFirst;
+  final bool isLast;
+  final bool isTerminus;
+
+  const _BranchStopRow({
+    required this.name,
+    required this.color,
+    required this.isFirst,
+    required this.isLast,
+    required this.isTerminus,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final display = name.trim().isEmpty ? '—' : name;
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Colonne timeline : trait coloré + bullet rond. Le trait est
+          // tronqué au-dessus du 1er bullet et en-dessous du dernier pour
+          // donner l'effet "départ / terminus".
+          SizedBox(
+            width: 18,
+            child: Stack(
               children: [
-                // Timeline column : trait + bullet circulaire pour chaque
-                // arrêt. Le trait est tronqué en haut pour le 1er stop et
-                // en bas pour le dernier (effet "départ / terminus").
-                SizedBox(
-                  width: 18,
-                  child: Stack(
-                    children: [
-                      // Trait vertical centré (3px) couleur ligne.
-                      Positioned.fill(
-                        child: Padding(
-                          padding: EdgeInsets.only(
-                            top: i == 0 ? 12 : 0,
-                            bottom: i == stops.length - 1 ? 12 : 0,
-                          ),
-                          child: Center(
-                            child: Container(
-                              width: 3,
-                              color: color.withOpacity(0.85),
-                            ),
-                          ),
-                        ),
+                Positioned.fill(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      top: isFirst ? 12 : 0,
+                      bottom: isLast ? 12 : 0,
+                    ),
+                    child: Center(
+                      child: Container(
+                        width: 3,
+                        color: color.withOpacity(0.85),
                       ),
-                      // Bullet rond blanc + bordure couleur.
-                      Positioned(
-                        top: 8,
-                        left: 4,
-                        child: Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: color, width: 2),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 5),
-                    child: Text(
-                      stops[i],
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF1D3557),
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                Positioned(
+                  top: 8,
+                  left: 4,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: color, width: 2),
                     ),
                   ),
                 ),
               ],
             ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Text(
+                display,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: const Color(0xFF1D3557),
+                  fontWeight:
+                      isTerminus ? FontWeight.w600 : FontWeight.w400,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
         ],
       ),
     );
