@@ -193,6 +193,70 @@ class PublicTransportService {
   TransportLineGroup? getLineGroup(String lineNumber) =>
       _linesCache[lineNumber];
 
+  /// Renvoie la liste des arrêts UNIQUES de la ligne, dans l'ordre :
+  /// stops de l'aller en premier, puis stops du retour qui ne sont pas
+  /// déjà couverts (par nom identique ou par proximité 35m). Utilisé par
+  /// la sidebar pour afficher le nombre + la liste cliquable d'arrêts.
+  List<String> uniqueStopNamesFor(String lineNumber) {
+    final group = _linesCache[lineNumber];
+    if (group == null) return const [];
+    final result = <String>[];
+    final seen = <_SeenStop>[];
+
+    void process(List<TransportStop>? stops) {
+      if (stops == null) return;
+      for (final stop in stops) {
+        final nameNorm = _normalizeName(stop.name);
+        var matched = false;
+        for (final s in seen) {
+          final dist = _haversineKm(s.position, stop.position) * 1000;
+          final sameName = nameNorm.isNotEmpty &&
+              s.nameNorm.isNotEmpty &&
+              s.nameNorm == nameNorm;
+          if (sameName && dist <= 250.0) {
+            matched = true;
+            break;
+          }
+          if (dist <= 35.0) {
+            matched = true;
+            break;
+          }
+        }
+        if (!matched) {
+          seen.add(_SeenStop(nameNorm, stop.position));
+          final display = stop.name.trim().isEmpty ? '—' : stop.name;
+          result.add(display);
+        }
+      }
+    }
+
+    process(group.aller?.stops);
+    process(group.retour?.stops);
+    return result;
+  }
+
+  int uniqueStopCountFor(String lineNumber) =>
+      uniqueStopNamesFor(lineNumber).length;
+
+  static String _normalizeName(String name) {
+    var s = name.trim().toLowerCase();
+    if (s.isEmpty) return s;
+    const accents = {
+      'à': 'a', 'â': 'a', 'ä': 'a',
+      'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+      'î': 'i', 'ï': 'i',
+      'ô': 'o', 'ö': 'o',
+      'ù': 'u', 'û': 'u', 'ü': 'u',
+      'ç': 'c', 'ñ': 'n',
+    };
+    final buf = StringBuffer();
+    for (final r in s.runes) {
+      final ch = String.fromCharCode(r);
+      buf.write(accents[ch] ?? ch);
+    }
+    return buf.toString().replaceAll(RegExp(r'\s+'), ' ');
+  }
+
   /// Construit (lazy) le TransportGraph multimodal pour le calculateur
   /// d'itinéraires (Phase 2). Réutilise la classe [TransportGraph] existante.
   TransportGraph getGraph() {
@@ -211,4 +275,12 @@ class PublicTransportService {
     if (nb != null) return 1;
     return a.lineNumber.compareTo(b.lineNumber);
   }
+}
+
+/// Stop déjà vu lors du dédupage par ligne (interne à
+/// [PublicTransportService.uniqueStopNamesFor]).
+class _SeenStop {
+  final String nameNorm;
+  final LatLng position;
+  const _SeenStop(this.nameNorm, this.position);
 }

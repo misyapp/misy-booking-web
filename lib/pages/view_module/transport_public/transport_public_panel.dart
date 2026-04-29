@@ -245,13 +245,27 @@ class _LinesListState extends State<_LinesList> {
                 padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
                 itemCount: metas.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 4),
-                itemBuilder: (ctx, i) =>
-                    _LineRow(meta: metas[i], selected: widget.selectedLine == metas[i].lineNumber, onTap: () {
-                  final selected = widget.selectedLine == metas[i].lineNumber
-                      ? null
-                      : metas[i].lineNumber;
-                  widget.onLineSelected(selected);
-                }),
+                itemBuilder: (ctx, i) {
+                  final isSelected =
+                      widget.selectedLine == metas[i].lineNumber;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _LineRow(
+                        meta: metas[i],
+                        selected: isSelected,
+                        onTap: () {
+                          final selected = isSelected
+                              ? null
+                              : metas[i].lineNumber;
+                          widget.onLineSelected(selected);
+                        },
+                      ),
+                      if (isSelected)
+                        _LineStopList(lineNumber: metas[i].lineNumber),
+                    ],
+                  );
+                },
               ),
             ),
           ],
@@ -276,7 +290,10 @@ class _LineRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final locale = context.watch<LocaleProvider>().locale;
     final color = Color(meta.colorValue);
-    final stops = (meta.aller?.numStops ?? 0) + (meta.retour?.numStops ?? 0);
+    // Compte d'arrêts UNIQUES (aller + retour dédupliqués par nom et
+    // proximité) — sinon une ligne A→B→A afficherait ~2× le vrai nombre.
+    final stops = PublicTransportService.instance
+        .uniqueStopCountFor(meta.lineNumber);
 
     return Material(
       color: selected
@@ -338,7 +355,7 @@ class _LineRow extends StatelessWidget {
               ),
               Icon(
                 selected
-                    ? Icons.location_on
+                    ? Icons.expand_less
                     : Icons.chevron_right,
                 size: 16,
                 color: selected ? color : Colors.grey.shade400,
@@ -346,6 +363,98 @@ class _LineRow extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Liste expansible des arrêts d'une ligne — affichée juste sous le row
+/// de la ligne quand elle est sélectionnée. Type IDFM : timeline verticale
+/// avec un trait coloré le long du parcours et chaque arrêt nommé.
+class _LineStopList extends StatelessWidget {
+  final String lineNumber;
+
+  const _LineStopList({required this.lineNumber});
+
+  @override
+  Widget build(BuildContext context) {
+    final svc = PublicTransportService.instance;
+    final meta = svc.metadataFor(lineNumber);
+    final color = meta != null
+        ? Color(meta.colorValue)
+        : const Color(0xFF1565C0);
+    final stops = svc.uniqueStopNamesFor(lineNumber);
+
+    if (stops.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(46, 4, 8, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < stops.length; i++)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Timeline column : trait + bullet circulaire pour chaque
+                // arrêt. Le trait est tronqué en haut pour le 1er stop et
+                // en bas pour le dernier (effet "départ / terminus").
+                SizedBox(
+                  width: 18,
+                  child: Stack(
+                    children: [
+                      // Trait vertical centré (3px) couleur ligne.
+                      Positioned.fill(
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            top: i == 0 ? 12 : 0,
+                            bottom: i == stops.length - 1 ? 12 : 0,
+                          ),
+                          child: Center(
+                            child: Container(
+                              width: 3,
+                              color: color.withOpacity(0.85),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Bullet rond blanc + bordure couleur.
+                      Positioned(
+                        top: 8,
+                        left: 4,
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: color, width: 2),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: Text(
+                      stops[i],
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF1D3557),
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+        ],
       ),
     );
   }
