@@ -189,6 +189,22 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // flottante + agrandit le marker correspondant.
   String? _publicSelectedStop;
 
+  // Position pixel-écran de l'arrêt sélectionné, pour ancrer la card juste
+  // au-dessus du marker (style IDFM). Mise à jour à chaque déplacement de
+  // caméra. Null = card pas encore positionnée.
+  Offset? _publicSelectedStopScreenPos;
+
+  // Stop survolé par la souris (web desktop). Affiché plus grand pour
+  // feedback hover style IDFM.
+  String? _publicHoveredStop;
+
+  // Cache des coordonnées écran de chaque stop visible. Recalculé à chaque
+  // onCameraIdle via une interpolation linéaire depuis getVisibleRegion
+  // (rapide, sync sur N stops). Utilisé par la détection de hover pour
+  // trouver le stop le plus proche du curseur.
+  final Map<String, Offset> _publicStopScreenPositions = {};
+  Size _publicMapAreaSize = Size.zero;
+
   @override
   void initState() {
     super.initState();
@@ -1087,10 +1103,33 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
+      body: LayoutBuilder(builder: (ctx, constraints) {
+        final size = Size(constraints.maxWidth, constraints.maxHeight);
+        if (_publicMapAreaSize != size) {
+          // Schedule pour que setState ne se déclenche pas pendant le build.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _publicMapAreaSize = size;
+            _refreshPublicStopScreenCache();
+          });
+        }
+        return Stack(
         children: [
           // Carte Google Maps pleine page
           _buildMap(),
+
+          // Détection de hover en mode public : MouseRegion translucent qui
+          // ne bloque pas les pointer events (clicks Google Maps OK), mais
+          // capture la position du curseur pour grossir le marker survolé.
+          if (_homeMode == HomeMode.publicTransport && _isPublicModeAdmin)
+            Positioned.fill(
+              child: MouseRegion(
+                opaque: false,
+                onHover: (event) =>
+                    _handlePublicMapHover(event.localPosition),
+                onExit: (_) => _clearPublicMapHover(),
+              ),
+            ),
 
           // Panel latéral selon l'étape du flux
           Consumer<TripProvider>(
@@ -1106,22 +1145,31 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           _buildGpsButton(),
 
           // Carte de l'arrêt sélectionné en mode Transport en commun.
+          // Ancrée au pixel-écran du marker via _publicSelectedStopScreenPos
+          // (mise à jour à chaque mouvement de caméra).
           if (_homeMode == HomeMode.publicTransport &&
               _isPublicModeAdmin &&
               _publicSelectedStop != null &&
               _publicStopsByKey[_publicSelectedStop] != null)
-            StopCard(
-              stopName: _publicStopsByKey[_publicSelectedStop]!.name,
-              position: _publicStopsByKey[_publicSelectedStop]!.position,
-              lineNumbers: _publicStopsByKey[_publicSelectedStop]!.lines.toList()
-                ..sort(),
-              onClose: _dismissPublicStopCard,
-              onLineTap: (lineNumber) {
-                _onPublicLineSelected(lineNumber);
+            Builder(
+              builder: (ctx) {
+                final agg = _publicStopsByKey[_publicSelectedStop]!;
+                return StopCard(
+                  stopName: agg.name,
+                  position: agg.position,
+                  lineNumbers: agg.lines.toList()..sort(),
+                  screenAnchor: _publicSelectedStopScreenPos,
+                  screenSize: size,
+                  onClose: _dismissPublicStopCard,
+                  onLineTap: (lineNumber) {
+                    _onPublicLineSelected(lineNumber);
+                  },
+                );
               },
             ),
         ],
-      ),
+      );
+      }),
     );
   }
 
@@ -2179,45 +2227,50 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   Widget _buildMap() {
-    final Set<Marker> allMarkers = {..._driverMarkers};
-    final Set<Polyline> allPolylines = _routeCoordinates.isNotEmpty
-        ? _buildAnimatedPolylines()
-        : {..._routePolylines};
+    final allMarkers = <Marker>{};
+    final allPolylines = <Polyline>{};
 
-    if (_pickupLocation['lat'] != null) {
-      allMarkers.add(
-        Marker(
-          markerId: const MarkerId('pickup'),
-          position: LatLng(_pickupLocation['lat'], _pickupLocation['lng']),
-          icon: _pickupMarkerIcon ??
-              BitmapDescriptor.defaultMarkerWithHue(
-                  BitmapDescriptor.hueGreen),
-          anchor: const Offset(0.5, 0.5),
-          consumeTapEvents: true,
-        ),
-      );
-    }
-
-    if (_destinationLocation['lat'] != null) {
-      allMarkers.add(
-        Marker(
-          markerId: const MarkerId('destination'),
-          position: LatLng(
-              _destinationLocation['lat'], _destinationLocation['lng']),
-          icon: _destinationMarkerIcon ??
-              BitmapDescriptor.defaultMarkerWithHue(
-                  BitmapDescriptor.hueRed),
-          anchor: const Offset(0.5, 0.5),
-          consumeTapEvents: true,
-        ),
-      );
-    }
-
-    // Couches mode "Transport en commun" — fusionnées par-dessus les layers
-    // Course quand on est en mode public. La carte reste UNIQUE entre les 2.
     if (_homeMode == HomeMode.publicTransport) {
+      // Mode "Transport en commun" : carte du réseau uniquement. Aucun
+      // marker chauffeur / pickup / destination ni polyline d'itinéraire
+      // course ne sont rendus — les 2 modes sont strictement isolés.
       allPolylines.addAll(_publicTransportPolylines);
       allMarkers.addAll(_publicTransportMarkers);
+    } else {
+      // Mode Course : chauffeurs + itinéraire + pickup/destination.
+      allMarkers.addAll(_driverMarkers);
+      if (_routeCoordinates.isNotEmpty) {
+        allPolylines.addAll(_buildAnimatedPolylines());
+      } else {
+        allPolylines.addAll(_routePolylines);
+      }
+      if (_pickupLocation['lat'] != null) {
+        allMarkers.add(
+          Marker(
+            markerId: const MarkerId('pickup'),
+            position: LatLng(_pickupLocation['lat'], _pickupLocation['lng']),
+            icon: _pickupMarkerIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(
+                    BitmapDescriptor.hueGreen),
+            anchor: const Offset(0.5, 0.5),
+            consumeTapEvents: true,
+          ),
+        );
+      }
+      if (_destinationLocation['lat'] != null) {
+        allMarkers.add(
+          Marker(
+            markerId: const MarkerId('destination'),
+            position: LatLng(
+                _destinationLocation['lat'], _destinationLocation['lng']),
+            icon: _destinationMarkerIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(
+                    BitmapDescriptor.hueRed),
+            anchor: const Offset(0.5, 0.5),
+            consumeTapEvents: true,
+          ),
+        );
+      }
     }
 
     return GoogleMap(
@@ -2248,7 +2301,16 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       padding: const EdgeInsets.only(top: 70, bottom: 400),
       onTap: _onMapTap,
       onCameraMove: _onPublicCameraMove,
+      onCameraIdle: _onPublicCameraIdle,
     );
+  }
+
+  /// Camera idle (= fin du pan/zoom). On refresh le cache pixel-écran des
+  /// stops pour que la détection de hover soit précise. Sync, peu coûteux
+  /// (1 seul appel async pour les bounds, puis interpolation linéaire).
+  void _onPublicCameraIdle() {
+    if (_homeMode != HomeMode.publicTransport) return;
+    _refreshPublicStopScreenCache();
   }
 
   /// Gère le tap sur la carte (pour sélectionner une position)
@@ -2279,6 +2341,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       _homeMode = mode;
       _publicSelectedLine = null;
       _publicSelectedStop = null;
+      _publicSelectedStopScreenPos = null;
+      _publicHoveredStop = null;
     });
     if (mode == HomeMode.publicTransport && !_publicTransportLoaded) {
       _loadPublicTransportLayers();
@@ -2341,10 +2405,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
 
     final polylines = <Polyline>{};
-    // Stops uniquement à zoom élevé (sinon clutter type IDF Mobilités sur
-    // toute la métropole). À zoom 13 on voit le réseau, à 14+ les arrêts
-    // se détaillent.
-    final showStops = _publicMapZoom >= 14;
+    // Stops révélés progressivement, type IDF Mobilités :
+    //   zoom < 13 : aucun stop
+    //   13-14.5  : petits points blancs avec anneau couleur ligne (= dot)
+    //   >= 14.5  : carrés colorés avec numéro (= label)
+    //   stop sélectionné : toujours label agrandi (largeLabel)
+    final showStops = _publicMapZoom >= 13;
+    final useLabels = _publicMapZoom >= 14.5;
 
     // Liste plate avant clustering. Permet de dédupliquer un arrêt aller +
     // son équivalent retour qui sont à des positions légèrement décalées
@@ -2474,20 +2541,25 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
     // Génération des markers custom pour les stops collectés.
     final markers = <Marker>{};
+    final hovered = _publicHoveredStop;
     for (final agg in stopsByKey.values) {
       final isStopSelected = selectedStop == agg.key;
+      final isStopHovered = !isStopSelected && hovered == agg.key;
+      final style = (isStopSelected || isStopHovered)
+          ? StopMarkerStyle.largeLabel
+          : (useLabels ? StopMarkerStyle.label : StopMarkerStyle.dot);
       final icon = await StopMarkerFactory.create(
         label: agg.primaryLine,
         color: agg.primaryColor,
         devicePixelRatio: dpr,
-        large: isStopSelected,
+        style: style,
       );
       markers.add(Marker(
         markerId: MarkerId('stop_${agg.key}'),
         position: agg.position,
         icon: icon,
         anchor: const Offset(0.5, 0.5),
-        zIndex: isStopSelected ? 100 : 10,
+        zIndex: isStopSelected ? 100 : (isStopHovered ? 50 : 10),
         consumeTapEvents: true,
         onTap: () => _onPublicStopTap(agg),
       ));
@@ -2499,16 +2571,119 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       _publicTransportMarkers = markers;
       _publicStopsByKey = stopsByKey;
     });
+    // Refresh le cache écran après le rebuild — sinon le hover réagirait
+    // sur des stops qui n'existent plus (filtre zoom changé, sélection).
+    _refreshPublicStopScreenCache();
   }
 
-  /// Tap sur un stop : on l'agrandit + on affiche la card flottante.
+  /// Tap sur un stop : on l'agrandit + on affiche la card flottante ancrée
+  /// juste au-dessus du marker.
   void _onPublicStopTap(_PublicStopAggregate agg) {
     setState(() => _publicSelectedStop = agg.key);
     _rebuildPublicTransportLayers();
+    _updateSelectedStopScreenPos();
   }
 
   void _dismissPublicStopCard() {
-    setState(() => _publicSelectedStop = null);
+    setState(() {
+      _publicSelectedStop = null;
+      _publicSelectedStopScreenPos = null;
+    });
+    _rebuildPublicTransportLayers();
+  }
+
+  /// Convertit la LatLng du stop sélectionné en pixel-écran via le controller
+  /// de carte. Utilisé pour ancrer la card style IDFM au-dessus du marker.
+  /// Asynchrone (le canal Flutter↔JS du plugin) — on schedule un setState
+  /// quand le résultat arrive.
+  Future<void> _updateSelectedStopScreenPos() async {
+    final key = _publicSelectedStop;
+    if (key == null || _mapController == null) return;
+    final agg = _publicStopsByKey[key];
+    if (agg == null) return;
+    try {
+      final coord = await _mapController!.getScreenCoordinate(agg.position);
+      if (!mounted || _publicSelectedStop != key) return;
+      // Convertit les pixels physiques renvoyés par le plugin en pixels
+      // logiques que Positioned attend.
+      final dpr = MediaQuery.maybeOf(context)?.devicePixelRatio ?? 2.0;
+      setState(() {
+        _publicSelectedStopScreenPos = Offset(
+          coord.x / dpr,
+          coord.y / dpr,
+        );
+      });
+    } catch (_) {
+      // Si le controller n'est pas prêt ou que la carte n'a pas été rendue,
+      // on laisse la card masquée — _publicSelectedStopScreenPos reste null.
+    }
+  }
+
+  /// Recalcule la position écran de chaque stop visible. Utilisé par la
+  /// détection de hover pour trouver le marker le plus proche du curseur
+  /// sans payer un getScreenCoordinate par stop (300 appels async).
+  ///
+  /// Approche : 1 appel async pour récupérer les bounds de la carte, puis
+  /// interpolation linéaire en lat/lng → pixels. Imprécise sur projection
+  /// Mercator à grande échelle, mais largement suffisante pour détecter le
+  /// stop sous le curseur (zone de 14px autour).
+  Future<void> _refreshPublicStopScreenCache() async {
+    if (_homeMode != HomeMode.publicTransport ||
+        !_isPublicModeAdmin ||
+        _mapController == null ||
+        _publicMapAreaSize == Size.zero ||
+        _publicStopsByKey.isEmpty) {
+      return;
+    }
+    try {
+      final bounds = await _mapController!.getVisibleRegion();
+      if (!mounted) return;
+      final south = bounds.southwest.latitude;
+      final north = bounds.northeast.latitude;
+      final west = bounds.southwest.longitude;
+      final east = bounds.northeast.longitude;
+      final dLat = north - south;
+      final dLng = east - west;
+      if (dLat == 0 || dLng == 0) return;
+      final w = _publicMapAreaSize.width;
+      final h = _publicMapAreaSize.height;
+
+      _publicStopScreenPositions.clear();
+      for (final entry in _publicStopsByKey.entries) {
+        final p = entry.value.position;
+        final x = (p.longitude - west) / dLng * w;
+        final y = (north - p.latitude) / dLat * h;
+        _publicStopScreenPositions[entry.key] = Offset(x, y);
+      }
+    } catch (_) {}
+  }
+
+  /// Curseur survole la zone carte. On cherche le stop le plus proche dans
+  /// le cache écran. Si on a basculé d'aucun → 1 stop ou inversement, on
+  /// reconstruit les markers pour appliquer le style hover (largeLabel).
+  void _handlePublicMapHover(Offset position) {
+    if (_publicStopScreenPositions.isEmpty) return;
+    const hoverRadius = 14.0;
+    String? closest;
+    var bestDist = hoverRadius;
+    for (final entry in _publicStopScreenPositions.entries) {
+      final dx = entry.value.dx - position.dx;
+      final dy = entry.value.dy - position.dy;
+      final d = sqrt(dx * dx + dy * dy);
+      if (d < bestDist) {
+        bestDist = d;
+        closest = entry.key;
+      }
+    }
+    if (closest != _publicHoveredStop) {
+      setState(() => _publicHoveredStop = closest);
+      _rebuildPublicTransportLayers();
+    }
+  }
+
+  void _clearPublicMapHover() {
+    if (_publicHoveredStop == null) return;
+    setState(() => _publicHoveredStop = null);
     _rebuildPublicTransportLayers();
   }
 
@@ -2529,23 +2704,28 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     return 2 * r * asin(sqrt(h));
   }
 
-  /// Reagit au déplacement de caméra : tracking de zoom pour le filtrage.
-  /// Recompute les couches uniquement quand on franchit un seuil entier
-  /// (évite les rebuilds frame-rate pendant le pinch).
+  /// Reagit au déplacement de caméra : tracking de zoom pour le filtrage +
+  /// reposition de la card de stop si elle est visible. Recompute les
+  /// couches uniquement quand on franchit un seuil entier (évite les
+  /// rebuilds frame-rate pendant le pinch).
   void _onPublicCameraMove(CameraPosition pos) {
     if (_homeMode != HomeMode.publicTransport) return;
     final newZoom = pos.zoom;
-    if (newZoom.floor() != _publicMapZoom.floor()) {
-      _publicMapZoom = newZoom;
-      // Relayer le rebuild après la frame courante pour ne pas bloquer le
-      // pan/zoom interaction (les rebuilds Bitmap async peuvent jitter).
+    final crossedZoomThreshold =
+        newZoom.floor() != _publicMapZoom.floor() ||
+            (newZoom >= 14.5) != (_publicMapZoom >= 14.5);
+    _publicMapZoom = newZoom;
+    if (crossedZoomThreshold) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _homeMode == HomeMode.publicTransport) {
           _rebuildPublicTransportLayers();
         }
       });
-    } else {
-      _publicMapZoom = newZoom;
+    }
+    // Si l'utilisateur a une card de stop ouverte, on la fait suivre le
+    // marker pendant le pan/zoom.
+    if (_publicSelectedStop != null) {
+      _updateSelectedStopScreenPos();
     }
   }
 

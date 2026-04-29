@@ -5,17 +5,16 @@ import 'package:rider_ride_hailing_app/contants/transit_strings.dart';
 import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
 import 'package:rider_ride_hailing_app/services/public_transport_service.dart';
 
-/// Carte d'information d'un arrêt — affichée en overlay flottant en bas
-/// centre de la carte quand l'utilisateur clique sur un marker.
-///
-/// Style inspiré de la fiche arrêt sur me-deplacer.iledefrance-mobilites.fr :
-/// nom de l'arrêt en gros, header avec coordonnées, liste des lignes
-/// desservant l'arrêt sous forme de pastilles colorées avec numéro et
-/// nom complet. Bouton fermeture en haut à droite.
+/// Carte d'information d'un arrêt — affichée en overlay flottant ancré au
+/// pixel correspondant à l'arrêt (au-dessus, ou en-dessous si trop près du
+/// haut). Style inspiré de la fiche arrêt sur me-deplacer.iledefrance-mobilites.fr
+/// avec un petit pointeur triangulaire vers le marker.
 class StopCard extends StatelessWidget {
   final String stopName;
   final LatLng position;
   final List<String> lineNumbers;
+  final Offset? screenAnchor;
+  final Size screenSize;
   final VoidCallback onClose;
   final ValueChanged<String>? onLineTap;
 
@@ -24,117 +23,168 @@ class StopCard extends StatelessWidget {
     required this.stopName,
     required this.position,
     required this.lineNumbers,
+    required this.screenAnchor,
+    required this.screenSize,
     required this.onClose,
     this.onLineTap,
   });
 
+  static const double _cardWidth = 320;
+  static const double _cardEstimatedHeight = 170;
+  static const double _gap = 14; // espace entre marker et card
+  static const double _arrowSize = 10;
+
   @override
   Widget build(BuildContext context) {
+    if (screenAnchor == null) {
+      return const SizedBox.shrink();
+    }
     final locale = context.watch<LocaleProvider>().locale;
     final svc = PublicTransportService.instance;
-    final displayName =
-        stopName.trim().isEmpty ? TransitStrings.t('stop.unnamed', locale) : stopName;
+    final displayName = stopName.trim().isEmpty
+        ? TransitStrings.t('stop.unnamed', locale)
+        : stopName;
 
-    return Positioned(
-      bottom: 24,
-      left: 0,
-      right: 0,
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 380),
-          child: Material(
-            color: Colors.white,
-            elevation: 12,
-            borderRadius: BorderRadius.circular(16),
-            shadowColor: Colors.black.withOpacity(0.18),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(
-                        Icons.location_on_outlined,
-                        size: 18,
-                        color: Color(0xFF1D3557),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
+    final anchor = screenAnchor!;
+
+    // Décide si on affiche au-dessus ou en-dessous du marker selon l'espace
+    // disponible. Au-dessus par défaut (UX standard) sauf si on touche le
+    // haut de l'écran.
+    final placeAbove = anchor.dy >= _cardEstimatedHeight + _gap + 16;
+    final cardTop = placeAbove
+        ? anchor.dy - _cardEstimatedHeight - _gap
+        : anchor.dy + _gap;
+
+    // Centre horizontal sur le marker, mais clamp aux bords de l'écran.
+    var cardLeft = anchor.dx - _cardWidth / 2;
+    cardLeft = cardLeft.clamp(8.0, screenSize.width - _cardWidth - 8.0);
+
+    final arrowLeft = anchor.dx - cardLeft - _arrowSize;
+    final arrowTop =
+        placeAbove ? _cardEstimatedHeight - 1 : -_arrowSize * 2 + 1;
+
+    return Stack(
+      children: [
+        Positioned(
+          left: cardLeft,
+          top: cardTop,
+          width: _cardWidth,
+          child: SizedBox(
+            // Hauteur réservée pour positionner correctement la pointe
+            // triangulaire en bas (même quand le contenu est court).
+            height: _cardEstimatedHeight,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Material(
+                  color: Colors.white,
+                  elevation: 12,
+                  borderRadius: BorderRadius.circular(14),
+                  shadowColor: Colors.black.withOpacity(0.18),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              displayName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15,
-                                color: Color(0xFF1D3557),
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                            const Icon(
+                              Icons.location_on_outlined,
+                              size: 17,
+                              color: Color(0xFF1D3557),
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey.shade600,
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    displayName,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 14,
+                                      color: Color(0xFF1D3557),
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
                               ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close, size: 16),
+                              tooltip:
+                                  TransitStrings.t('stop.close', locale),
+                              onPressed: onClose,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                  minWidth: 28, minHeight: 28),
+                              color: Colors.grey.shade600,
                             ),
                           ],
                         ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 18),
-                        tooltip: TransitStrings.t('stop.close', locale),
-                        onPressed: onClose,
-                        padding: EdgeInsets.zero,
-                        constraints:
-                            const BoxConstraints(minWidth: 32, minHeight: 32),
-                        color: Colors.grey.shade600,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 26),
-                    child: Text(
-                      TransitStrings.t('stop.lines.served', locale),
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 26),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final ln in lineNumbers) _LineChip(
-                          lineNumber: ln,
-                          color: _colorFor(svc, ln),
-                          displayName: svc.metadataFor(ln)?.displayName ??
-                              'Ligne $ln',
-                          onTap: onLineTap == null
-                              ? null
-                              : () => onLineTap!(ln),
+                        const SizedBox(height: 10),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 25),
+                          child: Text(
+                            TransitStrings.t('stop.lines.served', locale),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 25),
+                          child: Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              for (final ln in lineNumbers)
+                                _LineChip(
+                                  lineNumber: ln,
+                                  color: _colorFor(svc, ln),
+                                  displayName:
+                                      svc.metadataFor(ln)?.displayName ??
+                                          'Ligne $ln',
+                                  onTap: onLineTap == null
+                                      ? null
+                                      : () => onLineTap!(ln),
+                                ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
+                ),
+                // Pointeur triangulaire vers le marker.
+                Positioned(
+                  left: arrowLeft.clamp(12, _cardWidth - _arrowSize * 2 - 12),
+                  top: arrowTop,
+                  child: CustomPaint(
+                    size: Size(_arrowSize * 2, _arrowSize),
+                    painter: _ArrowPainter(pointDown: placeAbove),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-      ),
+      ],
     );
   }
 
@@ -142,6 +192,38 @@ class StopCard extends StatelessWidget {
     final meta = svc.metadataFor(lineNumber);
     return meta != null ? Color(meta.colorValue) : const Color(0xFF1565C0);
   }
+}
+
+class _ArrowPainter extends CustomPainter {
+  final bool pointDown;
+  _ArrowPainter({required this.pointDown});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path();
+    if (pointDown) {
+      path.moveTo(0, 0);
+      path.lineTo(size.width, 0);
+      path.lineTo(size.width / 2, size.height);
+      path.close();
+    } else {
+      path.moveTo(0, size.height);
+      path.lineTo(size.width, size.height);
+      path.lineTo(size.width / 2, 0);
+      path.close();
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = Colors.black.withOpacity(0.15)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2),
+    );
+    canvas.drawPath(path, Paint()..color = Colors.white);
+  }
+
+  @override
+  bool shouldRepaint(_ArrowPainter oldDelegate) =>
+      oldDelegate.pointDown != pointDown;
 }
 
 class _LineChip extends StatelessWidget {

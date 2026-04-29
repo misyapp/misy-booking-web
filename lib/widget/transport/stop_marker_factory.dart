@@ -3,23 +3,29 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-/// Génère des [BitmapDescriptor] pour les arrêts du réseau de bus, avec un
-/// rendu type IDF Mobilités : carré à coins arrondis, fond couleur de la
-/// ligne, numéro de ligne en blanc gras, bordure blanche pour pop sur la carte.
+/// Style de rendu d'un marker d'arrêt, choisi en fonction du zoom courant.
 ///
-/// Les bitmaps sont mis en cache par `(label, color, scale, large)` pour ne
-/// payer le coût de rastérisation qu'une fois par variante.
+/// - [dot] : point blanc avec anneau couleur de la ligne, pas de numéro.
+///   Affiché à zoom intermédiaire — donne la position sans saturer la carte.
+/// - [label] : carré arrondi couleur de la ligne avec le numéro en blanc.
+///   Affiché à zoom élevé quand l'utilisateur regarde un quartier précis.
+/// - [largeLabel] : variante agrandie de [label], pour le stop sélectionné.
+enum StopMarkerStyle { dot, label, largeLabel }
+
+/// Génère des [BitmapDescriptor] pour les arrêts du réseau de bus.
+///
+/// Cache par `(label, color, scale, style)` pour ne payer le coût de
+/// rastérisation qu'une seule fois par variante.
 class StopMarkerFactory {
   StopMarkerFactory._();
 
   static final Map<String, BitmapDescriptor> _cache = {};
 
-  /// Taille de référence (logique) en pixels logiques. Sera multipliée par
-  /// le devicePixelRatio. Calibré pour ressembler à IDF Mobilités : petites
-  /// pastilles compactes qui laissent les lignes respirer même quand 300+
-  /// stops sont visibles à la fois.
-  static const double _baseWidth = 17;
-  static const double _baseHeight = 13;
+  // Tailles logiques (× devicePixelRatio en sortie). Calibrées pour rester
+  // lisibles sans saturer la carte type IDF Mobilités.
+  static const double _dotSize = 12; // diamètre extérieur (anneau)
+  static const double _labelWidth = 17;
+  static const double _labelHeight = 13;
   static const double _largeWidth = 30;
   static const double _largeHeight = 21;
 
@@ -27,15 +33,22 @@ class StopMarkerFactory {
     required String label,
     required Color color,
     required double devicePixelRatio,
-    bool large = false,
+    StopMarkerStyle style = StopMarkerStyle.label,
   }) async {
     final key =
-        '${label}_${color.value.toRadixString(16)}_${devicePixelRatio.toStringAsFixed(1)}_$large';
+        '${label}_${color.value.toRadixString(16)}_${devicePixelRatio.toStringAsFixed(1)}_${style.name}';
     final cached = _cache[key];
     if (cached != null) return cached;
 
-    final w = (large ? _largeWidth : _baseWidth) * devicePixelRatio;
-    final h = (large ? _largeHeight : _baseHeight) * devicePixelRatio;
+    if (style == StopMarkerStyle.dot) {
+      final descriptor = await _renderDot(color, devicePixelRatio);
+      _cache[key] = descriptor;
+      return descriptor;
+    }
+
+    final large = style == StopMarkerStyle.largeLabel;
+    final w = (large ? _largeWidth : _labelWidth) * devicePixelRatio;
+    final h = (large ? _largeHeight : _labelHeight) * devicePixelRatio;
     final radius = (large ? 5.0 : 3.0) * devicePixelRatio;
     final borderWidth = (large ? 1.8 : 1.1) * devicePixelRatio;
     final fontSize = (large ? 11.0 : 7.5) * devicePixelRatio;
@@ -103,6 +116,40 @@ class StopMarkerFactory {
     final descriptor = BitmapDescriptor.fromBytes(bytes);
     _cache[key] = descriptor;
     return descriptor;
+  }
+
+  /// Petit point blanc avec anneau couleur de la ligne. Utilisé à zoom
+  /// intermédiaire (14-15) pour montrer la position des arrêts sans
+  /// encombrer la carte avec les numéros.
+  static Future<BitmapDescriptor> _renderDot(
+      Color color, double devicePixelRatio) async {
+    final size = _dotSize * devicePixelRatio;
+    final ringWidth = 2.0 * devicePixelRatio;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    final center = Offset(size / 2, size / 2);
+    final outerRadius = size / 2;
+    final innerRadius = outerRadius - ringWidth;
+
+    // Drop shadow.
+    canvas.drawCircle(
+      center.translate(0, ringWidth * 0.3),
+      outerRadius,
+      Paint()
+        ..color = Colors.black.withOpacity(0.2)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, ringWidth * 0.6),
+    );
+    // Anneau couleur de ligne.
+    canvas.drawCircle(center, outerRadius, Paint()..color = color);
+    // Centre blanc.
+    canvas.drawCircle(center, innerRadius, Paint()..color = Colors.white);
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size.toInt(), size.toInt());
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.fromBytes(byteData!.buffer.asUint8List());
   }
 
   /// Renvoie noir ou blanc selon la luminance du fond (contrast WCAG-ish).
