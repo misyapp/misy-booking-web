@@ -38,6 +38,11 @@ import 'package:rider_ride_hailing_app/services/guest_storage_service.dart';
 import 'package:rider_ride_hailing_app/models/guest_session.dart';
 import 'package:rider_ride_hailing_app/bottom_sheet_widget/request_for_ride.dart';
 import 'package:rider_ride_hailing_app/bottom_sheet_widget/drive_on_way.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_public/transport_public_panel.dart';
+import 'package:rider_ride_hailing_app/services/public_transport_service.dart';
+import 'package:rider_ride_hailing_app/models/transport_line.dart' show TransportLine;
+import 'package:rider_ride_hailing_app/functions/print_function.dart' show myCustomPrintStatement;
+import 'package:rider_ride_hailing_app/widget/home_mode_toggle.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 /// Page d'accueil Web style Uber - version allégée
@@ -145,6 +150,21 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   static const int _minCharsForSearch = 3;
   String? _lastPickupQuery;
   String? _lastDestinationQuery;
+
+  // === Mode public (transport en commun) ===
+  // Toggle Course / Transport en commun. La carte reste partagée — seules les
+  // couches et le panneau gauche changent.
+  HomeMode _homeMode = HomeMode.course;
+
+  // Polylines + markers du réseau taxi-be pour l'overlay de la carte. Calculés
+  // une fois quand on entre en mode public, gardés ensuite.
+  Set<Polyline> _publicTransportPolylines = {};
+  Set<Marker> _publicTransportMarkers = {};
+  bool _publicTransportLoaded = false;
+
+  // Ligne sélectionnée dans la liste (= mise en évidence sur la carte). Null
+  // = toutes les lignes affichées avec leur opacité normale.
+  String? _publicSelectedLine;
 
   @override
   void initState() {
@@ -1122,6 +1142,17 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// Construit le panel approprié selon l'étape actuelle du flux de réservation
   Widget _buildPanelForStep(TripProvider tripProvider) {
     final currentStep = tripProvider.currentStep;
+
+    // En mode "Transport en commun" : sidebar dédiée, peu importe l'étape
+    // Course (les 2 modes sont isolés).
+    if (_homeMode == HomeMode.publicTransport) {
+      return TransportPublicPanel(
+        mode: _homeMode,
+        onModeChanged: _setHomeMode,
+        selectedLine: _publicSelectedLine,
+        onLineSelected: _onPublicLineSelected,
+      );
+    }
 
     // Recherche initiale
     if (currentStep == null ||
@@ -2118,6 +2149,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       );
     }
 
+    // Couches mode "Transport en commun" — fusionnées par-dessus les layers
+    // Course quand on est en mode public. La carte reste UNIQUE entre les 2.
+    if (_homeMode == HomeMode.publicTransport) {
+      allPolylines.addAll(_publicTransportPolylines);
+      allMarkers.addAll(_publicTransportMarkers);
+    }
+
     return GoogleMap(
       initialCameraPosition: CameraPosition(
         target: _defaultPosition,
@@ -2150,6 +2188,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   /// Gère le tap sur la carte (pour sélectionner une position)
   void _onMapTap(LatLng latLng) {
+    // Mode public : pas de sélection de position via tap (réservé Phase 2).
+    if (_homeMode == HomeMode.publicTransport) return;
+
     final tripProvider = Provider.of<TripProvider>(context, listen: false);
 
     // Si on est à l'étape de confirmation de destination, permettre d'ajuster le point de dépose
@@ -2162,6 +2203,132 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       final isPickup = _selectingLocationFor == 'pickup';
       _setLocationFromLatLng(latLng, isPickup);
     }
+  }
+
+  // ─────────────────────── Mode public (Transport en commun) ───────────────────────
+
+  void _setHomeMode(HomeMode mode) {
+    if (_homeMode == mode) return;
+    setState(() {
+      _homeMode = mode;
+      _publicSelectedLine = null;
+    });
+    if (mode == HomeMode.publicTransport && !_publicTransportLoaded) {
+      _loadPublicTransportLayers();
+    }
+  }
+
+  void _onPublicLineSelected(String? lineNumber) {
+    setState(() => _publicSelectedLine = lineNumber);
+    _rebuildPublicTransportLayers();
+    if (lineNumber != null) _zoomToPublicLine(lineNumber);
+  }
+
+  /// Charge le bundle public si pas déjà fait, puis calcule les Set de
+  /// polylines + markers pour l'affichage du réseau sur la carte.
+  Future<void> _loadPublicTransportLayers() async {
+    try {
+      await PublicTransportService.instance.ensureLoaded();
+      if (!mounted) return;
+      _rebuildPublicTransportLayers();
+      setState(() => _publicTransportLoaded = true);
+    } catch (e) {
+      myCustomPrintStatement('PublicTransportLayers: erreur chargement $e');
+    }
+  }
+
+  /// Recalcule les Set polyline/marker selon la sélection courante. Une ligne
+  /// sélectionnée s'affiche en plein opacité et plus épaisse, les autres se
+  /// font discrètes pour faire ressortir la sélection.
+  void _rebuildPublicTransportLayers() {
+    final svc = PublicTransportService.instance;
+    final lines = svc.allLines;
+    final selected = _publicSelectedLine;
+
+    final polylines = <Polyline>{};
+    final markers = <Marker>{};
+
+    for (final group in lines) {
+      final meta = svc.metadataFor(group.lineNumber);
+      final color =
+          meta != null ? Color(meta.colorValue) : const Color(0xFF1565C0);
+      final isSelected = selected == null || selected == group.lineNumber;
+      final opacity = isSelected ? 0.85 : 0.18;
+      final width = isSelected ? (selected != null ? 6 : 4) : 3;
+
+      void addLine(TransportLine? line, String dir) {
+        if (line == null || line.coordinates.length < 2) return;
+        polylines.add(Polyline(
+          polylineId: PolylineId('pt_${group.lineNumber}_$dir'),
+          points: line.coordinates,
+          color: color.withOpacity(opacity),
+          width: width,
+          zIndex: isSelected ? 5 : 1,
+          consumeTapEvents: false,
+        ));
+        if (!isSelected) return;
+        for (var i = 0; i < line.stops.length; i++) {
+          markers.add(Marker(
+            markerId: MarkerId('pt_${group.lineNumber}_${dir}_$i'),
+            position: line.stops[i].position,
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              _hueFor(color),
+            ),
+            anchor: const Offset(0.5, 0.5),
+            zIndex: 6,
+            infoWindow: InfoWindow(
+              title: line.stops[i].name,
+              snippet: 'Ligne ${group.lineNumber}',
+            ),
+          ));
+        }
+      }
+
+      addLine(group.aller, 'aller');
+      addLine(group.retour, 'retour');
+    }
+
+    setState(() {
+      _publicTransportPolylines = polylines;
+      _publicTransportMarkers = markers;
+    });
+  }
+
+  /// Zoom la caméra sur les bounds d'une ligne donnée (aller + retour).
+  void _zoomToPublicLine(String lineNumber) {
+    final group = PublicTransportService.instance.getLineGroup(lineNumber);
+    if (group == null || _mapController == null) return;
+    final pts = <LatLng>[
+      ...?group.aller?.coordinates,
+      ...?group.retour?.coordinates,
+    ];
+    if (pts.length < 2) return;
+    var minLat = pts.first.latitude, maxLat = pts.first.latitude;
+    var minLng = pts.first.longitude, maxLng = pts.first.longitude;
+    for (final p in pts) {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
+    }
+    _mapController!.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat, minLng),
+          northeast: LatLng(maxLat, maxLng),
+        ),
+        80,
+      ),
+    );
+  }
+
+  /// Approxime la teinte BitmapDescriptor la plus proche d'une [Color].
+  /// Google Maps n'accepte que des hues prédéfinis pour les markers par
+  /// défaut — on choisit le plus proche pour rester cohérent avec la couleur
+  /// de la ligne, en V1 (V2 = markers custom rasterisés).
+  double _hueFor(Color color) {
+    final hsl = HSLColor.fromColor(color);
+    return hsl.hue;
   }
 
   /// Ajuste le point de dépose quand l'utilisateur clique sur la carte
@@ -2340,11 +2507,17 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                   ),
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
-                // Contenu Course (les onglets Transports/Carte ont été
-                // retirés — préparation d'une nouvelle version basée sur
-                // les données du transport-editor admin).
+                // Toggle Course / Transport en commun. La carte reste
+                // partagée — seule la sidebar et les couches changent.
+                HomeModeToggle(
+                  current: _homeMode,
+                  onChanged: _setHomeMode,
+                ),
+
+                const SizedBox(height: 16),
+
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

@@ -154,6 +154,9 @@ flutter:
     - assets/transport_lines/
     - assets/transport_lines/manifest.json
     - assets/transport_lines/core/
+    - assets/transport_lines_public/
+    - assets/transport_lines_public/manifest.json
+    - assets/transport_lines_public/core/
     - assets/osm_bus_stops_tana.json
 
   # An image asset can refer to one or more resolution-specific "variants", see

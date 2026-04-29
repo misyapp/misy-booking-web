@@ -23,6 +23,7 @@ import 'package:rider_ride_hailing_app/provider/admin_settings_provider.dart';
 import 'package:rider_ride_hailing_app/provider/airtel_money_payment_gateway_provider.dart';
 import 'package:rider_ride_hailing_app/provider/dark_theme_provider.dart';
 import 'package:rider_ride_hailing_app/provider/google_map_provider.dart';
+import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
 import 'package:rider_ride_hailing_app/provider/notification_provider.dart';
 import 'package:rider_ride_hailing_app/provider/orange_money_payment_gateway_provider.dart';
 import 'package:rider_ride_hailing_app/provider/promocodes_provider.dart';
@@ -323,6 +324,9 @@ void main() async {
         ),
         ChangeNotifierProvider(
           create: (context) => DarkThemeProvider(),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => LocaleProvider()..load(),
         ),
         ChangeNotifierProvider(
           create: (context) => TripProvider(),

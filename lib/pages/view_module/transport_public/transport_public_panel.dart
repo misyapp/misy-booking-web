@@ -1,0 +1,352 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:rider_ride_hailing_app/contants/transit_strings.dart';
+import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
+import 'package:rider_ride_hailing_app/services/public_transport_service.dart';
+import 'package:rider_ride_hailing_app/services/transport_lines_service.dart'
+    show LineMetadata;
+import 'package:rider_ride_hailing_app/widget/home_mode_toggle.dart';
+import 'package:rider_ride_hailing_app/widget/language_switcher.dart';
+
+/// Panneau gauche en mode "Transport en commun" — Phase 1.
+///
+/// V1 contenu : header + switcher de langue + toggle Course/Transport +
+/// liste scrollable des lignes admin-validées (numéro coloré, nom,
+/// nb d'arrêts). Tap sur une ligne → callback [onLineSelected] pour la
+/// mettre en évidence sur la carte.
+class TransportPublicPanel extends StatelessWidget {
+  final HomeMode mode;
+  final ValueChanged<HomeMode> onModeChanged;
+  final String? selectedLine; // null = toutes affichées en plein
+  final ValueChanged<String?> onLineSelected;
+
+  const TransportPublicPanel({
+    super.key,
+    required this.mode,
+    required this.onModeChanged,
+    required this.selectedLine,
+    required this.onLineSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: 16,
+      left: 16,
+      bottom: 16,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: 320,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildHeader(context),
+              const Divider(height: 1, thickness: 1),
+              Padding(
+                padding:
+                    const EdgeInsets.fromLTRB(14, 14, 14, 8),
+                child: HomeModeToggle(
+                  current: mode,
+                  onChanged: onModeChanged,
+                ),
+              ),
+              Expanded(
+                child: _LinesList(
+                  selectedLine: selectedLine,
+                  onLineSelected: onLineSelected,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    final locale = context.watch<LocaleProvider>().locale;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 14, 10, 12),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF5357).withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.directions_bus_outlined,
+              color: Color(0xFFFF5357),
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  TransitStrings.t('transit.title', locale),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: Color(0xFF1D3557),
+                  ),
+                ),
+                Text(
+                  TransitStrings.t('transit.subtitle', locale),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const LanguageSwitcher(),
+        ],
+      ),
+    );
+  }
+}
+
+/// Liste scrollable. Wrapper StatefulWidget pour piloter l'init du
+/// PublicTransportService (FutureBuilder une seule fois).
+class _LinesList extends StatefulWidget {
+  final String? selectedLine;
+  final ValueChanged<String?> onLineSelected;
+
+  const _LinesList({
+    required this.selectedLine,
+    required this.onLineSelected,
+  });
+
+  @override
+  State<_LinesList> createState() => _LinesListState();
+}
+
+class _LinesListState extends State<_LinesList> {
+  late Future<void> _loadFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFuture = PublicTransportService.instance.ensureLoaded();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final locale = context.watch<LocaleProvider>().locale;
+    return FutureBuilder<void>(
+      future: _loadFuture,
+      builder: (ctx, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(strokeWidth: 2),
+                const SizedBox(height: 12),
+                Text(
+                  TransitStrings.t('state.loading', locale),
+                  style: TextStyle(
+                      fontSize: 12, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          );
+        }
+        if (snap.hasError) {
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  TransitStrings.t('state.error', locale),
+                  style: const TextStyle(color: Colors.red),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: () => setState(() {
+                    _loadFuture =
+                        PublicTransportService.instance.ensureLoaded();
+                  }),
+                  child: Text(TransitStrings.t('state.retry', locale)),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final metas = PublicTransportService.instance.allMetadata;
+        if (metas.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(20),
+            child: Center(
+              child: Text(
+                TransitStrings.t('lines.empty', locale),
+                textAlign: TextAlign.center,
+                style:
+                    TextStyle(fontSize: 12, color: Colors.grey.shade700),
+              ),
+            ),
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
+              child: Row(
+                children: [
+                  Text(
+                    '${metas.length} ${TransitStrings.t('lines.count', locale)}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (widget.selectedLine != null)
+                    TextButton(
+                      onPressed: () => widget.onLineSelected(null),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 0),
+                        minimumSize: const Size(0, 28),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Text(
+                        TransitStrings.t('lines.show.all', locale),
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+                itemCount: metas.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 4),
+                itemBuilder: (ctx, i) =>
+                    _LineRow(meta: metas[i], selected: widget.selectedLine == metas[i].lineNumber, onTap: () {
+                  final selected = widget.selectedLine == metas[i].lineNumber
+                      ? null
+                      : metas[i].lineNumber;
+                  widget.onLineSelected(selected);
+                }),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _LineRow extends StatelessWidget {
+  final LineMetadata meta;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _LineRow({
+    required this.meta,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final locale = context.watch<LocaleProvider>().locale;
+    final color = Color(meta.colorValue);
+    final stops = (meta.aller?.numStops ?? 0) + (meta.retour?.numStops ?? 0);
+
+    return Material(
+      color: selected
+          ? color.withOpacity(0.08)
+          : Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(8),
+                  border: selected
+                      ? Border.all(color: const Color(0xFF1D3557), width: 2)
+                      : null,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  meta.lineNumber,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      meta.displayName,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight:
+                            selected ? FontWeight.w700 : FontWeight.w500,
+                        color: const Color(0xFF1D3557),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$stops ${TransitStrings.t('lines.stops.short', locale)}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                selected
+                    ? Icons.location_on
+                    : Icons.chevron_right,
+                size: 16,
+                color: selected ? color : Colors.grey.shade400,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

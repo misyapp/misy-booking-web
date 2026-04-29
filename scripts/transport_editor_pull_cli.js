@@ -24,11 +24,23 @@ const path = require('path');
 const COLL_EDITED = 'transport_lines_edited';
 const COLL_VALIDATIONS = 'transport_line_validations';
 const COLL_LOG = 'transport_edits_log';
+const COLL_PUBLISHED = 'transport_lines_published';
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const ASSETS_DIR = path.resolve(REPO_ROOT, 'assets/transport_lines');
 const CORE_DIR = path.resolve(ASSETS_DIR, 'core');
 const MANIFEST_PATH = path.resolve(ASSETS_DIR, 'manifest.json');
+
+// Bundle dédié à l'onglet public "Transport en commun" — ne contient QUE les
+// lignes dont les 2 directions sont admin-approved. Régénéré par publish-bundle
+// avant chaque deploy. Distinct de assets/transport_lines/ qui sert les outils
+// admin (transport-editor, transport-admin) et inclut les lignes en cours.
+const PUBLIC_ASSETS_DIR = path.resolve(
+  REPO_ROOT,
+  'assets/transport_lines_public',
+);
+const PUBLIC_CORE_DIR = path.resolve(PUBLIC_ASSETS_DIR, 'core');
+const PUBLIC_MANIFEST_PATH = path.resolve(PUBLIC_ASSETS_DIR, 'manifest.json');
 
 const SERVICE_ACCOUNT_PATH = path.resolve(
   REPO_ROOT,
@@ -313,6 +325,135 @@ async function cmdPull(db, args) {
   console.log(`\n${touched} fichier(s) écrit(s)${skipMsg}. git diff pour revue.`);
 }
 
+/**
+ * Génère le bundle public consommé par l'onglet "Transport en commun" de
+ * book.misy.app. Sortie : assets/transport_lines_public/{manifest.json,
+ * core/<ligne>_<aller|retour>.geojson}. Inclut UNIQUEMENT les lignes dont
+ * les 2 directions sont admin-approved (`isPublished` côté Flutter).
+ *
+ * Source de vérité : `transport_lines_published` Firestore (rempli par
+ * approveDirection / adminEditAndPublish). Les éditions consultant en cours
+ * (`transport_lines_edited`) ne sont JAMAIS exposées au public.
+ */
+async function cmdPublishBundle(db, args) {
+  const dryRun = args['dry-run'] === true;
+
+  // 1. Lire toutes les validations pour identifier les lignes "isPublished".
+  const valSnap = await db.collection(COLL_VALIDATIONS).get();
+  const publishedLines = [];
+  for (const doc of valSnap.docs) {
+    const v = doc.data();
+    const allerApproved = v.aller_admin_status === 'approved';
+    const retourApproved = v.retour_admin_status === 'approved';
+    if (allerApproved && retourApproved) publishedLines.push(doc.id);
+  }
+  publishedLines.sort();
+
+  if (publishedLines.length === 0) {
+    console.log('⚠️  Aucune ligne admin-approved sur les 2 directions.');
+    console.log('   Le bundle public sera vide. Abandon.');
+    return;
+  }
+
+  console.log(
+    `📦 ${publishedLines.length} ligne(s) admin-approved à bundler dans le public:`,
+  );
+  console.log(`   ${publishedLines.join(', ')}\n`);
+
+  // 2. Pour chaque ligne validée, lire le doc transport_lines_published.
+  const manifestEntries = [];
+  let written = 0;
+  let skipped = 0;
+
+  for (const lineNumber of publishedLines) {
+    const pubDoc = await db.collection(COLL_PUBLISHED).doc(lineNumber).get();
+    if (!pubDoc.exists) {
+      console.log(
+        `⚠️  ${lineNumber}: validation OK mais doc transport_lines_published manquant. Skip.`,
+      );
+      skipped++;
+      continue;
+    }
+    const data = pubDoc.data();
+    const allerFc = extractFeatureCollection(data.aller);
+    const retourFc = extractFeatureCollection(data.retour);
+
+    if (!allerFc || !retourFc) {
+      console.log(
+        `⚠️  ${lineNumber}: FC manquante (aller=${!!allerFc}, retour=${!!retourFc}). Skip.`,
+      );
+      skipped++;
+      continue;
+    }
+
+    const allerPath = path.join(PUBLIC_CORE_DIR, `${lineNumber}_aller.geojson`);
+    const retourPath = path.join(
+      PUBLIC_CORE_DIR,
+      `${lineNumber}_retour.geojson`,
+    );
+
+    if (!dryRun) {
+      writeFeatureCollection(allerPath, allerFc);
+      writeFeatureCollection(retourPath, retourFc);
+    }
+    console.log(
+      `${dryRun ? '🔎' : '✅'} ${lineNumber.padEnd(8)} aller=${countStops(allerFc)
+        .toString()
+        .padStart(2)} arrêts, retour=${countStops(retourFc)
+        .toString()
+        .padStart(2)} arrêts`,
+    );
+    written += 2;
+
+    manifestEntries.push({
+      line_number: lineNumber,
+      display_name: data.display_name || `Ligne ${lineNumber}`,
+      transport_type: data.transport_type || 'bus',
+      color: data.color || '0xFF1565C0',
+      is_bundled: true,
+      aller: {
+        direction: allerFc.properties?.direction || '',
+        num_stops: countStops(allerFc),
+        asset_path: `assets/transport_lines_public/core/${lineNumber}_aller.geojson`,
+      },
+      retour: {
+        direction: retourFc.properties?.direction || '',
+        num_stops: countStops(retourFc),
+        asset_path: `assets/transport_lines_public/core/${lineNumber}_retour.geojson`,
+      },
+    });
+  }
+
+  // 3. Écrire le manifest public.
+  const manifest = {
+    version: '1.0',
+    last_updated: today(),
+    total_lines: manifestEntries.length,
+    source: 'transport_lines_published Firestore (admin-approved only)',
+    lines: manifestEntries,
+  };
+
+  if (!dryRun) {
+    if (!fs.existsSync(PUBLIC_ASSETS_DIR)) {
+      fs.mkdirSync(PUBLIC_ASSETS_DIR, { recursive: true });
+    }
+    fs.writeFileSync(
+      PUBLIC_MANIFEST_PATH,
+      JSON.stringify(manifest, null, 2) + '\n',
+    );
+  }
+
+  console.log(
+    `\n${dryRun ? '🔎 DRY-RUN' : '📝 Bundle public écrit'}: ${written} GeoJSON + manifest (${manifestEntries.length} lignes)`,
+  );
+  if (skipped > 0) {
+    console.log(`⚠️  ${skipped} ligne(s) ignorée(s) (validation incohérente)`);
+  }
+  if (!dryRun) {
+    console.log(`\nNext: git diff assets/transport_lines_public/ → revue → commit → flutter build → rsync.`);
+  }
+}
+
 async function cmdPrune(db, args) {
   const lineNumber = args._[0];
   if (!args.all && !lineNumber) {
@@ -350,12 +491,15 @@ async function main() {
       case 'pull':
         await cmdPull(db, args);
         break;
+      case 'publish-bundle':
+        await cmdPublishBundle(db, args);
+        break;
       case 'prune':
         await cmdPrune(db, args);
         break;
       default:
         console.error(`Commande inconnue: ${cmd}`);
-        console.error('Commandes: status | diff | pull | prune');
+        console.error('Commandes: status | diff | pull | publish-bundle | prune');
         process.exit(1);
     }
   } catch (e) {
