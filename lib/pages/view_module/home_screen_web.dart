@@ -2555,6 +2555,38 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       }
     }
 
+    // Snap final : pour chaque cluster, projette sa position sur la polyline
+    // de sa ligne primaire (aller OU retour, le plus proche). Sans ça, un
+    // cluster qui agrège des stops de plusieurs lignes garde la position du
+    // 1er stop matché — qui peut être sur une polyline parallèle à 30-50m.
+    // Le marker apparaissait alors flotter à côté du trait de la ligne
+    // primaire qu'il est censé représenter.
+    for (final c in clusters) {
+      final group = svc.getLineGroup(c.primaryLine);
+      if (group == null) continue;
+      final aller = group.aller?.coordinates ?? const <LatLng>[];
+      final retour = group.retour?.coordinates ?? const <LatLng>[];
+      LatLng best = c.position;
+      double bestDist = double.infinity;
+      if (aller.length >= 2) {
+        final s = _snapToPolyline(c.position, aller);
+        final d = _planarDistSq(c.position, s);
+        if (d < bestDist) {
+          bestDist = d;
+          best = s;
+        }
+      }
+      if (retour.length >= 2) {
+        final s = _snapToPolyline(c.position, retour);
+        final d = _planarDistSq(c.position, s);
+        if (d < bestDist) {
+          bestDist = d;
+          best = s;
+        }
+      }
+      c.position = best;
+    }
+
     final stopsByKey = <String, _PublicStopAggregate>{
       for (final c in clusters) c.key: c,
     };
@@ -4246,7 +4278,10 @@ class _RawStop {
 /// un rayon de 35m (cf. `_metersBetween`) → 1 seul marker.
 class _PublicStopAggregate {
   final String key;
-  final LatLng position;
+  /// Position du marker. Initialement = position du 1er stop matché lors du
+  /// clustering. Ensuite re-snappée sur la polyline de la [primaryLine] pour
+  /// que le marker tombe pile au centre du trait coloré rendu.
+  LatLng position;
   String name;
   String primaryLine;
   Color primaryColor;
