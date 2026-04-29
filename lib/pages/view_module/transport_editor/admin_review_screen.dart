@@ -203,6 +203,12 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
                             const SizedBox(height: 16),
                             SizedBox(height: 360, child: _buildActivityCard()),
                           ],
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            height: 520,
+                            child:
+                                _buildAllByConsultantCard(validations),
+                          ),
                         ],
                       ),
                     );
@@ -997,6 +1003,220 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
     );
   }
 
+  /* ──────────────────── ALL-BY-CONSULTANT CARD ──────────────────── */
+
+  /// Liste exhaustive des directions touchées par chaque consultant, tous
+  /// statuts confondus (incl. déjà validées par l'admin). Permet de revenir
+  /// sur une ligne déjà publiée — la carte n'est qu'un visuel, c'est ici
+  /// qu'on organise.
+  Widget _buildAllByConsultantCard(
+      Map<String, TransportLineValidation> validations) {
+    final byConsultant = <String, List<ReviewItem>>{};
+    for (final v in validations.values) {
+      final email = v.updatedByEmail;
+      if (email == null || email.isEmpty) continue;
+      for (final step in EditorStep.values) {
+        final consultant = v.statusFor(step);
+        // Skip les directions jamais touchées (= encore au bootstrap pending).
+        if (consultant == ValidationStatus.pending) continue;
+        final admin = v.adminReviewFor(step);
+        byConsultant.putIfAbsent(email, () => []).add(ReviewItem(
+              lineNumber: v.lineNumber,
+              direction: step.isAller ? 'aller' : 'retour',
+              consultantEmail: email,
+              consultantStatus: consultant,
+              adminStatus: admin.status,
+              rejectionReason: admin.rejectionReason,
+              updatedAt: v.updatedAt,
+              consultantNote: v.noteFor(step),
+              consultantFlag: v.flagFor(step),
+            ));
+      }
+    }
+
+    // Tri interne par direction : pending → rejected → approved, puis date desc.
+    int statusRank(AdminStatus s) {
+      switch (s) {
+        case AdminStatus.pending:
+          return 0;
+        case AdminStatus.rejected:
+          return 1;
+        case AdminStatus.approved:
+          return 2;
+      }
+    }
+
+    for (final list in byConsultant.values) {
+      list.sort((a, b) {
+        final r = statusRank(a.adminStatus).compareTo(statusRank(b.adminStatus));
+        if (r != 0) return r;
+        final ad = a.updatedAt?.millisecondsSinceEpoch ?? 0;
+        final bd = b.updatedAt?.millisecondsSinceEpoch ?? 0;
+        return bd.compareTo(ad);
+      });
+    }
+
+    final emails = byConsultant.keys.toList()
+      ..sort((a, b) {
+        final aLatest = byConsultant[a]!
+            .map((i) => i.updatedAt?.millisecondsSinceEpoch ?? 0)
+            .fold<int>(0, (m, e) => e > m ? e : m);
+        final bLatest = byConsultant[b]!
+            .map((i) => i.updatedAt?.millisecondsSinceEpoch ?? 0)
+            .fold<int>(0, (m, e) => e > m ? e : m);
+        return bLatest.compareTo(aLatest);
+      });
+
+    return _dashboardCard(
+      title: 'Toutes les lignes par consultant',
+      icon: Icons.assignment_outlined,
+      child: emails.isEmpty
+          ? const Center(
+              child: Text(
+                'Aucun consultant n\'a encore édité de lignes.',
+                style: TextStyle(color: Colors.grey),
+              ),
+            )
+          : ListView.builder(
+              padding: EdgeInsets.zero,
+              itemCount: emails.length,
+              itemBuilder: (ctx, i) {
+                final email = emails[i];
+                final list = byConsultant[email]!;
+                final approvedCount = list
+                    .where((it) => it.adminStatus == AdminStatus.approved)
+                    .length;
+                final pendingCount = list
+                    .where((it) => it.adminStatus == AdminStatus.pending)
+                    .length;
+                final rejectedCount = list
+                    .where((it) => it.adminStatus == AdminStatus.rejected)
+                    .length;
+                final initial =
+                    email.isNotEmpty ? email[0].toUpperCase() : '?';
+                return Theme(
+                  // Évite les diviseurs auto-injectés par ExpansionTile dans
+                  // un ListView (rendu plus clean).
+                  data: Theme.of(context)
+                      .copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                    childrenPadding:
+                        const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                    leading: CircleAvatar(
+                      radius: 16,
+                      backgroundColor: const Color(0xFF1565C0),
+                      child: Text(initial,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12)),
+                    ),
+                    title: Text(email,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w600)),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        children: [
+                          _miniCount(pendingCount, 'à reviewer',
+                              const Color(0xFFFB8C00)),
+                          const SizedBox(width: 8),
+                          _miniCount(approvedCount, 'validés',
+                              const Color(0xFF43A047)),
+                          const SizedBox(width: 8),
+                          _miniCount(rejectedCount, 'rejetés',
+                              const Color(0xFFE53935)),
+                        ],
+                      ),
+                    ),
+                    children: [
+                      for (final item in list)
+                        _buildAllByConsultantRow(item),
+                    ],
+                  ),
+                );
+              },
+            ),
+    );
+  }
+
+  Widget _buildAllByConsultantRow(ReviewItem item) {
+    final meta = _metaFor(item.lineNumber);
+    final color = meta != null
+        ? Color(meta.colorValue)
+        : const Color(0xFF5E35B1);
+    final dateStr = item.updatedAt == null
+        ? '—'
+        : DateFormat('dd/MM HH:mm').format(item.updatedAt!);
+    final isApproved = item.adminStatus == AdminStatus.approved;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => _openDetail(item, meta),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        child: Row(
+          children: [
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+              alignment: Alignment.center,
+              child: Text(item.lineNumber,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    meta?.displayName ?? 'Ligne ${item.lineNumber}',
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${item.direction} · $dateStr',
+                    style:
+                        TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            _buildAdminBadge(item.adminStatus),
+            const SizedBox(width: 6),
+            Tooltip(
+              message: isApproved
+                  ? 'Modifier cette direction validée'
+                  : 'Voir / reviewer',
+              child: Icon(
+                isApproved
+                    ? Icons.edit_location_alt_outlined
+                    : Icons.chevron_right,
+                size: 18,
+                color: isApproved
+                    ? const Color(0xFF1565C0)
+                    : Colors.grey.shade500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /* ──────────────────── CARD WRAPPER ──────────────────── */
 
   Widget _dashboardCard({
@@ -1701,10 +1921,13 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
         ? _extractStops(_bundledFc)
         : const [];
 
+    final isApproved = widget.item.adminStatus == AdminStatus.approved;
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Review — Ligne ${widget.item.lineNumber} (${widget.item.direction})',
+          isApproved
+              ? 'Modifier — Ligne ${widget.item.lineNumber} (${widget.item.direction}) · validée'
+              : 'Review — Ligne ${widget.item.lineNumber} (${widget.item.direction})',
         ),
         backgroundColor: const Color(0xFF5E35B1),
         foregroundColor: Colors.white,
@@ -2063,52 +2286,19 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
           const Divider(height: 1),
           Padding(
             padding: const EdgeInsets.all(10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Tooltip(
-                    message: 'Demander au consultant de refaire avec un motif',
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFFC62828),
-                        side: const BorderSide(color: Color(0xFFC62828)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      onPressed: _acting ? null : _reject,
-                      icon: const Icon(Icons.replay, size: 16),
-                      label: const Text('Refaire',
-                          overflow: TextOverflow.ellipsis),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Tooltip(
-                    message: 'Modifier le tracé/arrêts proposés et publier',
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF1565C0),
-                        side: const BorderSide(color: Color(0xFF1565C0)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      onPressed: _acting ? null : _adminEdit,
-                      icon: const Icon(Icons.edit_location_alt, size: 16),
-                      label: const Text('Modifier',
-                          overflow: TextOverflow.ellipsis),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Tooltip(
-                    message: 'Publier la submission du consultant tel quel',
+            child: widget.item.adminStatus == AdminStatus.approved
+                // Direction déjà validée → seul "Modifier" a du sens.
+                // Refaire serait un downgrade incohérent (la prod consomme
+                // la version validée), Valider est sans objet.
+                ? Tooltip(
+                    message: 'Modifier cette direction déjà publiée en prod',
                     child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF43A047),
+                        backgroundColor: const Color(0xFF1565C0),
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
-                      onPressed: _acting ? null : _approve,
+                      onPressed: _acting ? null : _adminEdit,
                       icon: _acting
                           ? const SizedBox(
                               width: 14,
@@ -2116,14 +2306,79 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                               child: CircularProgressIndicator(
                                   strokeWidth: 2, color: Colors.white),
                             )
-                          : const Icon(Icons.check, size: 16),
-                      label: const Text('Valider',
+                          : const Icon(Icons.edit_location_alt, size: 16),
+                      label: const Text('Modifier et republier',
                           overflow: TextOverflow.ellipsis),
                     ),
+                  )
+                : Row(
+                    children: [
+                      Expanded(
+                        child: Tooltip(
+                          message:
+                              'Demander au consultant de refaire avec un motif',
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFFC62828),
+                              side: const BorderSide(color: Color(0xFFC62828)),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            onPressed: _acting ? null : _reject,
+                            icon: const Icon(Icons.replay, size: 16),
+                            label: const Text('Refaire',
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Tooltip(
+                          message:
+                              'Modifier le tracé/arrêts proposés et publier',
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF1565C0),
+                              side: const BorderSide(color: Color(0xFF1565C0)),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            onPressed: _acting ? null : _adminEdit,
+                            icon: const Icon(Icons.edit_location_alt,
+                                size: 16),
+                            label: const Text('Modifier',
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Tooltip(
+                          message:
+                              'Publier la submission du consultant tel quel',
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF43A047),
+                              foregroundColor: Colors.white,
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            onPressed: _acting ? null : _approve,
+                            icon: _acting
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white),
+                                  )
+                                : const Icon(Icons.check, size: 16),
+                            label: const Text('Valider',
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
           ),
         ],
       ),
