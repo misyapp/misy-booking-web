@@ -116,6 +116,23 @@ class TransitStrings {
       AppLocale.en: 'toward',
     },
 
+    // ───────── Diagramme réseau ─────────
+    'network.button': {
+      AppLocale.fr: 'Réseau',
+      AppLocale.mg: 'Tambazotra',
+      AppLocale.en: 'Network',
+    },
+    'network.title': {
+      AppLocale.fr: 'Réseau taxi-be · Antananarivo',
+      AppLocale.mg: 'Tambazotra taxi-be · Antananarivo',
+      AppLocale.en: 'Taxi-be network · Antananarivo',
+    },
+    'network.close': {
+      AppLocale.fr: 'Fermer',
+      AppLocale.mg: 'Hidio',
+      AppLocale.en: 'Close',
+    },
+
     // ───────── Stop card ─────────
     'stop.lines.served': {
       AppLocale.fr: 'Lignes desservant cet arrêt',

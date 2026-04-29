@@ -3,6 +3,7 @@ import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/transit_strings.dart';
 import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_public/transport_network_diagram.dart';
 import 'package:rider_ride_hailing_app/services/public_transport_service.dart';
 import 'package:rider_ride_hailing_app/services/transport_lines_service.dart'
     show LineMetadata;
@@ -123,6 +124,19 @@ class TransportPublicPanel extends StatelessWidget {
               ],
             ),
           ),
+          IconButton(
+            icon: const Icon(Icons.account_tree_outlined,
+                size: 18, color: Color(0xFF1D3557)),
+            tooltip: TransitStrings.t('network.button', locale),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const TransportNetworkDiagramScreen(),
+              ));
+            },
+          ),
+          const SizedBox(width: 4),
           const LanguageSwitcher(),
         ],
       ),
