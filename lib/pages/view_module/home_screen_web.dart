@@ -39,6 +39,7 @@ import 'package:rider_ride_hailing_app/services/guest_storage_service.dart';
 import 'package:rider_ride_hailing_app/models/guest_session.dart';
 import 'package:rider_ride_hailing_app/bottom_sheet_widget/request_for_ride.dart';
 import 'package:rider_ride_hailing_app/bottom_sheet_widget/drive_on_way.dart';
+import 'package:rider_ride_hailing_app/models/route_planner.dart' show TransportRoute;
 import 'package:rider_ride_hailing_app/pages/view_module/transport_public/stop_card.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_public/transport_public_panel.dart';
 import 'package:rider_ride_hailing_app/services/public_transport_service.dart';
@@ -197,6 +198,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // Stop survolé par la souris (web desktop). Affiché plus grand pour
   // feedback hover style IDFM.
   String? _publicHoveredStop;
+
+  // Itinéraire calculé sélectionné par l'utilisateur (Phase 2). Surligné
+  // sur la carte par-dessus le réseau, avec marker O et D et auto-fit
+  // de la caméra.
+  Set<Polyline> _publicRoutePolylines = {};
+  Set<Marker> _publicRouteMarkers = {};
 
   // Cache des coordonnées écran de chaque stop visible. Recalculé à chaque
   // onCameraIdle via une interpolation linéaire depuis getVisibleRegion
@@ -1263,6 +1270,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         onModeChanged: _setHomeMode,
         selectedLine: _publicSelectedLine,
         onLineSelected: _onPublicLineSelected,
+        onRouteSelected: _onPublicRouteSelected,
       );
     }
 
@@ -2236,6 +2244,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // course ne sont rendus — les 2 modes sont strictement isolés.
       allPolylines.addAll(_publicTransportPolylines);
       allMarkers.addAll(_publicTransportMarkers);
+      // Surimpression de l'itinéraire calculé (par-dessus le réseau).
+      allPolylines.addAll(_publicRoutePolylines);
+      allMarkers.addAll(_publicRouteMarkers);
     } else {
       // Mode Course : chauffeurs + itinéraire + pickup/destination.
       allMarkers.addAll(_driverMarkers);
@@ -2343,6 +2354,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       _publicSelectedStop = null;
       _publicSelectedStopScreenPos = null;
       _publicHoveredStop = null;
+      _publicRoutePolylines = {};
+      _publicRouteMarkers = {};
     });
     if (mode == HomeMode.publicTransport && !_publicTransportLoaded) {
       _loadPublicTransportLayers();
@@ -2356,6 +2369,81 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     });
     _rebuildPublicTransportLayers();
     if (lineNumber != null) _zoomToPublicLine(lineNumber);
+  }
+
+  /// Surligne un itinéraire calculé sur la carte (Phase 2 — calculateur
+  /// d'itinéraire). Trace la polyline complète de l'itinéraire en couleur
+  /// vive + markers Origin et Destination, puis fit la caméra dessus.
+  /// `null` efface l'itinéraire affiché.
+  void _onPublicRouteSelected(TransportRoute? route) {
+    if (route == null) {
+      setState(() {
+        _publicRoutePolylines = {};
+        _publicRouteMarkers = {};
+      });
+      return;
+    }
+    final polylines = <Polyline>{};
+    final markers = <Marker>{};
+    final allPts = <LatLng>[];
+
+    // Trait global de l'itinéraire (rouge corail Misy).
+    final coords = route.allCoordinates;
+    if (coords.length >= 2) {
+      polylines.add(Polyline(
+        polylineId: const PolylineId('route_calc_overlay'),
+        points: coords,
+        color: const Color(0xFFFF5357),
+        width: 7,
+        zIndex: 200,
+        consumeTapEvents: false,
+      ));
+      allPts.addAll(coords);
+    }
+
+    // Marker Origin (vert corail léger).
+    markers.add(Marker(
+      markerId: const MarkerId('route_origin'),
+      position: route.origin,
+      icon:
+          BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+      anchor: const Offset(0.5, 1.0),
+      zIndex: 250,
+    ));
+    // Marker Destination (rouge).
+    markers.add(Marker(
+      markerId: const MarkerId('route_dest'),
+      position: route.destination,
+      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+      anchor: const Offset(0.5, 1.0),
+      zIndex: 250,
+    ));
+
+    setState(() {
+      _publicRoutePolylines = polylines;
+      _publicRouteMarkers = markers;
+    });
+
+    // Fit camera sur l'itinéraire.
+    if (_mapController != null && allPts.length >= 2) {
+      var minLat = allPts.first.latitude, maxLat = allPts.first.latitude;
+      var minLng = allPts.first.longitude, maxLng = allPts.first.longitude;
+      for (final p in allPts) {
+        if (p.latitude < minLat) minLat = p.latitude;
+        if (p.latitude > maxLat) maxLat = p.latitude;
+        if (p.longitude < minLng) minLng = p.longitude;
+        if (p.longitude > maxLng) maxLng = p.longitude;
+      }
+      _mapController!.animateCamera(
+        CameraUpdate.newLatLngBounds(
+          LatLngBounds(
+            southwest: LatLng(minLat, minLng),
+            northeast: LatLng(maxLat, maxLng),
+          ),
+          80,
+        ),
+      );
+    }
   }
 
   /// Charge le bundle public si pas déjà fait, puis calcule les Set de

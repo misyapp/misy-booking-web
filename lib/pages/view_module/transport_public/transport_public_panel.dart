@@ -3,6 +3,9 @@ import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/transit_strings.dart';
 import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
+import 'package:rider_ride_hailing_app/models/route_planner.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_public/route_calculator.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_public/route_itinerary_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_public/transport_network_diagram.dart';
 import 'package:rider_ride_hailing_app/services/public_transport_service.dart';
 import 'package:rider_ride_hailing_app/services/transport_lines_service.dart'
@@ -21,6 +24,9 @@ class TransportPublicPanel extends StatelessWidget {
   final ValueChanged<HomeMode> onModeChanged;
   final String? selectedLine; // null = toutes affichées en plein
   final ValueChanged<String?> onLineSelected;
+  /// Appelé quand l'utilisateur sélectionne un itinéraire calculé. Le
+  /// home l'utilise pour surligner sur la carte + push la timeline.
+  final ValueChanged<TransportRoute?>? onRouteSelected;
 
   const TransportPublicPanel({
     super.key,
@@ -28,6 +34,7 @@ class TransportPublicPanel extends StatelessWidget {
     required this.onModeChanged,
     required this.selectedLine,
     required this.onLineSelected,
+    this.onRouteSelected,
   });
 
   @override
@@ -70,9 +77,33 @@ class TransportPublicPanel extends StatelessWidget {
                 ),
               ),
               Expanded(
-                child: _LinesList(
-                  selectedLine: selectedLine,
-                  onLineSelected: onLineSelected,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Calculateur d'itinéraire en haut.
+                      RouteCalculator(
+                        onRouteSelected: (route) {
+                          // Surligne sur la carte (callback parent) puis
+                          // ouvre la feuille de route détaillée.
+                          onRouteSelected?.call(route);
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) =>
+                                RouteItineraryScreen(route: route),
+                          ));
+                        },
+                      ),
+                      const Divider(height: 1, thickness: 1),
+                      // Liste des lignes en dessous.
+                      SizedBox(
+                        height: 360,
+                        child: _LinesList(
+                          selectedLine: selectedLine,
+                          onLineSelected: onLineSelected,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],

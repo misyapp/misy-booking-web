@@ -116,6 +116,98 @@ class TransitStrings {
       AppLocale.en: 'toward',
     },
 
+    // ───────── Calculateur d'itinéraire ─────────
+    'route.title': {
+      AppLocale.fr: 'Itinéraire',
+      AppLocale.mg: 'Lalana',
+      AppLocale.en: 'Route',
+    },
+    'route.origin.placeholder': {
+      AppLocale.fr: 'Départ',
+      AppLocale.mg: 'Fiandohana',
+      AppLocale.en: 'From',
+    },
+    'route.destination.placeholder': {
+      AppLocale.fr: 'Arrivée',
+      AppLocale.mg: 'Fahatongavana',
+      AppLocale.en: 'To',
+    },
+    'route.calculate': {
+      AppLocale.fr: 'Calculer',
+      AppLocale.mg: 'Hikajy',
+      AppLocale.en: 'Calculate',
+    },
+    'route.calculating': {
+      AppLocale.fr: 'Calcul en cours…',
+      AppLocale.mg: 'Eo ampandinihana…',
+      AppLocale.en: 'Calculating…',
+    },
+    'route.my.location': {
+      AppLocale.fr: 'Ma position',
+      AppLocale.mg: 'Misy aho',
+      AppLocale.en: 'My location',
+    },
+    'route.swap': {
+      AppLocale.fr: 'Inverser départ et arrivée',
+      AppLocale.mg: 'Hifamadika',
+      AppLocale.en: 'Swap origin and destination',
+    },
+    'route.no.results': {
+      AppLocale.fr: 'Aucun itinéraire trouvé entre ces 2 points.',
+      AppLocale.mg: 'Tsy nahitana lalana eo amin\'ireo toerana ireo.',
+      AppLocale.en: 'No route found between these 2 points.',
+    },
+    'route.transfers.zero': {
+      AppLocale.fr: 'Direct',
+      AppLocale.mg: 'Mivantana',
+      AppLocale.en: 'Direct',
+    },
+    'route.transfer.one': {
+      AppLocale.fr: '1 correspondance',
+      AppLocale.mg: '1 fifindrana',
+      AppLocale.en: '1 transfer',
+    },
+    'route.transfers.many': {
+      AppLocale.fr: 'correspondances',
+      AppLocale.mg: 'fifindrana',
+      AppLocale.en: 'transfers',
+    },
+    'route.minutes.short': {
+      AppLocale.fr: 'min',
+      AppLocale.mg: 'min',
+      AppLocale.en: 'min',
+    },
+    'route.walking': {
+      AppLocale.fr: 'min de marche',
+      AppLocale.mg: 'min an-tongotra',
+      AppLocale.en: 'min walking',
+    },
+    'route.step.walk.to': {
+      AppLocale.fr: 'Marcher vers',
+      AppLocale.mg: 'Mandeha amin\'ny',
+      AppLocale.en: 'Walk to',
+    },
+    'route.step.walk.dest': {
+      AppLocale.fr: 'Marcher vers la destination',
+      AppLocale.mg: 'Mandeha mankany amin\'ny tanjona',
+      AppLocale.en: 'Walk to destination',
+    },
+    'route.step.transport': {
+      AppLocale.fr: 'Prendre la ligne',
+      AppLocale.mg: 'Raiso ny tsipika',
+      AppLocale.en: 'Take line',
+    },
+    'route.step.toward': {
+      AppLocale.fr: 'direction',
+      AppLocale.mg: 'mankany',
+      AppLocale.en: 'toward',
+    },
+    'route.step.descend': {
+      AppLocale.fr: 'Descendre à',
+      AppLocale.mg: 'Midina amin\'ny',
+      AppLocale.en: 'Get off at',
+    },
+
     // ───────── Diagramme réseau ─────────
     'network.button': {
       AppLocale.fr: 'Réseau',
