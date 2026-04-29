@@ -99,6 +99,23 @@ class TransitStrings {
       AppLocale.en: 'stops',
     },
 
+    // ───────── Stop card ─────────
+    'stop.lines.served': {
+      AppLocale.fr: 'Lignes desservant cet arrêt',
+      AppLocale.mg: 'Tsipika mandalo eto',
+      AppLocale.en: 'Lines serving this stop',
+    },
+    'stop.close': {
+      AppLocale.fr: 'Fermer',
+      AppLocale.mg: 'Hidio',
+      AppLocale.en: 'Close',
+    },
+    'stop.unnamed': {
+      AppLocale.fr: 'Arrêt sans nom',
+      AppLocale.mg: 'Fiantsonana tsy misy anarana',
+      AppLocale.en: 'Unnamed stop',
+    },
+
     // ───────── États ─────────
     'state.loading': {
       AppLocale.fr: 'Chargement…',

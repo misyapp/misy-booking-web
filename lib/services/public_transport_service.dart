@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 import 'package:rider_ride_hailing_app/functions/print_function.dart';
 import 'package:rider_ride_hailing_app/models/route_planner.dart';
 import 'package:rider_ride_hailing_app/models/transport_line.dart';
@@ -28,6 +30,12 @@ class PublicTransportService {
   TransportGraph? _graph;
   Future<void>? _loadFuture;
 
+  /// Lignes triées par "importance" (longueur totale en km, aller + retour).
+  /// Calculé une fois après le chargement complet. Sert au filtrage par zoom.
+  List<String> _linesByImportance = const [];
+
+  List<String> get linesByImportance => _linesByImportance;
+
   /// Charge le manifest + tous les GeoJSON. Idempotent grâce au futur partagé.
   Future<void> ensureLoaded() {
     return _loadFuture ??= _load();
@@ -42,9 +50,78 @@ class PublicTransportService {
     _manifest = {for (final m in lines) m.lineNumber: m};
 
     await Future.wait(lines.map(_loadLine));
+    _computeImportance();
     myCustomPrintStatement(
       'PublicTransportService: ${_linesCache.length}/${lines.length} lignes chargées',
     );
+  }
+
+  /// Classe les lignes par longueur totale aller+retour décroissante. Sert
+  /// au filtrage zoom-dependent (les axes longs N-S / E-O sont toujours
+  /// affichés, les petites lignes locales n'apparaissent qu'au zoom élevé).
+  void _computeImportance() {
+    final scored = <MapEntry<String, double>>[];
+    for (final group in _linesCache.values) {
+      var total = 0.0;
+      for (final line in group.lines) {
+        total += _polylineLengthKm(line.coordinates);
+      }
+      scored.add(MapEntry(group.lineNumber, total));
+    }
+    scored.sort((a, b) => b.value.compareTo(a.value));
+    _linesByImportance = scored.map((e) => e.key).toList(growable: false);
+  }
+
+  static double _polylineLengthKm(List<LatLng> pts) {
+    if (pts.length < 2) return 0;
+    var total = 0.0;
+    for (var i = 0; i < pts.length - 1; i++) {
+      total += _haversineKm(pts[i], pts[i + 1]);
+    }
+    return total;
+  }
+
+  static double _haversineKm(LatLng a, LatLng b) {
+    const r = 6371.0;
+    final dLat = _toRad(b.latitude - a.latitude);
+    final dLng = _toRad(b.longitude - a.longitude);
+    final h = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_toRad(a.latitude)) *
+            math.cos(_toRad(b.latitude)) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    return 2 * r * math.asin(math.sqrt(h));
+  }
+
+  static double _toRad(double deg) => deg * math.pi / 180.0;
+
+  /// Sous-ensemble des lignes à afficher pour un niveau de zoom donné.
+  /// Plus on dezoom, moins de lignes — on garde les axes longs en priorité.
+  ///
+  /// Seuils calibrés pour Tana (95 lignes max, on en a 40 admin-validées en
+  /// production actuellement) :
+  ///   - zoom <  11   : top 5 (vue régionale, axes principaux)
+  ///   - zoom 11-12   : top 10
+  ///   - zoom 12-13   : top 20
+  ///   - zoom 13-14   : top 30
+  ///   - zoom >= 14   : toutes les lignes
+  Set<String> visibleLineNumbersForZoom(double zoom) {
+    final all = _linesByImportance;
+    if (all.isEmpty) return const {};
+    int cap;
+    if (zoom < 11) {
+      cap = 5;
+    } else if (zoom < 12) {
+      cap = 10;
+    } else if (zoom < 13) {
+      cap = 20;
+    } else if (zoom < 14) {
+      cap = 30;
+    } else {
+      cap = all.length;
+    }
+    if (cap >= all.length) return all.toSet();
+    return all.take(cap).toSet();
   }
 
   Future<void> _loadLine(LineMetadata m) async {

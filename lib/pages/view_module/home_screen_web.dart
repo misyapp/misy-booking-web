@@ -39,11 +39,13 @@ import 'package:rider_ride_hailing_app/services/guest_storage_service.dart';
 import 'package:rider_ride_hailing_app/models/guest_session.dart';
 import 'package:rider_ride_hailing_app/bottom_sheet_widget/request_for_ride.dart';
 import 'package:rider_ride_hailing_app/bottom_sheet_widget/drive_on_way.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_public/stop_card.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_public/transport_public_panel.dart';
 import 'package:rider_ride_hailing_app/services/public_transport_service.dart';
 import 'package:rider_ride_hailing_app/models/transport_line.dart' show TransportLine;
 import 'package:rider_ride_hailing_app/functions/print_function.dart' show myCustomPrintStatement;
 import 'package:rider_ride_hailing_app/widget/home_mode_toggle.dart';
+import 'package:rider_ride_hailing_app/widget/transport/stop_marker_factory.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 /// Page d'accueil Web style Uber - version allégée
@@ -165,14 +167,27 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   StreamSubscription<User?>? _authSubscription;
 
   // Polylines + markers du réseau taxi-be pour l'overlay de la carte. Calculés
-  // une fois quand on entre en mode public, gardés ensuite.
+  // au load + à chaque palier de zoom franchi (filtrage type IDFM : moins de
+  // lignes visibles à zoom faible).
   Set<Polyline> _publicTransportPolylines = {};
   Set<Marker> _publicTransportMarkers = {};
   bool _publicTransportLoaded = false;
 
   // Ligne sélectionnée dans la liste (= mise en évidence sur la carte). Null
-  // = toutes les lignes affichées avec leur opacité normale.
+  // = toutes les lignes (filtrées par zoom) affichées normalement.
   String? _publicSelectedLine;
+
+  // Zoom courant de la carte. Suivi via [GoogleMap.onCameraMove] pour piloter
+  // le filtrage zoom-dependent des lignes/stops.
+  double _publicMapZoom = 13.0;
+
+  // Stops dédupliqués générés au dernier rebuild des couches. Permet de
+  // retrouver les métadonnées à l'ouverture de la card de stop.
+  Map<String, _PublicStopAggregate> _publicStopsByKey = {};
+
+  // Stop sélectionné par l'utilisateur (clic sur un marker). Affiche la card
+  // flottante + agrandit le marker correspondant.
+  String? _publicSelectedStop;
 
   @override
   void initState() {
@@ -1089,6 +1104,22 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
           // Bouton recentrer sur ma position GPS
           _buildGpsButton(),
+
+          // Carte de l'arrêt sélectionné en mode Transport en commun.
+          if (_homeMode == HomeMode.publicTransport &&
+              _isPublicModeAdmin &&
+              _publicSelectedStop != null &&
+              _publicStopsByKey[_publicSelectedStop] != null)
+            StopCard(
+              stopName: _publicStopsByKey[_publicSelectedStop]!.name,
+              position: _publicStopsByKey[_publicSelectedStop]!.position,
+              lineNumbers: _publicStopsByKey[_publicSelectedStop]!.lines.toList()
+                ..sort(),
+              onClose: _dismissPublicStopCard,
+              onLineTap: (lineNumber) {
+                _onPublicLineSelected(lineNumber);
+              },
+            ),
         ],
       ),
     );
@@ -2216,6 +2247,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       gestureRecognizers: const {},
       padding: const EdgeInsets.only(top: 70, bottom: 400),
       onTap: _onMapTap,
+      onCameraMove: _onPublicCameraMove,
     );
   }
 
@@ -2246,6 +2278,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     setState(() {
       _homeMode = mode;
       _publicSelectedLine = null;
+      _publicSelectedStop = null;
     });
     if (mode == HomeMode.publicTransport && !_publicTransportLoaded) {
       _loadPublicTransportLayers();
@@ -2253,7 +2286,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   void _onPublicLineSelected(String? lineNumber) {
-    setState(() => _publicSelectedLine = lineNumber);
+    setState(() {
+      _publicSelectedLine = lineNumber;
+      _publicSelectedStop = null;
+    });
     _rebuildPublicTransportLayers();
     if (lineNumber != null) _zoomToPublicLine(lineNumber);
   }
@@ -2264,68 +2300,164 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     try {
       await PublicTransportService.instance.ensureLoaded();
       if (!mounted) return;
-      _rebuildPublicTransportLayers();
+      await _rebuildPublicTransportLayers();
       setState(() => _publicTransportLoaded = true);
     } catch (e) {
       myCustomPrintStatement('PublicTransportLayers: erreur chargement $e');
     }
   }
 
-  /// Recalcule les Set polyline/marker selon la sélection courante. Une ligne
-  /// sélectionnée s'affiche en plein opacité et plus épaisse, les autres se
-  /// font discrètes pour faire ressortir la sélection.
-  void _rebuildPublicTransportLayers() {
+  /// Recalcule les Set polyline/marker selon le zoom + la sélection.
+  ///
+  /// Stratégie type IDF Mobilités :
+  /// - Polylines : épaisses, semi-transparentes, filtrées par zoom
+  ///   (`PublicTransportService.visibleLineNumbersForZoom`).
+  /// - Stops : marker custom = carré arrondi couleur ligne avec numéro,
+  ///   uniquement à zoom élevé (>= 13). Au-dessous, la carte serait illisible.
+  /// - Sélection : ligne sélectionnée → autres lignes très atténuées, stops
+  ///   de la ligne en taille normale (et stop cliqué en taille agrandie).
+  /// - Dedupe stops : un même arrêt servi par 2 directions n'est rendu
+  ///   qu'une fois (lookup par position arrondie).
+  Future<void> _rebuildPublicTransportLayers() async {
     final svc = PublicTransportService.instance;
-    final lines = svc.allLines;
+    final groups = svc.allLines;
     final selected = _publicSelectedLine;
+    final selectedStop = _publicSelectedStop;
+    final dpr =
+        MediaQuery.maybeOf(context)?.devicePixelRatio ?? 2.0;
+
+    final visibleByZoom = svc.visibleLineNumbersForZoom(_publicMapZoom);
+    // La ligne sélectionnée force sa visibilité même si le zoom l'aurait
+    // exclue (UX : elle vient d'être tappée dans la liste).
+    final visible = selected == null
+        ? visibleByZoom
+        : (visibleByZoom..add(selected));
 
     final polylines = <Polyline>{};
-    final markers = <Marker>{};
+    // Stops dédupliqués : key = "lat,lng" arrondi à 5 décimales (~1m).
+    final stopsByKey = <String, _PublicStopAggregate>{};
+    final showStops = _publicMapZoom >= 13;
 
-    for (final group in lines) {
+    for (final group in groups) {
+      if (!visible.contains(group.lineNumber)) continue;
+
       final meta = svc.metadataFor(group.lineNumber);
       final color =
           meta != null ? Color(meta.colorValue) : const Color(0xFF1565C0);
-      final isSelected = selected == null || selected == group.lineNumber;
-      final opacity = isSelected ? 0.85 : 0.18;
-      final width = isSelected ? (selected != null ? 6 : 4) : 3;
+      final isSelected = selected != null && selected == group.lineNumber;
+      final isOther = selected != null && !isSelected;
 
-      void addLine(TransportLine? line, String dir) {
+      // Lignes plus larges que sur la V1, opacité un peu plus douce que les
+      // pastilles de stops (pour que les stops poppent par-dessus).
+      // Sélection : ligne plus épaisse, autres très atténuées.
+      final lineOpacity = isOther ? 0.18 : 0.62;
+      final width = isSelected ? 8 : (selected != null ? 4 : 6);
+
+      void addPolyline(TransportLine? line, String dir) {
         if (line == null || line.coordinates.length < 2) return;
         polylines.add(Polyline(
           polylineId: PolylineId('pt_${group.lineNumber}_$dir'),
           points: line.coordinates,
-          color: color.withOpacity(opacity),
+          color: color.withOpacity(lineOpacity),
           width: width,
           zIndex: isSelected ? 5 : 1,
           consumeTapEvents: false,
         ));
-        if (!isSelected) return;
-        for (var i = 0; i < line.stops.length; i++) {
-          markers.add(Marker(
-            markerId: MarkerId('pt_${group.lineNumber}_${dir}_$i'),
-            position: line.stops[i].position,
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-              _hueFor(color),
+      }
+
+      void aggregateStops(TransportLine? line) {
+        if (line == null) return;
+        if (!showStops) return;
+        if (isOther) return; // n'affiche pas les stops des lignes atténuées
+        for (final stop in line.stops) {
+          final key = _stopKey(stop.position);
+          final agg = stopsByKey.putIfAbsent(
+            key,
+            () => _PublicStopAggregate(
+              key: key,
+              position: stop.position,
+              name: stop.name,
+              primaryLine: group.lineNumber,
+              primaryColor: color,
             ),
-            anchor: const Offset(0.5, 0.5),
-            zIndex: 6,
-            infoWindow: InfoWindow(
-              title: line.stops[i].name,
-              snippet: 'Ligne ${group.lineNumber}',
-            ),
-          ));
+          );
+          agg.lines.add(group.lineNumber);
+          // Si plusieurs lignes desservent : on garde la couleur de la
+          // sélection ou de la ligne la plus prioritaire.
+          if (isSelected) {
+            agg.primaryLine = group.lineNumber;
+            agg.primaryColor = color;
+          }
         }
       }
 
-      addLine(group.aller, 'aller');
-      addLine(group.retour, 'retour');
+      addPolyline(group.aller, 'aller');
+      addPolyline(group.retour, 'retour');
+      aggregateStops(group.aller);
+      aggregateStops(group.retour);
     }
 
+    // Génération des markers custom pour les stops collectés.
+    final markers = <Marker>{};
+    for (final agg in stopsByKey.values) {
+      final isStopSelected = selectedStop == agg.key;
+      final icon = await StopMarkerFactory.create(
+        label: agg.primaryLine,
+        color: agg.primaryColor,
+        devicePixelRatio: dpr,
+        large: isStopSelected,
+      );
+      markers.add(Marker(
+        markerId: MarkerId('stop_${agg.key}'),
+        position: agg.position,
+        icon: icon,
+        anchor: const Offset(0.5, 0.5),
+        zIndex: isStopSelected ? 100 : 10,
+        consumeTapEvents: true,
+        onTap: () => _onPublicStopTap(agg),
+      ));
+    }
+
+    if (!mounted) return;
     setState(() {
       _publicTransportPolylines = polylines;
       _publicTransportMarkers = markers;
+      _publicStopsByKey = stopsByKey;
     });
+  }
+
+  /// Tap sur un stop : on l'agrandit + on affiche la card flottante.
+  void _onPublicStopTap(_PublicStopAggregate agg) {
+    setState(() => _publicSelectedStop = agg.key);
+    _rebuildPublicTransportLayers();
+  }
+
+  void _dismissPublicStopCard() {
+    setState(() => _publicSelectedStop = null);
+    _rebuildPublicTransportLayers();
+  }
+
+  static String _stopKey(LatLng p) =>
+      '${p.latitude.toStringAsFixed(5)},${p.longitude.toStringAsFixed(5)}';
+
+  /// Reagit au déplacement de caméra : tracking de zoom pour le filtrage.
+  /// Recompute les couches uniquement quand on franchit un seuil entier
+  /// (évite les rebuilds frame-rate pendant le pinch).
+  void _onPublicCameraMove(CameraPosition pos) {
+    if (_homeMode != HomeMode.publicTransport) return;
+    final newZoom = pos.zoom;
+    if (newZoom.floor() != _publicMapZoom.floor()) {
+      _publicMapZoom = newZoom;
+      // Relayer le rebuild après la frame courante pour ne pas bloquer le
+      // pan/zoom interaction (les rebuilds Bitmap async peuvent jitter).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _homeMode == HomeMode.publicTransport) {
+          _rebuildPublicTransportLayers();
+        }
+      });
+    } else {
+      _publicMapZoom = newZoom;
+    }
   }
 
   /// Zoom la caméra sur les bounds d'une ligne donnée (aller + retour).
@@ -2354,15 +2486,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         80,
       ),
     );
-  }
-
-  /// Approxime la teinte BitmapDescriptor la plus proche d'une [Color].
-  /// Google Maps n'accepte que des hues prédéfinis pour les markers par
-  /// défaut — on choisit le plus proche pour rester cohérent avec la couleur
-  /// de la ligne, en V1 (V2 = markers custom rasterisés).
-  double _hueFor(Color color) {
-    final hsl = HSLColor.fromColor(color);
-    return hsl.hue;
   }
 
   /// Ajuste le point de dépose quand l'utilisateur clique sur la carte
@@ -3738,4 +3861,25 @@ class _SchedulePickerDialogState extends State<_SchedulePickerDialog> {
       ],
     );
   }
+}
+
+/// Aggregate utilisé pour dédupliquer les arrêts du réseau public sur la carte.
+/// Plusieurs lignes peuvent desservir le même point (~1m près) — on n'affiche
+/// qu'un seul marker, taggé avec la "ligne primaire" (= ligne sélectionnée si
+/// applicable, sinon la 1re rencontrée).
+class _PublicStopAggregate {
+  final String key;
+  final LatLng position;
+  final String name;
+  String primaryLine;
+  Color primaryColor;
+  final Set<String> lines = <String>{};
+
+  _PublicStopAggregate({
+    required this.key,
+    required this.position,
+    required this.name,
+    required this.primaryLine,
+    required this.primaryColor,
+  });
 }
