@@ -32,6 +32,65 @@ class RouteMetadata {
   }
 }
 
+/// Horaires d'exploitation d'une ligne de transport.
+///
+/// Tous les champs sont optionnels — une ligne peut n'avoir que la coopérative,
+/// ou seulement des horaires partiels. Affichage côté app fait du best-effort.
+class LineSchedule {
+  /// Première départ de la journée (HH:mm), ex: "05:30".
+  final String? firstDeparture;
+
+  /// Dernier départ de la journée (HH:mm), ex: "19:00".
+  final String? lastDeparture;
+
+  /// Intervalle moyen entre 2 départs (minutes). Null = pas de fréquence régulière.
+  final int? frequencyMin;
+
+  /// Jours d'exploitation (codes courts EN). Default = tous les jours.
+  /// Valeurs valides : mon, tue, wed, thu, fri, sat, sun.
+  final List<String> daysOfOperation;
+
+  /// Note libre pour tout ce qui ne rentre pas dans les champs structurés
+  /// (ex: "pas de service les jours fériés", "horaires réduits le dimanche").
+  final String? notes;
+
+  const LineSchedule({
+    this.firstDeparture,
+    this.lastDeparture,
+    this.frequencyMin,
+    this.daysOfOperation = const ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
+    this.notes,
+  });
+
+  bool get isEmpty =>
+      firstDeparture == null &&
+      lastDeparture == null &&
+      frequencyMin == null &&
+      (notes == null || notes!.trim().isEmpty);
+
+  factory LineSchedule.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const LineSchedule();
+    final days = json['days_of_operation'];
+    return LineSchedule(
+      firstDeparture: json['first_departure'] as String?,
+      lastDeparture: json['last_departure'] as String?,
+      frequencyMin: (json['frequency_min'] as num?)?.toInt(),
+      daysOfOperation: days is List
+          ? days.map((d) => d.toString()).toList()
+          : const ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
+      notes: json['notes'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        if (firstDeparture != null) 'first_departure': firstDeparture,
+        if (lastDeparture != null) 'last_departure': lastDeparture,
+        if (frequencyMin != null) 'frequency_min': frequencyMin,
+        'days_of_operation': daysOfOperation,
+        if (notes != null && notes!.trim().isNotEmpty) 'notes': notes!.trim(),
+      };
+}
+
 /// Métadonnées d'une ligne de transport depuis le manifest
 class LineMetadata {
   final String lineNumber;
@@ -42,6 +101,13 @@ class LineMetadata {
   final RouteMetadata? aller;
   final RouteMetadata? retour;
 
+  /// Coopérative / opérateur de la ligne (ex: "Kofifa", "Cotrabe"). Posé par
+  /// le consultant ou l'admin lors de l'édition. Null = pas encore renseigné.
+  final String? cooperative;
+
+  /// Horaires d'exploitation. Null = pas encore renseignés.
+  final LineSchedule? schedule;
+
   const LineMetadata({
     required this.lineNumber,
     required this.displayName,
@@ -50,6 +116,8 @@ class LineMetadata {
     required this.isBundled,
     this.aller,
     this.retour,
+    this.cooperative,
+    this.schedule,
   });
 
   factory LineMetadata.fromJson(Map<String, dynamic> json) {
@@ -65,6 +133,36 @@ class LineMetadata {
       retour: json['retour'] != null
           ? RouteMetadata.fromJson(json['retour'])
           : null,
+      cooperative: (json['cooperative'] as String?)?.trim().isEmpty == true
+          ? null
+          : json['cooperative'] as String?,
+      schedule: json['schedule'] is Map
+          ? LineSchedule.fromJson(
+              Map<String, dynamic>.from(json['schedule'] as Map))
+          : null,
+    );
+  }
+
+  /// Reproduit l'objet en remplaçant les champs fournis. Utile pour fusionner
+  /// les overrides Firestore (cooperative/schedule édités) sur les métadonnées
+  /// du manifest.
+  LineMetadata copyWith({
+    String? displayName,
+    String? colorHex,
+    String? transportType,
+    String? cooperative,
+    LineSchedule? schedule,
+  }) {
+    return LineMetadata(
+      lineNumber: lineNumber,
+      displayName: displayName ?? this.displayName,
+      transportType: transportType ?? this.transportType,
+      colorHex: colorHex ?? this.colorHex,
+      isBundled: isBundled,
+      aller: aller,
+      retour: retour,
+      cooperative: cooperative ?? this.cooperative,
+      schedule: schedule ?? this.schedule,
     );
   }
 
@@ -184,10 +282,64 @@ class TransportLinesService {
   }
 
   /// Retourne la liste des métadonnées de toutes les lignes disponibles
-  /// (sans charger les GeoJSON, juste les infos du manifest)
+  /// (sans charger les GeoJSON, juste les infos du manifest).
+  ///
+  /// Fusionne les overrides Firestore `transport_lines_published` (nom,
+  /// couleur, coopérative, horaires édités par les consultants + validés par
+  /// l'admin) sur le manifest bundlé. Filtre les lignes marquées `is_deleted`.
   Future<List<LineMetadata>> getAllLineMetadata() async {
     await _loadManifest();
-    return _manifest?.values.toList() ?? [];
+    final base = _manifest?.values.toList() ?? [];
+    final overrides = await TransportEditorService.instance
+        .loadAllPublishedMetadata();
+    final out = <LineMetadata>[];
+    final seen = <String>{};
+    for (final m in base) {
+      final ov = overrides[m.lineNumber];
+      if (ov?['is_deleted'] == true) continue; // ligne supprimée
+      seen.add(m.lineNumber);
+      out.add(_overlay(m, ov));
+    }
+    // Lignes 100% Firestore (créées par consultant après build de l'app et
+    // donc absentes du manifest bundlé). On les expose ici pour qu'elles
+    // apparaissent dans le dashboard et l'app prod.
+    overrides.forEach((line, data) {
+      if (seen.contains(line)) return;
+      if (data['is_deleted'] == true) return;
+      out.add(LineMetadata(
+        lineNumber: line,
+        displayName: (data['display_name'] as String?) ?? 'Ligne $line',
+        transportType: (data['transport_type'] as String?) ?? 'bus',
+        colorHex: (data['color'] as String?) ?? '0xFF1565C0',
+        isBundled: false,
+        cooperative: (data['cooperative'] as String?)?.trim().isEmpty == true
+            ? null
+            : data['cooperative'] as String?,
+        schedule: data['schedule'] is Map
+            ? LineSchedule.fromJson(
+                Map<String, dynamic>.from(data['schedule'] as Map))
+            : null,
+      ));
+    });
+    return out;
+  }
+
+  /// Applique les overrides Firestore sur une `LineMetadata` du manifest.
+  /// Garde les valeurs du manifest pour les champs non présents.
+  LineMetadata _overlay(LineMetadata m, Map<String, dynamic>? ov) {
+    if (ov == null) return m;
+    return m.copyWith(
+      displayName: ov['display_name'] as String?,
+      colorHex: ov['color'] as String?,
+      transportType: ov['transport_type'] as String?,
+      cooperative: (ov['cooperative'] as String?)?.trim().isEmpty == true
+          ? null
+          : ov['cooperative'] as String?,
+      schedule: ov['schedule'] is Map
+          ? LineSchedule.fromJson(
+              Map<String, dynamic>.from(ov['schedule'] as Map))
+          : null,
+    );
   }
 
   /// Charge une ligne depuis ses métadonnées

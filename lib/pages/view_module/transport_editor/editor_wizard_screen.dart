@@ -7,11 +7,13 @@ import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/build_
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/annotation_dialog.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/editable_polyline_layer.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/editable_stops_layer.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/line_metadata_form.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/osm_base_map.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/tutorial_helpers.dart';
 import 'package:rider_ride_hailing_app/provider/build_line_flow_provider.dart';
 import 'package:rider_ride_hailing_app/provider/transport_editor_provider.dart';
 import 'package:rider_ride_hailing_app/services/transport_editor_service.dart';
+import 'package:rider_ride_hailing_app/services/transport_lines_service.dart';
 import 'package:showcaseview/showcaseview.dart';
 
 /// Wizard 2 étapes : tracé aller → tracé retour.
@@ -97,6 +99,7 @@ class _WizardBodyState extends State<_WizardBody> {
           appBar: _buildAppBar(p),
           body: Column(
             children: [
+              if (_isDeleteRequested(p)) _buildDeleteRequestBanner(p),
               Expanded(
                 child: Row(
                   children: [
@@ -127,6 +130,44 @@ class _WizardBodyState extends State<_WizardBody> {
       ),
       actions: [
         IconButton(
+          tooltip: 'Modifier les infos (nom, coopérative, couleur, horaires)',
+          icon: const Icon(Icons.edit_note_outlined),
+          onPressed: () => _openMetadataDialog(p),
+        ),
+        PopupMenuButton<String>(
+          tooltip: 'Plus',
+          icon: const Icon(Icons.more_vert),
+          onSelected: (v) {
+            if (v == 'delete_request') _openDeleteRequestDialog(p);
+            if (v == 'cancel_delete') _cancelDeleteRequest(p);
+          },
+          itemBuilder: (_) {
+            // Lit le doc Firestore via stream (cache du Consumer suffisant
+            // pour le build du menu — toggle entre demander/annuler).
+            return [
+              if (!_isDeleteRequested(p))
+                const PopupMenuItem(
+                  value: 'delete_request',
+                  child: Row(children: [
+                    Icon(Icons.delete_outline,
+                        size: 18, color: Color(0xFFE53935)),
+                    SizedBox(width: 8),
+                    Text('Demander suppression…'),
+                  ]),
+                ),
+              if (_isDeleteRequested(p))
+                const PopupMenuItem(
+                  value: 'cancel_delete',
+                  child: Row(children: [
+                    Icon(Icons.undo, size: 18),
+                    SizedBox(width: 8),
+                    Text('Annuler la demande de suppression'),
+                  ]),
+                ),
+            ];
+          },
+        ),
+        IconButton(
           tooltip: 'Revoir le tuto',
           icon: const Icon(Icons.school_outlined),
           onPressed: () async {
@@ -144,6 +185,238 @@ class _WizardBodyState extends State<_WizardBody> {
         ),
       ],
     );
+  }
+
+  bool _isDeleteRequested(TransportEditorProvider p) {
+    return p.editedDoc?['delete_requested'] == true;
+  }
+
+  Widget _buildDeleteRequestBanner(TransportEditorProvider p) {
+    final reason = p.editedDoc?['delete_request_reason'] as String?;
+    return Container(
+      width: double.infinity,
+      color: const Color(0xFFFFEBEE),
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+      child: Row(
+        children: [
+          const Icon(Icons.delete_outline,
+              color: Color(0xFFC62828), size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Suppression en attente de validation admin',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFFC62828)),
+                ),
+                if (reason != null && reason.isNotEmpty)
+                  Text(
+                    'Raison : $reason',
+                    style: const TextStyle(
+                        fontSize: 12, color: Color(0xFFC62828)),
+                  ),
+              ],
+            ),
+          ),
+          TextButton.icon(
+            onPressed: () => _cancelDeleteRequest(p),
+            icon: const Icon(Icons.undo, size: 16),
+            label: const Text('Annuler'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /* ───── Dialog : édition métadonnées (nom, coop, couleur, horaires) ───── */
+
+  Future<void> _openMetadataDialog(TransportEditorProvider p) async {
+    final line = p.lineNumber;
+    if (line == null) return;
+    final doc = p.editedDoc ?? <String, dynamic>{};
+    final ctrl = LineMetadataFormController()
+      ..hydrateFrom(LineMetadata(
+        lineNumber: line,
+        displayName: (doc['display_name'] as String?) ?? 'Ligne $line',
+        transportType: (doc['transport_type'] as String?) ?? 'bus',
+        colorHex: (doc['color'] as String?) ?? '0xFF1565C0',
+        isBundled: (doc['is_bundled'] as bool?) ?? true,
+        cooperative: doc['cooperative'] as String?,
+        schedule: doc['schedule'] is Map
+            ? LineSchedule.fromJson(
+                Map<String, dynamic>.from(doc['schedule'] as Map))
+            : null,
+      ));
+
+    bool clearCoop = false;
+    bool clearSchedule = false;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) {
+        return StatefulBuilder(builder: (ctx, setLocal) {
+          return AlertDialog(
+            title: const Text('Modifier les infos de la ligne'),
+            content: SizedBox(
+              width: 480,
+              child: SingleChildScrollView(
+                child: LineMetadataForm(
+                  controller: ctrl,
+                  numberLocked: true,
+                  onChanged: () => setLocal(() {}),
+                ),
+              ),
+            ),
+            actions: [
+              TextButton.icon(
+                onPressed: () => setLocal(() {
+                  ctrl.coopCtrl.clear();
+                  clearCoop = true;
+                }),
+                icon: const Icon(Icons.clear, size: 16),
+                label: const Text('Effacer coopérative'),
+              ),
+              TextButton.icon(
+                onPressed: () => setLocal(() {
+                  ctrl.firstCtrl.clear();
+                  ctrl.lastCtrl.clear();
+                  ctrl.frequencyCtrl.clear();
+                  ctrl.scheduleNotesCtrl.clear();
+                  clearSchedule = true;
+                }),
+                icon: const Icon(Icons.clear, size: 16),
+                label: const Text('Effacer horaires'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(dialogCtx).pop(false),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.of(dialogCtx).pop(true),
+                icon: const Icon(Icons.check, size: 16),
+                label: const Text('Enregistrer'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+
+    if (saved != true || !mounted) {
+      ctrl.disposeAll();
+      return;
+    }
+
+    try {
+      final builtSchedule = ctrl.buildScheduleJson();
+      await TransportEditorService.instance.updateLineMetadata(
+        lineNumber: line,
+        displayName: ctrl.nameCtrl.text,
+        transportType: ctrl.transportType,
+        colorHex: ctrl.colorHex,
+        cooperative: clearCoop ? null : ctrl.coopCtrl.text,
+        clearCooperative: clearCoop,
+        schedule: clearSchedule ? null : builtSchedule,
+        clearSchedule: clearSchedule,
+      );
+      // Reload local doc pour refléter immédiatement dans l'UI.
+      await p.loadLine(line, initialStep: p.step);
+      if (!mounted) return;
+      _snack(context, 'Infos mises à jour ✓');
+    } catch (e) {
+      if (!mounted) return;
+      _snack(context, 'Erreur : $e');
+    } finally {
+      ctrl.disposeAll();
+    }
+  }
+
+  /* ───── Suppression : demande consultant + annulation ───── */
+
+  Future<void> _openDeleteRequestDialog(TransportEditorProvider p) async {
+    final line = p.lineNumber;
+    if (line == null) return;
+    final reasonCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Demander la suppression'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'La ligne ne sera pas supprimée immédiatement — un admin doit '
+              'valider la demande. La ligne reste fonctionnelle dans l\'app '
+              'tant que la suppression n\'est pas confirmée.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Raison',
+                hintText: 'ex: ligne plus exploitée depuis…',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE53935),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              if (reasonCtrl.text.trim().isEmpty) return;
+              Navigator.of(dialogCtx).pop(true);
+            },
+            icon: const Icon(Icons.delete_outline, size: 16),
+            label: const Text('Demander suppression'),
+          ),
+        ],
+      ),
+    );
+    final reason = reasonCtrl.text.trim();
+    reasonCtrl.dispose();
+    if (confirmed != true || reason.isEmpty || !mounted) return;
+    try {
+      await TransportEditorService.instance.requestDeleteLine(
+        lineNumber: line,
+        reason: reason,
+      );
+      await p.loadLine(line, initialStep: p.step);
+      if (!mounted) return;
+      _snack(context,
+          'Demande envoyée — un admin recevra la notification dans la review.');
+    } catch (e) {
+      if (!mounted) return;
+      _snack(context, 'Erreur : $e');
+    }
+  }
+
+  Future<void> _cancelDeleteRequest(TransportEditorProvider p) async {
+    final line = p.lineNumber;
+    if (line == null) return;
+    try {
+      await TransportEditorService.instance.cancelDeleteRequest(line);
+      await p.loadLine(line, initialStep: p.step);
+      if (!mounted) return;
+      _snack(context, 'Demande annulée');
+    } catch (e) {
+      if (!mounted) return;
+      _snack(context, 'Erreur : $e');
+    }
   }
 
   Widget _buildStepper(TransportEditorProvider p) {

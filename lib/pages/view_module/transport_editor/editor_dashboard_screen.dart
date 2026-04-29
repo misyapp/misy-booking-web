@@ -267,8 +267,10 @@ class _DashboardBodyState extends State<_DashboardBody> {
     int sent = 0;
     int rejected = 0;
     int annotated = 0;
+    int deleteRequested = 0;
     for (final v in validations.values) {
       bool hasAnnotation = false;
+      if (v.deleteRequested) deleteRequested++;
       for (final step in EditorStep.values) {
         final cs = v.statusFor(step);
         final admin = v.adminReviewFor(step);
@@ -294,6 +296,9 @@ class _DashboardBodyState extends State<_DashboardBody> {
       _Kpi('À refaire', '$rejected', Icons.replay, const Color(0xFFE53935)),
       _Kpi('Annotées', '$annotated', Icons.sticky_note_2_outlined,
           const Color(0xFF1E88E5)),
+      if (deleteRequested > 0)
+        _Kpi('Suppr. demandée', '$deleteRequested', Icons.delete_outline,
+            const Color(0xFFC62828)),
     ];
 
     return LayoutBuilder(builder: (ctx, c) {
@@ -1013,15 +1018,19 @@ class _DashboardBodyState extends State<_DashboardBody> {
 
   Widget _buildLineCard(
       LineMetadata m, TransportLineValidation v, int index) {
+    final deletePending = v.deleteRequested;
+    final borderColor = deletePending
+        ? const Color(0xFFE53935)
+        : (v.isFullyValidated
+            ? const Color(0xFF66BB6A)
+            : Colors.grey.shade300);
     final card = Card(
       elevation: 1,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(
-          color: v.isFullyValidated
-              ? const Color(0xFF66BB6A)
-              : Colors.grey.shade300,
-          width: v.isFullyValidated ? 2 : 1,
+          color: borderColor,
+          width: (deletePending || v.isFullyValidated) ? 2 : 1,
         ),
       ),
       child: InkWell(
@@ -1037,16 +1046,67 @@ class _DashboardBodyState extends State<_DashboardBody> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(m.displayName,
-                        style: const TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.bold),
-                        overflow: TextOverflow.ellipsis),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(m.displayName,
+                              style: const TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                        if (deletePending) ...[
+                          const SizedBox(width: 6),
+                          const Icon(Icons.delete_outline,
+                              size: 14, color: Color(0xFFC62828)),
+                        ] else if (v.isFullyValidated) ...[
+                          const SizedBox(width: 6),
+                          const Tooltip(
+                            message: 'Tape pour rééditer',
+                            child: Icon(Icons.edit_outlined,
+                                size: 14, color: Color(0xFF43A047)),
+                          ),
+                        ],
+                      ],
+                    ),
                     const SizedBox(height: 2),
-                    Text('Ligne ${m.lineNumber} · ${m.transportType}',
+                    Text(
+                      _buildSubtitle(m),
+                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (m.schedule != null && !m.schedule!.isEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        _formatScheduleSummary(m.schedule!),
                         style: TextStyle(
-                            fontSize: 11, color: Colors.grey[600])),
+                            fontSize: 11, color: Colors.grey[600]),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                     const SizedBox(height: 6),
                     _buildPastilles(v, withTutoKey: index == 0),
+                    if (v.isFullyValidated && !deletePending) ...[
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Tape pour rééditer ↻',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Color(0xFF43A047),
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                    if (deletePending) ...[
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Suppression demandée — en attente admin',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Color(0xFFC62828),
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -1309,6 +1369,39 @@ class _DashboardBodyState extends State<_DashboardBody> {
         ],
       ),
     );
+  }
+
+  String _buildSubtitle(LineMetadata m) {
+    final parts = <String>['Ligne ${m.lineNumber}', m.transportType];
+    if (m.cooperative != null && m.cooperative!.trim().isNotEmpty) {
+      parts.add(m.cooperative!.trim());
+    }
+    return parts.join(' · ');
+  }
+
+  String _formatScheduleSummary(LineSchedule s) {
+    final parts = <String>[];
+    if (s.firstDeparture != null && s.lastDeparture != null) {
+      parts.add('${s.firstDeparture}–${s.lastDeparture}');
+    } else if (s.firstDeparture != null) {
+      parts.add('dès ${s.firstDeparture}');
+    } else if (s.lastDeparture != null) {
+      parts.add('jusqu\'à ${s.lastDeparture}');
+    }
+    if (s.frequencyMin != null) parts.add('toutes les ${s.frequencyMin} min');
+    if (s.daysOfOperation.length < 7) {
+      const labels = {
+        'mon': 'Lun',
+        'tue': 'Mar',
+        'wed': 'Mer',
+        'thu': 'Jeu',
+        'fri': 'Ven',
+        'sat': 'Sam',
+        'sun': 'Dim',
+      };
+      parts.add(s.daysOfOperation.map((d) => labels[d] ?? d).join('/'));
+    }
+    return parts.isEmpty ? '' : '🕒 ${parts.join(' · ')}';
   }
 
   void _openWizard(LineMetadata m, TransportLineValidation v) {

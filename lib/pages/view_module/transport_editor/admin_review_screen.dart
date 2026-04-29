@@ -203,6 +203,14 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
                             const SizedBox(height: 16),
                             SizedBox(height: 360, child: _buildActivityCard()),
                           ],
+                          if (validations.values
+                              .any((v) => v.deleteRequested)) ...[
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              height: 360,
+                              child: _buildDeleteRequestsCard(validations),
+                            ),
+                          ],
                           const SizedBox(height: 16),
                           SizedBox(
                             height: 520,
@@ -219,6 +227,168 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
     );
   }
 
+  /* ──────────────────── DELETE REQUESTS CARD ──────────────────── */
+
+  Widget _buildDeleteRequestsCard(
+      Map<String, TransportLineValidation> validations) {
+    final pending = validations.values
+        .where((v) => v.deleteRequested)
+        .toList()
+      ..sort((a, b) => a.lineNumber.compareTo(b.lineNumber));
+    return _dashboardCard(
+      title: 'Demandes de suppression (${pending.length})',
+      icon: Icons.delete_outline,
+      iconColor: const Color(0xFFC62828),
+      child: pending.isEmpty
+          ? const Center(child: Text('Aucune demande'))
+          : ListView.builder(
+              padding: const EdgeInsets.all(8),
+              itemCount: pending.length,
+              itemBuilder: (ctx, i) {
+                final v = pending[i];
+                final m = _metaFor(v.lineNumber);
+                final reason = v.deleteRequestReason ?? '(pas de raison fournie)';
+                return Card(
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: const BorderSide(color: Color(0xFFFFCDD2)),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.delete_outline,
+                                color: Color(0xFFC62828), size: 18),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                m?.displayName ?? 'Ligne ${v.lineNumber}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            Text('Ligne ${v.lineNumber}',
+                                style: TextStyle(
+                                    color: Colors.grey[600], fontSize: 12)),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text('Demandée par ${v.deleteRequestedByEmail ?? "?"}',
+                            style: TextStyle(
+                                fontSize: 11, color: Colors.grey[600])),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Raison : $reason',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFC62828),
+                                foregroundColor: Colors.white,
+                              ),
+                              onPressed: () =>
+                                  _confirmDeleteFromRequest(v.lineNumber),
+                              icon: const Icon(Icons.check, size: 16),
+                              label: const Text('Confirmer la suppression'),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              onPressed: () =>
+                                  _refuseDeleteRequest(v.lineNumber),
+                              icon: const Icon(Icons.close, size: 16),
+                              label: const Text('Refuser'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+    );
+  }
+
+  Future<void> _confirmDeleteFromRequest(String lineNumber) async {
+    final noteCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        title: Text('Supprimer la ligne $lineNumber ?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'La ligne sera retirée immédiatement de l\'app prod. Les '
+              'documents Firestore restent (audit) — la suppression est '
+              'réversible via "Restaurer".',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: noteCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Note (optionnel)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(dctx).pop(false),
+              child: const Text('Annuler')),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFC62828),
+                foregroundColor: Colors.white),
+            onPressed: () => Navigator.of(dctx).pop(true),
+            icon: const Icon(Icons.delete_outline, size: 16),
+            label: const Text('Confirmer'),
+          ),
+        ],
+      ),
+    );
+    final note = noteCtrl.text.trim();
+    noteCtrl.dispose();
+    if (ok != true || !mounted) return;
+    try {
+      await TransportEditorService.instance.confirmDeleteLine(
+        lineNumber: lineNumber,
+        adminNote: note.isEmpty ? null : note,
+      );
+      if (!mounted) return;
+      _snack('Ligne $lineNumber supprimée');
+    } catch (e) {
+      if (!mounted) return;
+      _snack('Erreur : $e');
+    }
+  }
+
+  Future<void> _refuseDeleteRequest(String lineNumber) async {
+    try {
+      await TransportEditorService.instance.cancelDeleteRequest(lineNumber);
+      if (!mounted) return;
+      _snack('Demande refusée — la ligne reste en prod');
+    } catch (e) {
+      if (!mounted) return;
+      _snack('Erreur : $e');
+    }
+  }
+
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
+  }
+
   /* ──────────────────── KPI ROW ──────────────────── */
 
   Widget _buildKpiRow(
@@ -233,6 +403,8 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
         .where((i) => i.adminStatus == AdminStatus.rejected)
         .length;
     final activeConsultants = _distinctEmails(items).length;
+    final deleteRequested =
+        validations.values.where((v) => v.deleteRequested).length;
 
     final kpis = [
       _Kpi('Lignes totales', '$total', Icons.directions_bus,
@@ -245,6 +417,9 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
           const Color(0xFFE53935)),
       _Kpi('Consultants actifs', '$activeConsultants', Icons.people,
           const Color(0xFF1565C0)),
+      if (deleteRequested > 0)
+        _Kpi('Suppr. demandée', '$deleteRequested', Icons.delete_outline,
+            const Color(0xFFC62828)),
     ];
 
     return LayoutBuilder(builder: (ctx, c) {
@@ -1224,6 +1399,7 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
     required IconData icon,
     required Widget child,
     Widget? trailing,
+    Color? iconColor,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -1245,7 +1421,7 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
                 const EdgeInsets.fromLTRB(14, 12, 14, 8),
             child: Row(
               children: [
-                Icon(icon, size: 18, color: const Color(0xFF5E35B1)),
+                Icon(icon, size: 18, color: iconColor ?? const Color(0xFF5E35B1)),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(title,

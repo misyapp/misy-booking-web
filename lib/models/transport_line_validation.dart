@@ -222,6 +222,10 @@ class TransportLineValidation {
   final String? retourNote;
   final ConsultantFlag? allerFlag;
   final ConsultantFlag? retourFlag;
+  // Demande de suppression du consultant (admin seul peut confirmer).
+  final bool deleteRequested;
+  final String? deleteRequestReason;
+  final String? deleteRequestedByEmail;
 
   const TransportLineValidation({
     required this.lineNumber,
@@ -236,6 +240,9 @@ class TransportLineValidation {
     this.retourNote,
     this.allerFlag,
     this.retourFlag,
+    this.deleteRequested = false,
+    this.deleteRequestReason,
+    this.deleteRequestedByEmail,
   });
 
   factory TransportLineValidation.empty(String lineNumber) =>
@@ -264,6 +271,9 @@ class TransportLineValidation {
           ConsultantFlagX.fromCode(data['aller_consultant_flag'] as String?),
       retourFlag:
           ConsultantFlagX.fromCode(data['retour_consultant_flag'] as String?),
+      deleteRequested: data['delete_requested'] == true,
+      deleteRequestReason: _readNote(data['delete_request_reason']),
+      deleteRequestedByEmail: data['delete_requested_by_email'] as String?,
     );
   }
 

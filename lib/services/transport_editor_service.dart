@@ -45,6 +45,35 @@ class TransportEditorService {
     return TransportLineValidation.fromFirestore(lineNumber, doc.data()!);
   }
 
+  /// Charge les métadonnées publiées (display_name, color, cooperative,
+  /// schedule, is_deleted, etc.) pour toutes les lignes. Utilisé par
+  /// `TransportLinesService.getAllLineMetadata` pour fusionner les overrides
+  /// admin sur le manifest bundlé. Retourne un map `{lineNumber: data}`.
+  ///
+  /// Ne lit PAS les feature_collection (gros) — uniquement les champs scalaires.
+  Future<Map<String, Map<String, dynamic>>> loadAllPublishedMetadata() async {
+    try {
+      final snap = await _db.collection(collPublished).get();
+      final out = <String, Map<String, dynamic>>{};
+      for (final doc in snap.docs) {
+        final data = Map<String, dynamic>.from(doc.data());
+        // On retire les FC volumineux — pas utile pour le manifest.
+        for (final dir in ['aller', 'retour']) {
+          if (data[dir] is Map) {
+            final m = Map<String, dynamic>.from(data[dir] as Map);
+            m.remove('feature_collection_json');
+            data[dir] = m;
+          }
+        }
+        out[doc.id] = data;
+      }
+      return out;
+    } catch (e) {
+      myCustomPrintStatement('loadAllPublishedMetadata KO: $e');
+      return {};
+    }
+  }
+
   Future<void> _setStepStatus(
     String lineNumber,
     EditorStep step,
@@ -449,6 +478,213 @@ class TransportEditorService {
     );
   }
 
+  // ───────────────────────── Métadonnées ligne ─────────────────────────
+
+  /// Édite les métadonnées d'une ligne (nom affiché, type, couleur,
+  /// coopérative, horaires) sans toucher au tracé. Écrit dans
+  /// `transport_lines_edited` (visible immédiatement par le consultant) ET
+  /// `transport_lines_published` (visible côté app prod). Marque admin_status
+  /// inchangé — c'est volontairement une édition "soft" qui ne refait pas
+  /// repasser la ligne par la review.
+  ///
+  /// Passer une chaîne vide / null à un champ pour l'effacer côté Firestore.
+  Future<void> updateLineMetadata({
+    required String lineNumber,
+    String? displayName,
+    String? transportType,
+    String? colorHex,
+    String? cooperative,
+    Map<String, dynamic>? schedule,
+    bool clearCooperative = false,
+    bool clearSchedule = false,
+  }) async {
+    final now = FieldValue.serverTimestamp();
+    final uid = AdminAuthService.instance.currentUid;
+    final email = AdminAuthService.instance.currentEmail;
+
+    final patch = <String, dynamic>{
+      'last_updated': now,
+      'last_updated_by': uid,
+    };
+    if (displayName != null && displayName.trim().isNotEmpty) {
+      patch['display_name'] = displayName.trim();
+    }
+    if (transportType != null && transportType.trim().isNotEmpty) {
+      patch['transport_type'] = transportType.trim();
+    }
+    if (colorHex != null && colorHex.trim().isNotEmpty) {
+      patch['color'] = colorHex.trim();
+    }
+    if (clearCooperative) {
+      patch['cooperative'] = FieldValue.delete();
+    } else if (cooperative != null && cooperative.trim().isNotEmpty) {
+      patch['cooperative'] = cooperative.trim();
+    }
+    if (clearSchedule) {
+      patch['schedule'] = FieldValue.delete();
+    } else if (schedule != null) {
+      patch['schedule'] = schedule;
+    }
+
+    // 1. Écrit dans transport_lines_edited (source de vérité session).
+    await _db.collection(collEdited).doc(lineNumber).set(
+          patch,
+          SetOptions(merge: true),
+        );
+
+    // 2. Mirror dans transport_lines_published. La ligne y existe déjà
+    //    (publiée précédemment) ou pas — `merge: true` gère les 2 cas.
+    //    Pour les lignes jamais publiées, on crée juste les champs scalaires
+    //    sans FC : l'app fallback sur l'asset bundlé pour le tracé, mais
+    //    affiche bien le nouveau nom/coopérative/horaire.
+    final pubPatch = Map<String, dynamic>.from(patch)
+      ..['line_number'] = lineNumber
+      ..remove('last_updated_by')
+      ..['edited_metadata_at'] = now
+      ..['edited_metadata_by_email'] = email;
+    await _db.collection(collPublished).doc(lineNumber).set(
+          pubPatch,
+          SetOptions(merge: true),
+        );
+
+    await _appendLog(
+      lineNumber: lineNumber,
+      direction: 'aller', // n/a, kind=metadata
+      kind: 'metadata',
+      action: 'updated',
+    );
+  }
+
+  // ───────────────────────── Suppression ─────────────────────────
+
+  /// Le consultant demande la suppression d'une ligne. Écrit un drapeau
+  /// `delete_requested` dans `transport_line_validations`, visible dans la
+  /// queue admin. La ligne reste fonctionnelle côté app tant que l'admin n'a
+  /// pas confirmé — la suppression réelle est `confirmDeleteLine`.
+  Future<void> requestDeleteLine({
+    required String lineNumber,
+    required String reason,
+  }) async {
+    final now = FieldValue.serverTimestamp();
+    final email = AdminAuthService.instance.currentEmail;
+    final uid = AdminAuthService.instance.currentUid;
+
+    await _db.collection(collValidations).doc(lineNumber).set({
+      'delete_requested': true,
+      'delete_request_reason': reason,
+      'delete_requested_at': now,
+      'delete_requested_by_email': email,
+      'updated_at': now,
+      'updated_by': uid,
+      'updated_by_email': email,
+    }, SetOptions(merge: true));
+
+    // Mirror le flag dans transport_lines_edited pour que le wizard puisse
+    // afficher l'état "demande de suppression en cours" sans nouveau stream.
+    await _db.collection(collEdited).doc(lineNumber).set({
+      'delete_requested': true,
+      'delete_request_reason': reason,
+      'last_updated': now,
+    }, SetOptions(merge: true));
+
+    await _appendLog(
+      lineNumber: lineNumber,
+      direction: 'aller',
+      kind: 'delete',
+      action: 'requested',
+    );
+  }
+
+  /// Le consultant annule sa demande de suppression. Efface les drapeaux
+  /// `delete_requested*` dans les 2 collections.
+  Future<void> cancelDeleteRequest(String lineNumber) async {
+    final now = FieldValue.serverTimestamp();
+    final email = AdminAuthService.instance.currentEmail;
+
+    await _db.collection(collValidations).doc(lineNumber).set({
+      'delete_requested': FieldValue.delete(),
+      'delete_request_reason': FieldValue.delete(),
+      'delete_requested_at': FieldValue.delete(),
+      'delete_requested_by_email': FieldValue.delete(),
+      'updated_at': now,
+      'updated_by_email': email,
+    }, SetOptions(merge: true));
+
+    await _db.collection(collEdited).doc(lineNumber).set({
+      'delete_requested': FieldValue.delete(),
+      'delete_request_reason': FieldValue.delete(),
+      'last_updated': now,
+    }, SetOptions(merge: true));
+
+    await _appendLog(
+      lineNumber: lineNumber,
+      direction: 'aller',
+      kind: 'delete',
+      action: 'cancelled',
+    );
+  }
+
+  /// Admin confirme la suppression : pose `is_deleted=true` dans
+  /// `transport_lines_published` (filtré par l'app + le dashboard) et marque
+  /// `deleted_at` dans `transport_lines_edited`. Conserve les docs pour
+  /// l'audit — pas de delete physique.
+  Future<void> confirmDeleteLine({
+    required String lineNumber,
+    String? adminNote,
+  }) async {
+    final now = FieldValue.serverTimestamp();
+    final email = AdminAuthService.instance.currentEmail;
+    final uid = AdminAuthService.instance.currentUid;
+
+    await _db.collection(collPublished).doc(lineNumber).set({
+      'line_number': lineNumber,
+      'is_deleted': true,
+      'deleted_at': now,
+      'deleted_by_email': email,
+      if (adminNote != null && adminNote.trim().isNotEmpty)
+        'deleted_admin_note': adminNote.trim(),
+      'last_updated': now,
+    }, SetOptions(merge: true));
+
+    await _db.collection(collEdited).doc(lineNumber).set({
+      'is_deleted': true,
+      'deleted_at': now,
+      'deleted_by': uid,
+      'last_updated': now,
+    }, SetOptions(merge: true));
+
+    await _appendLog(
+      lineNumber: lineNumber,
+      direction: 'aller',
+      kind: 'delete',
+      action: 'confirmed',
+    );
+  }
+
+  /// Admin restaure une ligne supprimée. Efface le flag `is_deleted`.
+  Future<void> restoreDeletedLine(String lineNumber) async {
+    final now = FieldValue.serverTimestamp();
+    await _db.collection(collPublished).doc(lineNumber).set({
+      'is_deleted': FieldValue.delete(),
+      'deleted_at': FieldValue.delete(),
+      'deleted_by_email': FieldValue.delete(),
+      'deleted_admin_note': FieldValue.delete(),
+      'last_updated': now,
+    }, SetOptions(merge: true));
+    await _db.collection(collEdited).doc(lineNumber).set({
+      'is_deleted': FieldValue.delete(),
+      'deleted_at': FieldValue.delete(),
+      'deleted_by': FieldValue.delete(),
+      'last_updated': now,
+    }, SetOptions(merge: true));
+    await _appendLog(
+      lineNumber: lineNumber,
+      direction: 'aller',
+      kind: 'delete',
+      action: 'restored',
+    );
+  }
+
   // ───────────────────────── Nouvelle ligne ─────────────────────────
 
   Future<void> createNewLine({
@@ -458,12 +694,16 @@ class TransportEditorService {
     required String colorHex,
     required Map<String, dynamic> allerFeatureCollection,
     required Map<String, dynamic> retourFeatureCollection,
+    String? cooperative,
+    Map<String, dynamic>? schedule,
   }) async {
     final ref = _db.collection(collEdited).doc(lineNumber);
     final exists = (await ref.get()).exists;
     if (exists) {
       throw Exception('Ligne $lineNumber existe déjà');
     }
+
+    final coopClean = cooperative?.trim();
 
     await ref.set({
       'line_number': lineNumber,
@@ -472,6 +712,8 @@ class TransportEditorService {
       'color': colorHex,
       'is_bundled': true,
       'is_new_line': true,
+      if (coopClean != null && coopClean.isNotEmpty) 'cooperative': coopClean,
+      if (schedule != null) 'schedule': schedule,
       'aller': {
         'feature_collection_json': json.encode(allerFeatureCollection),
         'updated_at': FieldValue.serverTimestamp(),
