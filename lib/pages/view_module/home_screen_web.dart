@@ -8,6 +8,7 @@ import 'package:rider_ride_hailing_app/services/admin_auth_service.dart';
 import 'dart:js_util' as js_util;
 import 'dart:html' as html;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -156,6 +157,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // couches et le panneau gauche changent.
   HomeMode _homeMode = HomeMode.course;
 
+  // Gate : pour le moment, le mode "Transport en commun" n'est exposé qu'au
+  // compte admin@misyapp.com. Les autres utilisateurs ne voient ni le toggle
+  // ni la sidebar dédiée. À retirer quand la feature sera publique.
+  static const String _publicModeAdminEmail = 'admin@misyapp.com';
+  bool _isPublicModeAdmin = false;
+  StreamSubscription<User?>? _authSubscription;
+
   // Polylines + markers du réseau taxi-be pour l'overlay de la carte. Calculés
   // une fois quand on entre en mode public, gardés ensuite.
   Set<Polyline> _publicTransportPolylines = {};
@@ -175,6 +183,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _restorePendingScheduledBooking();
     _createCustomMarkers();
     _checkTransportEditorRole();
+    _watchPublicModeGate();
 
     // Écouter les changements de TripProvider pour reset l'UI après course
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1034,7 +1043,30 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _isPickupFocused.dispose();
     _isDestinationFocused.dispose();
     _isSearching.dispose();
+    _authSubscription?.cancel();
     super.dispose();
+  }
+
+  /// Met à jour [_isPublicModeAdmin] selon l'utilisateur courant. Quand le
+  /// gate se ferme (logout, switch de compte non-admin), on force le retour
+  /// en mode Course pour ne pas laisser l'utilisateur sur une UI cachée.
+  void _watchPublicModeGate() {
+    void apply(User? user) {
+      final isAdmin = user?.email == _publicModeAdminEmail;
+      if (!mounted) return;
+      if (isAdmin == _isPublicModeAdmin) return;
+      setState(() {
+        _isPublicModeAdmin = isAdmin;
+        if (!isAdmin && _homeMode == HomeMode.publicTransport) {
+          _homeMode = HomeMode.course;
+          _publicSelectedLine = null;
+        }
+      });
+    }
+
+    apply(FirebaseAuth.instance.currentUser);
+    _authSubscription =
+        FirebaseAuth.instance.authStateChanges().listen(apply);
   }
 
   @override
@@ -1144,8 +1176,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final currentStep = tripProvider.currentStep;
 
     // En mode "Transport en commun" : sidebar dédiée, peu importe l'étape
-    // Course (les 2 modes sont isolés).
-    if (_homeMode == HomeMode.publicTransport) {
+    // Course (les 2 modes sont isolés). Gardé derrière le flag admin tant
+    // que la feature n'est pas publique.
+    if (_homeMode == HomeMode.publicTransport && _isPublicModeAdmin) {
       return TransportPublicPanel(
         mode: _homeMode,
         onModeChanged: _setHomeMode,
@@ -2209,6 +2242,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   void _setHomeMode(HomeMode mode) {
     if (_homeMode == mode) return;
+    if (mode == HomeMode.publicTransport && !_isPublicModeAdmin) return;
     setState(() {
       _homeMode = mode;
       _publicSelectedLine = null;
@@ -2509,14 +2543,16 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
                 const SizedBox(height: 16),
 
-                // Toggle Course / Transport en commun. La carte reste
-                // partagée — seule la sidebar et les couches changent.
-                HomeModeToggle(
-                  current: _homeMode,
-                  onChanged: _setHomeMode,
-                ),
-
-                const SizedBox(height: 16),
+                // Toggle Course / Transport en commun. Gardé visible
+                // uniquement pour admin@misyapp.com tant que le mode public
+                // n'est pas exposé à tous les utilisateurs.
+                if (_isPublicModeAdmin) ...[
+                  HomeModeToggle(
+                    current: _homeMode,
+                    onChanged: _setHomeMode,
+                  ),
+                  const SizedBox(height: 16),
+                ],
 
                 Expanded(
                   child: Column(
