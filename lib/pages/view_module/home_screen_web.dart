@@ -2341,7 +2341,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
 
     final polylines = <Polyline>{};
-    final showStops = _publicMapZoom >= 13;
+    // Stops uniquement à zoom élevé (sinon clutter type IDF Mobilités sur
+    // toute la métropole). À zoom 13 on voit le réseau, à 14+ les arrêts
+    // se détaillent.
+    final showStops = _publicMapZoom >= 14;
 
     // Liste plate avant clustering. Permet de dédupliquer un arrêt aller +
     // son équivalent retour qui sont à des positions légèrement décalées
@@ -2369,7 +2372,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           meta != null ? Color(meta.colorValue) : const Color(0xFF1565C0);
       final isSelected = selected != null;
       const lineOpacity = 0.62;
-      final width = isSelected ? 8 : 6;
+      final width = isSelected ? 7 : 5;
 
       void addPolyline(TransportLine? line, String dir) {
         if (line == null || line.coordinates.length < 2) return;

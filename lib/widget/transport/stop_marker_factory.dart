@@ -15,12 +15,13 @@ class StopMarkerFactory {
   static final Map<String, BitmapDescriptor> _cache = {};
 
   /// Taille de référence (logique) en pixels logiques. Sera multipliée par
-  /// le devicePixelRatio. Calibré pour rester lisible sans saturer la carte
-  /// quand 200+ stops sont visibles à la fois.
-  static const double _baseWidth = 26;
-  static const double _baseHeight = 18;
-  static const double _largeWidth = 42;
-  static const double _largeHeight = 28;
+  /// le devicePixelRatio. Calibré pour ressembler à IDF Mobilités : petites
+  /// pastilles compactes qui laissent les lignes respirer même quand 300+
+  /// stops sont visibles à la fois.
+  static const double _baseWidth = 17;
+  static const double _baseHeight = 13;
+  static const double _largeWidth = 30;
+  static const double _largeHeight = 21;
 
   static Future<BitmapDescriptor> create({
     required String label,
@@ -35,9 +36,9 @@ class StopMarkerFactory {
 
     final w = (large ? _largeWidth : _baseWidth) * devicePixelRatio;
     final h = (large ? _largeHeight : _baseHeight) * devicePixelRatio;
-    final radius = (large ? 6.0 : 4.0) * devicePixelRatio;
-    final borderWidth = (large ? 2.0 : 1.4) * devicePixelRatio;
-    final fontSize = (large ? 13.0 : 9.0) * devicePixelRatio;
+    final radius = (large ? 5.0 : 3.0) * devicePixelRatio;
+    final borderWidth = (large ? 1.8 : 1.1) * devicePixelRatio;
+    final fontSize = (large ? 11.0 : 7.5) * devicePixelRatio;
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
