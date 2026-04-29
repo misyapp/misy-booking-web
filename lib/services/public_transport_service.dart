@@ -6,6 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 import 'package:rider_ride_hailing_app/functions/print_function.dart';
 import 'package:rider_ride_hailing_app/models/route_planner.dart';
 import 'package:rider_ride_hailing_app/models/transport_line.dart';
+import 'package:rider_ride_hailing_app/services/line_geometry_analyzer.dart';
 import 'package:rider_ride_hailing_app/services/transport_lines_service.dart';
 
 /// Source de données pour l'onglet public "Transport en commun" sur
@@ -36,6 +37,15 @@ class PublicTransportService {
 
   List<String> get linesByImportance => _linesByImportance;
 
+  /// Cache des analyses géométriques (aller vs retour) par ligne. Calculé
+  /// une fois au chargement. Évite de refaire la corrélation O(N×M) à
+  /// chaque rebuild des couches.
+  final Map<String, LineGeometry> _geometryCache = {};
+
+  LineGeometry geometryFor(String lineNumber) {
+    return _geometryCache[lineNumber] ?? LineGeometry.unified(const []);
+  }
+
   /// Charge le manifest + tous les GeoJSON. Idempotent grâce au futur partagé.
   Future<void> ensureLoaded() {
     return _loadFuture ??= _load();
@@ -51,9 +61,19 @@ class PublicTransportService {
 
     await Future.wait(lines.map(_loadLine));
     _computeImportance();
+    _computeGeometries();
     myCustomPrintStatement(
       'PublicTransportService: ${_linesCache.length}/${lines.length} lignes chargées',
     );
+  }
+
+  void _computeGeometries() {
+    for (final group in _linesCache.values) {
+      _geometryCache[group.lineNumber] = LineGeometryAnalyzer.analyze(
+        group.aller?.coordinates,
+        group.retour?.coordinates,
+      );
+    }
   }
 
   /// Classe les lignes par longueur totale aller+retour décroissante. Sert

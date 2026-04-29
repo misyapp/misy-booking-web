@@ -45,6 +45,8 @@ import 'package:rider_ride_hailing_app/services/public_transport_service.dart';
 import 'package:rider_ride_hailing_app/models/transport_line.dart' show TransportLine;
 import 'package:rider_ride_hailing_app/functions/print_function.dart' show myCustomPrintStatement;
 import 'package:rider_ride_hailing_app/widget/home_mode_toggle.dart';
+import 'package:rider_ride_hailing_app/services/line_geometry_analyzer.dart';
+import 'package:rider_ride_hailing_app/widget/transport/direction_arrow_factory.dart';
 import 'package:rider_ride_hailing_app/widget/transport/stop_marker_factory.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
@@ -2312,6 +2314,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// Stratégie type IDF Mobilités :
   /// - Polylines : épaisses, semi-transparentes, filtrées par zoom
   ///   (`PublicTransportService.visibleLineNumbersForZoom`).
+  /// - Géométrie smart : aller/retour quasi identiques → polyline unique.
+  ///   Lignes circulaires → tronc commun en 1 trait + boucles divergentes
+  ///   en 2 traits avec flèches directionnelles indiquant le sens.
   /// - Stops : marker custom = carré arrondi couleur ligne avec numéro,
   ///   uniquement à zoom élevé (>= 13). Au-dessous, la carte serait illisible.
   /// - Sélection : ligne sélectionnée → autres lignes très atténuées, stops
@@ -2337,6 +2342,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // Stops dédupliqués : key = "lat,lng" arrondi à 5 décimales (~1m).
     final stopsByKey = <String, _PublicStopAggregate>{};
     final showStops = _publicMapZoom >= 13;
+    // Flèches uniquement à zoom élevé (sinon trop de markers à l'écran).
+    final showArrows = _publicMapZoom >= 13.5;
+
+    // Liste des "demandes de flèches" à fabriquer en fin de boucle.
+    final arrowRequests = <_ArrowRequest>[];
 
     for (final group in groups) {
       if (!visible.contains(group.lineNumber)) continue;
@@ -2353,11 +2363,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       final lineOpacity = isOther ? 0.18 : 0.62;
       final width = isSelected ? 8 : (selected != null ? 4 : 6);
 
-      void addPolyline(TransportLine? line, String dir) {
-        if (line == null || line.coordinates.length < 2) return;
+      // Polylines : on s'appuie sur l'analyse géométrique (cache) pour ne
+      // pas dupliquer les portions communes.
+      final geom = svc.geometryFor(group.lineNumber);
+      void addSegment(List<LatLng> seg, String tag) {
+        if (seg.length < 2) return;
         polylines.add(Polyline(
-          polylineId: PolylineId('pt_${group.lineNumber}_$dir'),
-          points: line.coordinates,
+          polylineId: PolylineId('pt_${group.lineNumber}_$tag'),
+          points: seg,
           color: color.withOpacity(lineOpacity),
           width: width,
           zIndex: isSelected ? 5 : 1,
@@ -2365,10 +2378,57 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         ));
       }
 
+      if (geom.isUnified) {
+        for (var i = 0; i < geom.singleSegments.length; i++) {
+          addSegment(geom.singleSegments[i], 'unified_$i');
+        }
+      } else {
+        for (var i = 0; i < geom.commonSegments.length; i++) {
+          addSegment(geom.commonSegments[i], 'common_$i');
+        }
+        for (var i = 0; i < geom.allerOnly.length; i++) {
+          addSegment(geom.allerOnly[i], 'aller_$i');
+        }
+        for (var i = 0; i < geom.retourOnly.length; i++) {
+          addSegment(geom.retourOnly[i], 'retour_$i');
+        }
+
+        // Flèches sens de circulation sur les portions divergentes (et
+        // uniquement là — le tronc commun n'a pas besoin de désambiguïser).
+        if (showArrows && !isOther) {
+          for (final seg in geom.allerOnly) {
+            for (final guide
+                in LineGeometryAnalyzer.arrowGuidesFor(seg)) {
+              arrowRequests.add(_ArrowRequest(
+                line: group.lineNumber,
+                direction: 'aller',
+                position: guide.position,
+                bearing: guide.bearing,
+                color: color,
+              ));
+            }
+          }
+          for (final seg in geom.retourOnly) {
+            for (final guide
+                in LineGeometryAnalyzer.arrowGuidesFor(seg)) {
+              arrowRequests.add(_ArrowRequest(
+                line: group.lineNumber,
+                direction: 'retour',
+                position: guide.position,
+                bearing: guide.bearing,
+                color: color,
+              ));
+            }
+          }
+        }
+      }
+
+      // Stops : on agrège depuis aller + retour (les arrêts dédupliqués
+      // par position couvrent automatiquement les 2 directions).
       void aggregateStops(TransportLine? line) {
         if (line == null) return;
         if (!showStops) return;
-        if (isOther) return; // n'affiche pas les stops des lignes atténuées
+        if (isOther) return;
         for (final stop in line.stops) {
           final key = _stopKey(stop.position);
           final agg = stopsByKey.putIfAbsent(
@@ -2382,8 +2442,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             ),
           );
           agg.lines.add(group.lineNumber);
-          // Si plusieurs lignes desservent : on garde la couleur de la
-          // sélection ou de la ligne la plus prioritaire.
           if (isSelected) {
             agg.primaryLine = group.lineNumber;
             agg.primaryColor = color;
@@ -2391,8 +2449,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         }
       }
 
-      addPolyline(group.aller, 'aller');
-      addPolyline(group.retour, 'retour');
       aggregateStops(group.aller);
       aggregateStops(group.retour);
     }
@@ -2415,6 +2471,25 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         zIndex: isStopSelected ? 100 : 10,
         consumeTapEvents: true,
         onTap: () => _onPublicStopTap(agg),
+      ));
+    }
+
+    // Markers flèches (1 par guide, rotation = bearing). Le BitmapDescriptor
+    // est mis en cache par couleur dans la factory — pas de coût rep.
+    for (var i = 0; i < arrowRequests.length; i++) {
+      final req = arrowRequests[i];
+      final icon = await DirectionArrowFactory.create(
+        color: req.color,
+        devicePixelRatio: dpr,
+      );
+      markers.add(Marker(
+        markerId: MarkerId('arrow_${req.line}_${req.direction}_$i'),
+        position: req.position,
+        icon: icon,
+        rotation: req.bearing,
+        anchor: const Offset(0.5, 0.5),
+        zIndex: 4,
+        consumeTapEvents: false,
       ));
     }
 
@@ -3861,6 +3936,24 @@ class _SchedulePickerDialogState extends State<_SchedulePickerDialog> {
       ],
     );
   }
+}
+
+/// Demande de génération de marker flèche (sens de circulation) à fabriquer
+/// après la collecte des polylines, en batch.
+class _ArrowRequest {
+  final String line;
+  final String direction;
+  final LatLng position;
+  final double bearing;
+  final Color color;
+
+  const _ArrowRequest({
+    required this.line,
+    required this.direction,
+    required this.position,
+    required this.bearing,
+    required this.color,
+  });
 }
 
 /// Aggregate utilisé pour dédupliquer les arrêts du réseau public sur la carte.
