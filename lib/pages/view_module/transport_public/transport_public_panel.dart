@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/transit_strings.dart';
 import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
@@ -34,7 +35,12 @@ class TransportPublicPanel extends StatelessWidget {
       top: 16,
       left: 16,
       bottom: 16,
-      child: Material(
+      // PointerInterceptor : sans ça les événements scroll/wheel sur la
+      // sidebar traversent jusqu'à la carte Google Maps en dessous et
+      // déclenchent zoom/pan involontaires (mode Course utilise le même
+      // pattern via _WebScrollIsolator dans home_screen_web.dart).
+      child: PointerInterceptor(
+        child: Material(
         color: Colors.transparent,
         child: Container(
           width: 320,
@@ -70,6 +76,7 @@ class TransportPublicPanel extends StatelessWidget {
               ),
             ],
           ),
+        ),
         ),
       ),
     );
