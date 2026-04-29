@@ -53,6 +53,7 @@ class PublicTransportService {
     await Future.wait(lines.map(_loadLine));
     _computeImportance();
     _computeAllBranches();
+    _computeAllSchematics();
     myCustomPrintStatement(
       'PublicTransportService: ${_linesCache.length}/${lines.length} lignes chargées',
     );
@@ -243,6 +244,179 @@ class PublicTransportService {
   /// Rempli au load. Évite la détection à chaque expand de la sidebar.
   final Map<String, LineBranches> _branchesCache = {};
 
+  /// Cache des schémas topologiques (linear / trunk-loop / loop-only / complex)
+  /// par lineNumber. Couche au-dessus de [_branchesCache] qui enrichit la
+  /// détection avec un découpage trunk vs boucle.
+  final Map<String, LineSchematic> _schematicCache = {};
+
+  /// Renvoie le schéma topologique de la ligne pour le rendu sidebar :
+  /// trunk commun + boucle divergente (rectangle), ou linéaire pure, ou
+  /// tout-boucle, ou complex (fallback).
+  LineSchematic lineSchematicFor(String lineNumber) {
+    return _schematicCache[lineNumber] ?? LineSchematic.empty();
+  }
+
+  void _computeAllSchematics() {
+    for (final group in _linesCache.values) {
+      _schematicCache[group.lineNumber] = _computeSchematic(group);
+    }
+  }
+
+  /// Détecte la topologie d'une ligne (linear / trunk-loop / loop-only /
+  /// complex) à partir des stops aller et retour.
+  ///
+  /// Algorithme :
+  /// 1. Pairing greedy first-fit aller→retour : pour chaque aller[i], on
+  ///    cherche le 1er retour[j] non encore apparié qui matche
+  ///    (`_stopsLikelySame` : même nom normalisé OU distance ≤ 80m).
+  /// 2. Si ratio commun ≥ 0.80 → linear (= aller suffit).
+  /// 3. Si ratio = 0 → loop-only.
+  /// 4. Si pattern de aller_common = T...TF...F (1 transition T→F au début)
+  ///    → trunk-loop avec trunk au début + boucle à la fin.
+  /// 5. Si pattern de aller_common = F...FT...T (1 transition F→T au début)
+  ///    → trunk-loop normalisé (on fait porter le trunk au début dans le
+  ///    schéma : trunk = stops T, aller loop = stops F au début).
+  /// 6. Si pattern T...TF...FT...T (2 transitions, F au milieu)
+  ///    → trunk-loop avec trunk avant + après.
+  /// 7. Sinon (multi-loops) → complex (fallback rendu legacy).
+  static LineSchematic _computeSchematic(TransportLineGroup group) {
+    final aller = group.aller?.stops ?? const <TransportStop>[];
+    final retour = group.retour?.stops ?? const <TransportStop>[];
+
+    BranchStop wrap(TransportStop s) =>
+        BranchStop(name: s.name, position: s.position);
+
+    if (aller.isEmpty && retour.isEmpty) return LineSchematic.empty();
+
+    if (aller.isEmpty) {
+      return LineSchematic.linear(retour.map(wrap).toList());
+    }
+    if (retour.isEmpty) {
+      return LineSchematic.linear(aller.map(wrap).toList());
+    }
+
+    // Greedy first-fit pairing aller → retour.
+    final allerCommon = List<bool>.filled(aller.length, false);
+    final retourUsed = List<bool>.filled(retour.length, false);
+    for (var i = 0; i < aller.length; i++) {
+      for (var j = 0; j < retour.length; j++) {
+        if (retourUsed[j]) continue;
+        if (_stopsLikelySame(aller[i], retour[j])) {
+          allerCommon[i] = true;
+          retourUsed[j] = true;
+          break;
+        }
+      }
+    }
+
+    final maxLen = aller.length > retour.length ? aller.length : retour.length;
+    final commonCount = allerCommon.where((c) => c).length;
+    final ratio = commonCount / maxLen;
+
+    if (ratio >= 0.80) {
+      return LineSchematic.linear(aller.map(wrap).toList());
+    }
+
+    if (commonCount == 0) {
+      return LineSchematic.loopOnly(
+        allerLoopStops: aller.map(wrap).toList(),
+        retourLoopStops: retour.map(wrap).toList(),
+      );
+    }
+
+    // Compte les transitions dans aller_common.
+    var transitions = 0;
+    for (var i = 1; i < allerCommon.length; i++) {
+      if (allerCommon[i] != allerCommon[i - 1]) transitions++;
+    }
+
+    // Helper : extrait les retour-only en ordre naturel du retour.
+    List<BranchStop> retourLoop() {
+      final out = <BranchStop>[];
+      for (var j = 0; j < retour.length; j++) {
+        if (!retourUsed[j]) out.add(wrap(retour[j]));
+      }
+      return out;
+    }
+
+    // Cas 1 : trunk-then-loop (T...TF...F)
+    if (transitions == 1 && allerCommon.first) {
+      final firstFalse = allerCommon.indexOf(false);
+      final trunk = <BranchStop>[];
+      for (var i = 0; i < firstFalse; i++) {
+        trunk.add(wrap(aller[i]));
+      }
+      final allerLoop = <BranchStop>[];
+      for (var i = firstFalse; i < aller.length; i++) {
+        allerLoop.add(wrap(aller[i]));
+      }
+      return LineSchematic.trunkLoop(
+        trunkBeforeLoop: trunk,
+        trunkAfterLoop: const [],
+        allerLoopStops: allerLoop,
+        retourLoopStops: retourLoop(),
+      );
+    }
+
+    // Cas 2 : loop-then-trunk (F...FT...T) — on normalise pour mettre le
+    // trunk en haut du schéma. Le sens "naturel" de l'aller commence dans
+    // la boucle et finit sur le trunk ; visuellement on peut représenter
+    // le trunk en haut et la boucle en bas indistinctement.
+    if (transitions == 1 && !allerCommon.first) {
+      final firstTrue = allerCommon.indexOf(true);
+      final allerLoop = <BranchStop>[];
+      for (var i = 0; i < firstTrue; i++) {
+        allerLoop.add(wrap(aller[i]));
+      }
+      final trunk = <BranchStop>[];
+      for (var i = firstTrue; i < aller.length; i++) {
+        trunk.add(wrap(aller[i]));
+      }
+      return LineSchematic.trunkLoop(
+        trunkBeforeLoop: trunk,
+        trunkAfterLoop: const [],
+        allerLoopStops: allerLoop,
+        retourLoopStops: retourLoop(),
+      );
+    }
+
+    // Cas 3 : trunk-loop-trunk (T...TF...FT...T) — 2 transitions.
+    if (transitions == 2 && allerCommon.first && allerCommon.last) {
+      final firstFalse = allerCommon.indexOf(false);
+      var lastFalse = -1;
+      for (var i = allerCommon.length - 1; i >= 0; i--) {
+        if (!allerCommon[i]) {
+          lastFalse = i;
+          break;
+        }
+      }
+      final trunkBefore = <BranchStop>[];
+      for (var i = 0; i < firstFalse; i++) {
+        trunkBefore.add(wrap(aller[i]));
+      }
+      final allerLoop = <BranchStop>[];
+      for (var i = firstFalse; i <= lastFalse; i++) {
+        allerLoop.add(wrap(aller[i]));
+      }
+      final trunkAfter = <BranchStop>[];
+      for (var i = lastFalse + 1; i < aller.length; i++) {
+        trunkAfter.add(wrap(aller[i]));
+      }
+      return LineSchematic.trunkLoop(
+        trunkBeforeLoop: trunkBefore,
+        trunkAfterLoop: trunkAfter,
+        allerLoopStops: allerLoop,
+        retourLoopStops: retourLoop(),
+      );
+    }
+
+    // Topologie non gérée V1 : multi-loops, alternances complexes → fallback.
+    return LineSchematic.complex(
+      fullAller: aller.map(wrap).toList(),
+      fullRetour: retour.map(wrap).toList(),
+    );
+  }
+
   /// Renvoie le découpage de la ligne en branches pour le rendu type "plan
   /// tramway" dans la sidebar. Linéaire = aller ≈ retour inversé →
   /// 1 branche unique. Circulaire = aller et retour empruntent des routes
@@ -351,6 +525,82 @@ class _SeenStop {
   final String nameNorm;
   final LatLng position;
   const _SeenStop(this.nameNorm, this.position);
+}
+
+/// Topologie d'une ligne — guide le rendu du schéma dans la sidebar.
+enum LineTopology { empty, linear, trunkLoop, loopOnly, complex }
+
+/// Découpage topologique d'une ligne pour le rendu type "plan tramway"
+/// dans la sidebar (image de référence : Nice Tramway L2).
+///
+/// - [linear] : aller ≈ retour inversé, les arrêts sont rendus en 1 colonne.
+/// - [trunkLoop] : trunk commun (1 colonne) + boucle (rectangle 2 colonnes).
+///   Le trunk peut être avant la boucle, après, ou les 2 (trunk-loop-trunk).
+/// - [loopOnly] : que la boucle, sans trunk commun.
+/// - [complex] : topologie multi-loops non gérée V1 → fallback rendu legacy
+///   "2 sections empilées".
+class LineSchematic {
+  final LineTopology topology;
+  final List<BranchStop> linearStops;
+  final List<BranchStop> trunkBeforeLoop;
+  final List<BranchStop> trunkAfterLoop;
+  final List<BranchStop> allerLoopStops;
+  final List<BranchStop> retourLoopStops;
+  final List<BranchStop> fullAller;
+  final List<BranchStop> fullRetour;
+
+  const LineSchematic._({
+    required this.topology,
+    this.linearStops = const [],
+    this.trunkBeforeLoop = const [],
+    this.trunkAfterLoop = const [],
+    this.allerLoopStops = const [],
+    this.retourLoopStops = const [],
+    this.fullAller = const [],
+    this.fullRetour = const [],
+  });
+
+  factory LineSchematic.empty() =>
+      const LineSchematic._(topology: LineTopology.empty);
+
+  factory LineSchematic.linear(List<BranchStop> stops) => LineSchematic._(
+        topology: LineTopology.linear,
+        linearStops: stops,
+      );
+
+  factory LineSchematic.trunkLoop({
+    required List<BranchStop> trunkBeforeLoop,
+    required List<BranchStop> trunkAfterLoop,
+    required List<BranchStop> allerLoopStops,
+    required List<BranchStop> retourLoopStops,
+  }) =>
+      LineSchematic._(
+        topology: LineTopology.trunkLoop,
+        trunkBeforeLoop: trunkBeforeLoop,
+        trunkAfterLoop: trunkAfterLoop,
+        allerLoopStops: allerLoopStops,
+        retourLoopStops: retourLoopStops,
+      );
+
+  factory LineSchematic.loopOnly({
+    required List<BranchStop> allerLoopStops,
+    required List<BranchStop> retourLoopStops,
+  }) =>
+      LineSchematic._(
+        topology: LineTopology.loopOnly,
+        allerLoopStops: allerLoopStops,
+        retourLoopStops: retourLoopStops,
+      );
+
+  factory LineSchematic.complex({
+    required List<BranchStop> fullAller,
+    required List<BranchStop> fullRetour,
+  }) =>
+      LineSchematic._(
+        topology: LineTopology.complex,
+        fullAller: fullAller,
+        fullRetour: fullRetour,
+      );
 }
 
 /// Représentation d'un arrêt dans une branche (subset minimaliste de

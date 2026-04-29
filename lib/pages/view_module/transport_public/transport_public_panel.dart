@@ -375,12 +375,17 @@ class _LineRow extends StatelessWidget {
   }
 }
 
-/// Liste expansible des arrêts d'une ligne sous forme de "plan tramway".
+/// Schéma topologique d'une ligne, type "plan tramway", affiché sous le row
+/// de ligne quand celle-ci est sélectionnée. Branche selon
+/// [LineSchematic.topology] :
 ///
-/// Cas LINÉAIRE (aller ≈ retour inversé) : 1 colonne d'arrêts du début au
-/// terminus. Cas CIRCULAIRE (aller et retour empruntent des routes
-/// différentes) : 2 sections empilées avec headers de terminus, chacune
-/// avec son propre tracé coloré continu et ses arrêts en ordre.
+/// - linear : 1 colonne avec tous les arrêts en ordre (aller).
+/// - trunkLoop : trunk commun en colonne centrale + boucle = rectangle 2
+///   colonnes (aller à gauche, retour à droite) fermé en haut et en bas
+///   par des connecteurs horizontaux.
+/// - loopOnly : juste le rectangle, pas de trunk.
+/// - complex (multi-loops, alternances) : fallback rendu legacy "2 sections
+///   empilées" pour ne pas casser l'écran.
 class _LineStopList extends StatelessWidget {
   final String lineNumber;
 
@@ -388,23 +393,60 @@ class _LineStopList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final locale = context.watch<LocaleProvider>().locale;
     final svc = PublicTransportService.instance;
     final meta = svc.metadataFor(lineNumber);
     final color =
         meta != null ? Color(meta.colorValue) : const Color(0xFF1565C0);
-    final branches = svc.lineBranchesFor(lineNumber);
+    final schema = svc.lineSchematicFor(lineNumber);
 
-    if (branches.isLinear) {
-      if (branches.mainBranch.isEmpty) return const SizedBox.shrink();
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(46, 4, 8, 10),
-        child: _BranchView(
-          stops: branches.mainBranch,
+    switch (schema.topology) {
+      case LineTopology.empty:
+        return const SizedBox.shrink();
+      case LineTopology.linear:
+        if (schema.linearStops.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(46, 4, 8, 10),
+          child: _BranchView(
+            stops: schema.linearStops,
+            color: color,
+          ),
+        );
+      case LineTopology.trunkLoop:
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 8, 10),
+          child: _TrunkLoopSchematic(schema: schema, color: color),
+        );
+      case LineTopology.loopOnly:
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 8, 10),
+          child: _TrunkLoopSchematic(schema: schema, color: color),
+        );
+      case LineTopology.complex:
+        return _LegacyBranchesView(
+          lineNumber: lineNumber,
           color: color,
-        ),
-      );
+        );
     }
+  }
+}
+
+/// Fallback pour les topologies non gérées V1 : rend l'aller et le retour
+/// comme 2 sections empilées avec headers terminus (= ancien comportement
+/// avant l'ajout de _TrunkLoopSchematic).
+class _LegacyBranchesView extends StatelessWidget {
+  final String lineNumber;
+  final Color color;
+
+  const _LegacyBranchesView({
+    required this.lineNumber,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final locale = context.watch<LocaleProvider>().locale;
+    final svc = PublicTransportService.instance;
+    final branches = svc.lineBranchesFor(lineNumber);
 
     final allerHeader = branches.allerTerminusName ??
         TransitStrings.t('branch.aller', locale);
@@ -419,31 +461,375 @@ class _LineStopList extends StatelessWidget {
         children: [
           if (branches.allerBranch.isNotEmpty) ...[
             _BranchHeader(
-              label: '$towardLabel $allerHeader',
-              color: color,
-            ),
+                label: '$towardLabel $allerHeader', color: color),
             const SizedBox(height: 2),
-            _BranchView(
-              stops: branches.allerBranch,
-              color: color,
-            ),
+            _BranchView(stops: branches.allerBranch, color: color),
           ],
           if (branches.retourBranch.isNotEmpty) ...[
             const SizedBox(height: 14),
             _BranchHeader(
-              label: '$towardLabel $retourHeader',
-              color: color,
-            ),
+                label: '$towardLabel $retourHeader', color: color),
             const SizedBox(height: 2),
-            _BranchView(
-              stops: branches.retourBranch,
-              color: color,
-            ),
+            _BranchView(stops: branches.retourBranch, color: color),
           ],
         ],
       ),
     );
   }
+}
+
+/// Schéma topologique trunk + boucle (rectangle) ou loop-only.
+///
+/// Layout :
+/// - Trunk avant : colonne verticale centrée (si présent).
+/// - Boucle : 2 colonnes parallèles (aller à gauche, retour à droite) avec
+///   un connecteur horizontal en haut (jonction trunk → branches) et un
+///   connecteur horizontal en bas (fermeture du rectangle).
+/// - Trunk après : colonne verticale centrée sous la boucle (si présent).
+///
+/// Implémentation : Stack + CustomPaint pour les traits + Positioned pour
+/// les bullets et les noms d'arrêts. Mesures hard-codées par tier — la
+/// sidebar est de largeur fixe (320px) donc pas de LayoutBuilder à gérer.
+class _TrunkLoopSchematic extends StatelessWidget {
+  final LineSchematic schema;
+  final Color color;
+
+  const _TrunkLoopSchematic({required this.schema, required this.color});
+
+  // Largeur utile de la sidebar après les paddings (320 - 16 - 16 - 20 marg).
+  static const double _w = 268;
+  // Position X de l'axe trunk (centré).
+  static const double _xTrunk = _w / 2;
+  // Position X des branches aller (gauche) et retour (droite).
+  static const double _xAller = 22;
+  static const double _xRetour = _w - 22;
+  // Hauteur d'une rangée (1 arrêt).
+  static const double _rowH = 26;
+  // Marge avant le 1er arrêt et après le dernier (effet départ/terminus).
+  static const double _topPad = 8;
+  static const double _bottomPad = 8;
+
+  @override
+  Widget build(BuildContext context) {
+    final trunkBefore = schema.trunkBeforeLoop;
+    final trunkAfter = schema.trunkAfterLoop;
+    final allerLoop = schema.allerLoopStops;
+    final retourLoop = schema.retourLoopStops;
+
+    // On aligne aller et retour de la boucle sur le MAX de leurs longueurs
+    // (les rangées vides côté plus court sont juste le trait coloré qui
+    // continue, sans bullet ni nom).
+    final loopRowsCount = allerLoop.length > retourLoop.length
+        ? allerLoop.length
+        : retourLoop.length;
+    if (loopRowsCount == 0 && trunkBefore.isEmpty && trunkAfter.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final trunkBeforeH = _topPad + trunkBefore.length * _rowH;
+    final loopH = _topPad + loopRowsCount * _rowH + _bottomPad;
+    final trunkAfterH = trunkAfter.length * _rowH + _bottomPad;
+    final totalH = trunkBeforeH + loopH + trunkAfterH;
+
+    return SizedBox(
+      width: _w,
+      height: totalH,
+      child: Stack(
+        children: [
+          // Couches de traits dessinées en CustomPaint pour avoir la maîtrise
+          // exacte des connecteurs horizontaux et des verticaux qui doivent
+          // coïncider parfaitement.
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _TrunkLoopPainter(
+                color: color,
+                trunkBeforeH: trunkBeforeH,
+                loopH: loopH,
+                trunkAfterH: trunkAfterH,
+                hasTrunkBefore: trunkBefore.isNotEmpty,
+                hasTrunkAfter: trunkAfter.isNotEmpty,
+                hasLoop: loopRowsCount > 0,
+              ),
+            ),
+          ),
+          // Bullets et noms du trunk avant la boucle.
+          for (var i = 0; i < trunkBefore.length; i++)
+            _trunkBullet(
+              top: _topPad + i * _rowH,
+              stop: trunkBefore[i],
+              isTerminus: i == 0,
+            ),
+          // Bullets et noms de la boucle (2 colonnes parallèles).
+          for (var i = 0; i < allerLoop.length; i++)
+            _branchBullet(
+              top: trunkBeforeH + _topPad + i * _rowH,
+              x: _xAller,
+              stop: allerLoop[i],
+              isLeftSide: true,
+              isTerminus: i == allerLoop.length - 1,
+            ),
+          for (var i = 0; i < retourLoop.length; i++)
+            _branchBullet(
+              top: trunkBeforeH + _topPad + i * _rowH,
+              x: _xRetour,
+              stop: retourLoop[i],
+              isLeftSide: false,
+              isTerminus: i == 0,
+            ),
+          // Bullets et noms du trunk après la boucle.
+          for (var i = 0; i < trunkAfter.length; i++)
+            _trunkBullet(
+              top: trunkBeforeH + loopH + i * _rowH,
+              stop: trunkAfter[i],
+              isTerminus: i == trunkAfter.length - 1,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _trunkBullet({
+    required double top,
+    required BranchStop stop,
+    required bool isTerminus,
+  }) {
+    return Positioned(
+      top: top,
+      left: 0,
+      right: 0,
+      height: _rowH,
+      child: Row(
+        children: [
+          SizedBox(
+            width: _xTrunk + 8,
+            child: Align(
+              alignment: const Alignment(0, 0),
+              child: _bullet(),
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: Text(
+                stop.name.trim().isEmpty ? '—' : stop.name,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: const Color(0xFF1D3557),
+                  fontWeight: isTerminus ? FontWeight.w700 : FontWeight.w400,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _branchBullet({
+    required double top,
+    required double x,
+    required BranchStop stop,
+    required bool isLeftSide,
+    required bool isTerminus,
+  }) {
+    return Positioned(
+      top: top,
+      left: 0,
+      right: 0,
+      height: _rowH,
+      child: Stack(
+        children: [
+          // Bullet centré sur la colonne.
+          Positioned(
+            left: x - 5,
+            top: _rowH / 2 - 5,
+            width: 10,
+            height: 10,
+            child: _bullet(),
+          ),
+          // Nom : pour la branche aller (gauche) — texte à gauche du bullet,
+          // right-aligned. Pour retour (droite) — texte à droite du bullet,
+          // left-aligned.
+          if (isLeftSide)
+            Positioned(
+              left: 0,
+              right: _w - x + 8,
+              top: 0,
+              bottom: 0,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 2),
+                  child: _stopText(stop, isTerminus),
+                ),
+              ),
+            )
+          else
+            Positioned(
+              left: x + 8,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 2),
+                  child: _stopText(stop, isTerminus),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bullet() {
+    return Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: color, width: 2),
+      ),
+    );
+  }
+
+  Widget _stopText(BranchStop stop, bool isTerminus) {
+    return Text(
+      stop.name.trim().isEmpty ? '—' : stop.name,
+      style: TextStyle(
+        fontSize: 11,
+        color: const Color(0xFF1D3557),
+        fontWeight: isTerminus ? FontWeight.w700 : FontWeight.w400,
+      ),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+}
+
+/// Painter qui dessine les traits colorés du schéma trunk + loop :
+/// - trait vertical du trunk (avant et après la boucle si applicable)
+/// - traits verticaux des 2 branches de la boucle
+/// - connecteur horizontal en haut de la boucle (jonction trunk → branches)
+/// - connecteur horizontal en bas de la boucle (fermeture du rectangle)
+class _TrunkLoopPainter extends CustomPainter {
+  final Color color;
+  final double trunkBeforeH;
+  final double loopH;
+  final double trunkAfterH;
+  final bool hasTrunkBefore;
+  final bool hasTrunkAfter;
+  final bool hasLoop;
+
+  static const double _xTrunk = _TrunkLoopSchematic._xTrunk;
+  static const double _xAller = _TrunkLoopSchematic._xAller;
+  static const double _xRetour = _TrunkLoopSchematic._xRetour;
+
+  _TrunkLoopPainter({
+    required this.color,
+    required this.trunkBeforeH,
+    required this.loopH,
+    required this.trunkAfterH,
+    required this.hasTrunkBefore,
+    required this.hasTrunkAfter,
+    required this.hasLoop,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withOpacity(0.85)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+
+    // Trunk avant : trait vertical de y=0 jusqu'au début de la boucle.
+    if (hasTrunkBefore) {
+      canvas.drawLine(
+        Offset(_xTrunk, 4),
+        Offset(_xTrunk, trunkBeforeH),
+        paint,
+      );
+    }
+
+    if (hasLoop) {
+      final loopTop = trunkBeforeH;
+      final loopBottom = trunkBeforeH + loopH;
+
+      // Connecteur HAUT : trait horizontal qui relie le trunk (xTrunk) aux
+      // 2 branches (xAller et xRetour). Si pas de trunk avant, le connecteur
+      // démarre quand même horizontalement entre xAller et xRetour.
+      if (hasTrunkBefore) {
+        // T-junction : trait horizontal de xAller à xRetour passant par
+        // xTrunk (qui doit être au milieu).
+        canvas.drawLine(
+          Offset(_xAller, loopTop),
+          Offset(_xRetour, loopTop),
+          paint,
+        );
+      } else {
+        // Pas de trunk : juste le top du rectangle.
+        canvas.drawLine(
+          Offset(_xAller, loopTop + 4),
+          Offset(_xRetour, loopTop + 4),
+          paint,
+        );
+      }
+
+      // Branches verticales (aller à gauche, retour à droite).
+      final branchTop = hasTrunkBefore ? loopTop : loopTop + 4;
+      final branchBottom = hasTrunkAfter ? loopBottom : loopBottom - 4;
+      canvas.drawLine(
+        Offset(_xAller, branchTop),
+        Offset(_xAller, branchBottom),
+        paint,
+      );
+      canvas.drawLine(
+        Offset(_xRetour, branchTop),
+        Offset(_xRetour, branchBottom),
+        paint,
+      );
+
+      // Connecteur BAS : trait horizontal qui ferme le rectangle.
+      if (hasTrunkAfter) {
+        canvas.drawLine(
+          Offset(_xAller, loopBottom),
+          Offset(_xRetour, loopBottom),
+          paint,
+        );
+      } else {
+        canvas.drawLine(
+          Offset(_xAller, loopBottom - 4),
+          Offset(_xRetour, loopBottom - 4),
+          paint,
+        );
+      }
+    }
+
+    // Trunk après : trait vertical sous la boucle.
+    if (hasTrunkAfter) {
+      final yStart = trunkBeforeH + loopH;
+      canvas.drawLine(
+        Offset(_xTrunk, yStart),
+        Offset(_xTrunk, yStart + trunkAfterH - 4),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_TrunkLoopPainter oldDelegate) =>
+      oldDelegate.color != color ||
+      oldDelegate.trunkBeforeH != trunkBeforeH ||
+      oldDelegate.loopH != loopH ||
+      oldDelegate.trunkAfterH != trunkAfterH ||
+      oldDelegate.hasTrunkBefore != hasTrunkBefore ||
+      oldDelegate.hasTrunkAfter != hasTrunkAfter ||
+      oldDelegate.hasLoop != hasLoop;
 }
 
 /// Header d'une branche : flèche + nom du terminus en couleur de la ligne.
