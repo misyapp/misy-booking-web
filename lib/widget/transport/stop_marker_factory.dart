@@ -6,11 +6,11 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 /// Style de rendu d'un marker d'arrêt, choisi en fonction du zoom courant.
 ///
 /// - [dot] : point blanc avec anneau couleur de la ligne, pas de numéro.
-///   Affiché à zoom intermédiaire — donne la position sans saturer la carte.
-/// - [label] : carré arrondi couleur de la ligne avec le numéro en blanc.
-///   Affiché à zoom élevé quand l'utilisateur regarde un quartier précis.
-/// - [largeLabel] : variante agrandie de [label], pour le stop sélectionné.
-enum StopMarkerStyle { dot, label, largeLabel }
+///   Affiché à zoom intermédiaire (~13-14.5).
+/// - [label] : petit carré arrondi avec numéro. Zoom moyen (~14.5-15.5).
+/// - [bigLabel] : version intermédiaire agrandie. Zoom proche (>= 15.5).
+/// - [largeLabel] : version maximale, pour le stop sélectionné ou survolé.
+enum StopMarkerStyle { dot, label, bigLabel, largeLabel }
 
 /// Génère des [BitmapDescriptor] pour les arrêts du réseau de bus.
 ///
@@ -26,8 +26,10 @@ class StopMarkerFactory {
   static const double _dotSize = 12; // diamètre extérieur (anneau)
   static const double _labelWidth = 17;
   static const double _labelHeight = 13;
-  static const double _largeWidth = 30;
-  static const double _largeHeight = 21;
+  static const double _bigLabelWidth = 24;
+  static const double _bigLabelHeight = 17;
+  static const double _largeWidth = 32;
+  static const double _largeHeight = 22;
 
   static Future<BitmapDescriptor> create({
     required String label,
@@ -46,12 +48,48 @@ class StopMarkerFactory {
       return descriptor;
     }
 
-    final large = style == StopMarkerStyle.largeLabel;
-    final w = (large ? _largeWidth : _labelWidth) * devicePixelRatio;
-    final h = (large ? _largeHeight : _labelHeight) * devicePixelRatio;
-    final radius = (large ? 5.0 : 3.0) * devicePixelRatio;
-    final borderWidth = (large ? 1.8 : 1.1) * devicePixelRatio;
-    final fontSize = (large ? 11.0 : 7.5) * devicePixelRatio;
+    // Dimensions par tier (label / bigLabel / largeLabel).
+    final double baseW;
+    final double baseH;
+    final double baseRadius;
+    final double baseBorder;
+    final double baseFont;
+    switch (style) {
+      case StopMarkerStyle.label:
+        baseW = _labelWidth;
+        baseH = _labelHeight;
+        baseRadius = 3.0;
+        baseBorder = 1.1;
+        baseFont = 7.5;
+        break;
+      case StopMarkerStyle.bigLabel:
+        baseW = _bigLabelWidth;
+        baseH = _bigLabelHeight;
+        baseRadius = 4.0;
+        baseBorder = 1.4;
+        baseFont = 9.5;
+        break;
+      case StopMarkerStyle.largeLabel:
+        baseW = _largeWidth;
+        baseH = _largeHeight;
+        baseRadius = 5.0;
+        baseBorder = 1.8;
+        baseFont = 12.0;
+        break;
+      case StopMarkerStyle.dot:
+        // Déjà géré au-dessus.
+        baseW = _labelWidth;
+        baseH = _labelHeight;
+        baseRadius = 3.0;
+        baseBorder = 1.1;
+        baseFont = 7.5;
+        break;
+    }
+    final w = baseW * devicePixelRatio;
+    final h = baseH * devicePixelRatio;
+    final radius = baseRadius * devicePixelRatio;
+    final borderWidth = baseBorder * devicePixelRatio;
+    final fontSize = baseFont * devicePixelRatio;
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);

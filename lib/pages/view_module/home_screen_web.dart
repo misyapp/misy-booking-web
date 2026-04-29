@@ -2406,12 +2406,15 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
     final polylines = <Polyline>{};
     // Stops révélés progressivement, type IDF Mobilités :
-    //   zoom < 13 : aucun stop
-    //   13-14.5  : petits points blancs avec anneau couleur ligne (= dot)
-    //   >= 14.5  : carrés colorés avec numéro (= label)
-    //   stop sélectionné : toujours label agrandi (largeLabel)
+    //   zoom < 13   : aucun stop
+    //   13-14.5     : points blancs avec anneau couleur ligne (= dot)
+    //   14.5-15.5   : petit carré coloré avec numéro (= label)
+    //   >= 15.5     : carré agrandi (= bigLabel)
+    //   sélectionné/survolé : toujours largeLabel (le plus grand) en
+    //                          surbrillance, quel que soit le zoom.
     final showStops = _publicMapZoom >= 13;
     final useLabels = _publicMapZoom >= 14.5;
+    final useBigLabels = _publicMapZoom >= 15.5;
 
     // Liste plate avant clustering. Permet de dédupliquer un arrêt aller +
     // son équivalent retour qui sont à des positions légèrement décalées
@@ -2457,8 +2460,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         if (line == null) return;
         if (!showStops) return;
         for (final stop in line.stops) {
+          // Snap au point le plus proche sur la polyline pour que le marker
+          // tombe pile au centre du trait (les positions GeoJSON peuvent
+          // être légèrement décalées de l'OSRM tracing).
+          final snapped =
+              _snapToPolyline(stop.position, line.coordinates);
           rawStops.add(_RawStop(
-            position: stop.position,
+            position: snapped,
             name: stop.name,
             lineNumber: group.lineNumber,
             color: color,
@@ -2472,22 +2480,34 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       collectStops(group.retour);
     }
 
-    // Clustering proximité 35m : un arrêt servi en aller + retour (positions
-    // souvent légèrement décalées des 2 côtés de la rue) ne donne qu'1 seul
-    // marker. Si plusieurs lignes desservent le même point, on les agrège
-    // sur le même cluster.
+    // Clustering type IDFM :
+    // - même nom (non vide) ET dans un rayon de 250m → même arrêt conceptuel
+    //   (couvre les cas aller/retour décalés de 60-150m sur des axes à
+    //   contre-sens, plus les arrêts en correspondance avec petit décalage).
+    // - sinon proximité géométrique 35m → 2 stops physiquement très proches.
+    // Si une ligne (aller + retour) ou plusieurs lignes desservent le cluster,
+    // on accumule toutes leurs lignes pour les exposer dans la card au clic.
     final clusters = <_PublicStopAggregate>[];
     for (final raw in rawStops) {
+      final rawNameNorm = _normalizeStopName(raw.name);
       _PublicStopAggregate? match;
       for (final c in clusters) {
-        if (_metersBetween(c.position, raw.position) <= 35.0) {
+        final dist = _metersBetween(c.position, raw.position);
+        final cNameNorm = _normalizeStopName(c.name);
+        final sameName = rawNameNorm.isNotEmpty &&
+            cNameNorm.isNotEmpty &&
+            rawNameNorm == cNameNorm;
+        if (sameName && dist <= 250.0) {
+          match = c;
+          break;
+        }
+        if (dist <= 35.0) {
           match = c;
           break;
         }
       }
       if (match != null) {
         match.lines.add(raw.lineNumber);
-        // Conserve le nom le plus informatif (priorité au plus long non-vide).
         if (raw.name.length > match.name.length) match.name = raw.name;
       } else {
         clusters.add(_PublicStopAggregate(
@@ -2545,9 +2565,16 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     for (final agg in stopsByKey.values) {
       final isStopSelected = selectedStop == agg.key;
       final isStopHovered = !isStopSelected && hovered == agg.key;
-      final style = (isStopSelected || isStopHovered)
-          ? StopMarkerStyle.largeLabel
-          : (useLabels ? StopMarkerStyle.label : StopMarkerStyle.dot);
+      final StopMarkerStyle style;
+      if (isStopSelected || isStopHovered) {
+        style = StopMarkerStyle.largeLabel;
+      } else if (useBigLabels) {
+        style = StopMarkerStyle.bigLabel;
+      } else if (useLabels) {
+        style = StopMarkerStyle.label;
+      } else {
+        style = StopMarkerStyle.dot;
+      }
       final icon = await StopMarkerFactory.create(
         label: agg.primaryLine,
         color: agg.primaryColor,
@@ -2690,6 +2717,71 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   static String _stopKey(LatLng p) =>
       '${p.latitude.toStringAsFixed(5)},${p.longitude.toStringAsFixed(5)}';
 
+  /// Normalise un nom d'arrêt pour comparaison de clustering : trim,
+  /// lowercase, suppression des accents et de la ponctuation/espaces
+  /// multiples. Permet de détecter "Ankadifotsy" / "ankadifotsy " /
+  /// "Ankadifotsy " comme le même arrêt conceptuel.
+  static String _normalizeStopName(String name) {
+    var s = name.trim().toLowerCase();
+    if (s.isEmpty) return s;
+    const accents = {
+      'à': 'a', 'â': 'a', 'ä': 'a',
+      'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+      'î': 'i', 'ï': 'i',
+      'ô': 'o', 'ö': 'o',
+      'ù': 'u', 'û': 'u', 'ü': 'u',
+      'ç': 'c', 'ñ': 'n',
+    };
+    final buf = StringBuffer();
+    for (final r in s.runes) {
+      final ch = String.fromCharCode(r);
+      buf.write(accents[ch] ?? ch);
+    }
+    return buf.toString().replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  /// Projette [p] sur la polyline la plus proche et renvoie le point
+  /// résultant. Utilisé pour aligner visuellement le marker d'arrêt sur le
+  /// trait de la ligne (les coords GeoJSON peuvent flotter d'un mètre ou
+  /// deux par rapport au tracé routier OSRM).
+  static LatLng _snapToPolyline(LatLng p, List<LatLng> polyline) {
+    if (polyline.length < 2) return p;
+    var best = polyline.first;
+    var bestDistSq = _planarDistSq(p, polyline.first);
+    for (var i = 0; i < polyline.length - 1; i++) {
+      final c = _closestPointOnSegment(p, polyline[i], polyline[i + 1]);
+      final d = _planarDistSq(p, c);
+      if (d < bestDistSq) {
+        bestDistSq = d;
+        best = c;
+      }
+    }
+    return best;
+  }
+
+  /// Approximation plane (degrés² × cos(lat)) — suffisante pour comparer
+  /// des distances entre points à la même latitude. Évite Haversine dans
+  /// la boucle hot du snap.
+  static double _planarDistSq(LatLng a, LatLng b) {
+    final dLat = a.latitude - b.latitude;
+    final dLng = (a.longitude - b.longitude) *
+        cos(a.latitude * pi / 180.0);
+    return dLat * dLat + dLng * dLng;
+  }
+
+  static LatLng _closestPointOnSegment(LatLng p, LatLng a, LatLng b) {
+    final dx = b.longitude - a.longitude;
+    final dy = b.latitude - a.latitude;
+    final lenSq = dx * dx + dy * dy;
+    if (lenSq == 0) return a;
+    var t = ((p.longitude - a.longitude) * dx +
+            (p.latitude - a.latitude) * dy) /
+        lenSq;
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+    return LatLng(a.latitude + t * dy, a.longitude + t * dx);
+  }
+
   /// Distance Haversine en mètres entre 2 points. Utilisée pour dédupliquer
   /// les arrêts aller/retour d'une même ligne (souvent décalés 15-30m car
   /// posés de chaque côté d'une route à 2 voies).
@@ -2713,7 +2805,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final newZoom = pos.zoom;
     final crossedZoomThreshold =
         newZoom.floor() != _publicMapZoom.floor() ||
-            (newZoom >= 14.5) != (_publicMapZoom >= 14.5);
+            (newZoom >= 14.5) != (_publicMapZoom >= 14.5) ||
+            (newZoom >= 15.5) != (_publicMapZoom >= 15.5);
     _publicMapZoom = newZoom;
     if (crossedZoomThreshold) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
