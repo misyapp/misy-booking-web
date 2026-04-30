@@ -39,7 +39,7 @@ import 'package:rider_ride_hailing_app/services/guest_storage_service.dart';
 import 'package:rider_ride_hailing_app/models/guest_session.dart';
 import 'package:rider_ride_hailing_app/bottom_sheet_widget/request_for_ride.dart';
 import 'package:rider_ride_hailing_app/bottom_sheet_widget/drive_on_way.dart';
-import 'package:rider_ride_hailing_app/models/route_planner.dart' show TransportRoute;
+import 'package:rider_ride_hailing_app/models/route_planner.dart' show TransportRoute, RouteStepType;
 import 'package:rider_ride_hailing_app/pages/view_module/transport_public/stop_card.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_public/transport_public_panel.dart';
 import 'package:rider_ride_hailing_app/services/public_transport_service.dart';
@@ -2242,11 +2242,16 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // Mode "Transport en commun" : carte du réseau uniquement. Aucun
       // marker chauffeur / pickup / destination ni polyline d'itinéraire
       // course ne sont rendus — les 2 modes sont strictement isolés.
-      allPolylines.addAll(_publicTransportPolylines);
-      allMarkers.addAll(_publicTransportMarkers);
-      // Surimpression de l'itinéraire calculé (par-dessus le réseau).
-      allPolylines.addAll(_publicRoutePolylines);
-      allMarkers.addAll(_publicRouteMarkers);
+      if (_publicRoutePolylines.isEmpty) {
+        // Pas d'itinéraire sélectionné → on montre le réseau complet.
+        allPolylines.addAll(_publicTransportPolylines);
+        allMarkers.addAll(_publicTransportMarkers);
+      } else {
+        // Itinéraire sélectionné → on isole : seul l'itinéraire est rendu,
+        // les autres lignes du réseau sont cachées (UX user-spec).
+        allPolylines.addAll(_publicRoutePolylines);
+        allMarkers.addAll(_publicRouteMarkers);
+      }
     } else {
       // Mode Course : chauffeurs + itinéraire + pickup/destination.
       allMarkers.addAll(_driverMarkers);
@@ -2371,53 +2376,131 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     if (lineNumber != null) _zoomToPublicLine(lineNumber);
   }
 
-  /// Surligne un itinéraire calculé sur la carte (Phase 2 — calculateur
-  /// d'itinéraire). Trace la polyline complète de l'itinéraire en couleur
-  /// vive + markers Origin et Destination, puis fit la caméra dessus.
-  /// `null` efface l'itinéraire affiché.
-  void _onPublicRouteSelected(TransportRoute? route) {
+  /// Affiche un itinéraire calculé sur la carte avec rendu multi-leg :
+  /// chaque leg de transport a sa couleur de ligne, les marches sont en
+  /// gris, un badge avec le numéro de ligne marque chaque embarquement,
+  /// et la destination utilise le marker carré blanc-bordure-noire de
+  /// l'onglet Course (cf. `_createSquareMarker`).
+  ///
+  /// Spec UX user : "n'affiche pas les autres lignes" — quand un
+  /// itinéraire est actif, le réseau public est masqué, seul le tracé
+  /// choisi est visible. Cf. `_buildMap` qui exclut les couches network
+  /// quand `_publicRoutePolylines` est non vide.
+  ///
+  /// `null` efface l'itinéraire et restaure le réseau.
+  Future<void> _onPublicRouteSelected(TransportRoute? route) async {
     if (route == null) {
       setState(() {
         _publicRoutePolylines = {};
         _publicRouteMarkers = {};
       });
+      // Re-render le réseau au cas où on était en mode iso.
+      _rebuildPublicTransportLayers();
       return;
     }
     final polylines = <Polyline>{};
     final markers = <Marker>{};
     final allPts = <LatLng>[];
+    final svc = PublicTransportService.instance;
+    final dpr =
+        MediaQuery.maybeOf(context)?.devicePixelRatio ?? 2.0;
 
-    // Trait global de l'itinéraire (rouge corail Misy).
-    final coords = route.allCoordinates;
-    if (coords.length >= 2) {
-      polylines.add(Polyline(
-        polylineId: const PolylineId('route_calc_overlay'),
-        points: coords,
-        color: const Color(0xFFFF5357),
-        width: 7,
-        zIndex: 200,
-        consumeTapEvents: false,
-      ));
-      allPts.addAll(coords);
+    for (var i = 0; i < route.steps.length; i++) {
+      final step = route.steps[i];
+      final List<LatLng> pts;
+      final Color color;
+
+      if (step.isWalking) {
+        // Walk : gris doux. On utilise pathCoordinates si dispo, sinon
+        // simple ligne droite walkStart→walkEnd (ou stop→stop).
+        if (step.pathCoordinates.length >= 2) {
+          pts = step.pathCoordinates;
+        } else {
+          pts = <LatLng>[
+            if (step.walkStartPosition != null) step.walkStartPosition!,
+            if (step.startStop != null) step.startStop!.position,
+            if (step.endStop != null) step.endStop!.position,
+            if (step.walkEndPosition != null) step.walkEndPosition!,
+          ];
+        }
+        color = const Color(0xFF6B7280);
+      } else {
+        // Transport : couleur de la ligne. Path = startStop + intermédiaires
+        // + endStop (= sequence d'arrêts dans la direction du voyage).
+        final lineNum = step.lineNumber;
+        final meta = lineNum != null ? svc.metadataFor(lineNum) : null;
+        color = meta != null
+            ? Color(meta.colorValue)
+            : const Color(0xFF1565C0);
+        if (step.pathCoordinates.length >= 2) {
+          pts = step.pathCoordinates;
+        } else {
+          pts = <LatLng>[
+            if (step.startStop != null) step.startStop!.position,
+            for (final s in step.intermediateStops) s.position,
+            if (step.endStop != null) step.endStop!.position,
+          ];
+        }
+      }
+
+      if (pts.length >= 2) {
+        polylines.add(Polyline(
+          polylineId: PolylineId('route_leg_$i'),
+          points: pts,
+          color: color,
+          width: step.isWalking ? 5 : 7,
+          patterns: step.isWalking
+              ? [PatternItem.dash(12), PatternItem.gap(8)]
+              : const [],
+          zIndex: 200 + i,
+          consumeTapEvents: false,
+        ));
+        allPts.addAll(pts);
+      }
     }
 
-    // Marker Origin (vert corail léger).
-    markers.add(Marker(
-      markerId: const MarkerId('route_origin'),
-      position: route.origin,
-      icon:
-          BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-      anchor: const Offset(0.5, 1.0),
-      zIndex: 250,
-    ));
-    // Marker Destination (rouge).
-    markers.add(Marker(
-      markerId: const MarkerId('route_dest'),
-      position: route.destination,
-      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-      anchor: const Offset(0.5, 1.0),
-      zIndex: 250,
-    ));
+    // Badges : 1 par leg de transport, posé sur le startStop (= où le
+    // voyageur monte). Le tout 1er badge marque le départ effectif du
+    // voyage en transport, les suivants marquent les correspondances.
+    var transportLegIdx = 0;
+    for (var i = 0; i < route.steps.length; i++) {
+      final step = route.steps[i];
+      if (step.type != RouteStepType.transport) continue;
+      final lineNum = step.lineNumber;
+      if (lineNum == null || step.startStop == null) continue;
+      final meta = svc.metadataFor(lineNum);
+      final color = meta != null
+          ? Color(meta.colorValue)
+          : const Color(0xFF1565C0);
+      final icon = await StopMarkerFactory.create(
+        label: lineNum,
+        color: color,
+        devicePixelRatio: dpr,
+        style: StopMarkerStyle.largeLabel,
+      );
+      markers.add(Marker(
+        markerId: MarkerId('route_board_$transportLegIdx'),
+        position: step.startStop!.position,
+        icon: icon,
+        anchor: const Offset(0.5, 0.5),
+        zIndex: 300,
+        consumeTapEvents: false,
+      ));
+      transportLegIdx++;
+    }
+
+    // Destination : carré blanc-bordure-noire-point-noir (style Course).
+    // Réutilise _destinationMarkerIcon préchargé au montage.
+    if (_destinationMarkerIcon != null) {
+      markers.add(Marker(
+        markerId: const MarkerId('route_dest'),
+        position: route.destination,
+        icon: _destinationMarkerIcon!,
+        anchor: const Offset(0.5, 0.5),
+        zIndex: 320,
+        consumeTapEvents: false,
+      ));
+    }
 
     setState(() {
       _publicRoutePolylines = polylines;
