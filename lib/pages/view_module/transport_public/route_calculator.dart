@@ -53,6 +53,18 @@ class _RouteCalculatorState extends State<RouteCalculator> {
     super.initState();
     _originFocus.addListener(_onFocusChange);
     _destFocus.addListener(_onFocusChange);
+    // Garantit que le bundle public est chargé avant les recherches —
+    // évite "0 résultat" si le user tape avant la fin du load initial.
+    PublicTransportService.instance.ensureLoaded().then((_) {
+      if (!mounted) return;
+      // Si l'utilisateur a déjà tapé pendant le load, refresh.
+      final activeText = _activeField == 'origin'
+          ? _originCtrl.text
+          : (_activeField == 'destination' ? _destCtrl.text : '');
+      if (activeText.isNotEmpty) {
+        setState(() => _refreshSuggestions(activeText));
+      }
+    });
   }
 
   @override
