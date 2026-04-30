@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "last_updated": "2026-04-29",
-  "total_lines": 40,
+  "last_updated": "2026-04-30",
+  "total_lines": 41,
   "source": "transport_lines_published Firestore (admin-approved only)",
   "lines": [
     {
@@ -36,6 +36,23 @@
         "direction": "retour",
         "num_stops": 17,
         "asset_path": "assets/transport_lines_public/core/105_retour.geojson"
+      }
+    },
+    {
+      "line_number": "106",
+      "display_name": "Ligne 106",
+      "transport_type": "bus",
+      "color": "0xFFE65100",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 13,
+        "asset_path": "assets/transport_lines_public/core/106_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 13,
+        "asset_path": "assets/transport_lines_public/core/106_retour.geojson"
       }
     },
     {
@@ -295,9 +312,9 @@
     },
     {
       "line_number": "146",
-      "display_name": "Ligne 146",
+      "display_name": "Ligne 146 Bleu",
       "transport_type": "bus",
-      "color": "0xFF0277BD",
+      "color": "0xFF1565C0",
       "is_bundled": true,
       "aller": {
         "direction": "aller",
@@ -618,9 +635,9 @@
     },
     {
       "line_number": "194",
-      "display_name": "Ligne 194",
+      "display_name": "Ligne 194 Bleu",
       "transport_type": "bus",
-      "color": "0xFF0B3D91",
+      "color": "0xFF1565C0",
       "is_bundled": true,
       "aller": {
         "direction": "aller",

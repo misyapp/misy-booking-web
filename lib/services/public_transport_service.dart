@@ -54,6 +54,7 @@ class PublicTransportService {
     _computeImportance();
     _computeAllBranches();
     _computeAllSchematics();
+    _buildSearchIndex();
     myCustomPrintStatement(
       'PublicTransportService: ${_linesCache.length}/${lines.length} lignes chargées',
     );
@@ -240,6 +241,17 @@ class PublicTransportService {
   int uniqueStopCountFor(String lineNumber) =>
       uniqueStopNamesFor(lineNumber).length;
 
+  /// Index de recherche d'arrêts pré-calculé au chargement. Évite le
+  /// O(N²) à chaque frappe (avant : pour chaque match, re-scan de toutes
+  /// les lignes pour trouver celles qui le desservent).
+  ///
+  /// Chaque entrée : un nom d'arrêt unique (normalisé) avec sa 1ʳᵉ position
+  /// rencontrée, son nom d'affichage, et l'ensemble des lignes qui le
+  /// desservent (par identité de nom OU proximité ≤ 80m d'au moins un de
+  /// leurs arrêts).
+  List<PublicSearchableStop> _searchIndex = const [];
+  List<PublicSearchableStop> get searchIndex => _searchIndex;
+
   /// Cache des branches calculées (linéaire vs circulaire) par lineNumber.
   /// Rempli au load. Évite la détection à chaque expand de la sidebar.
   final Map<String, LineBranches> _branchesCache = {};
@@ -254,6 +266,83 @@ class PublicTransportService {
   /// tout-boucle, ou complex (fallback).
   LineSchematic lineSchematicFor(String lineNumber) {
     return _schematicCache[lineNumber] ?? LineSchematic.empty();
+  }
+
+  /// Construit l'index de recherche d'arrêts. O(N) total au chargement,
+  /// puis chaque recherche est un simple `where` sur le nom normalisé.
+  void _buildSearchIndex() {
+    // Bucket par nom normalisé pour dédupliquer aller/retour et arrêts
+    // d'autres lignes au même nom.
+    final byName = <String, _SearchableBuilder>{};
+    final groups = _linesCache.values.toList();
+    for (final group in groups) {
+      for (final stop in [
+        ...?group.aller?.stops,
+        ...?group.retour?.stops
+      ]) {
+        final raw = stop.name.trim();
+        if (raw.isEmpty) continue;
+        final norm = _normalizeName(raw);
+        final entry = byName.putIfAbsent(
+            norm,
+            () => _SearchableBuilder(
+                  norm: norm,
+                  display: raw,
+                  position: stop.position,
+                ));
+        entry.lines.add(group.lineNumber);
+      }
+    }
+    // 2e passe : pour chaque arrêt unique, ajouter les lignes dont l'un
+    // des stops est à ≤ 80m (cluster physique). Exécution O(stops × lignes
+    // × stops_par_ligne) MAIS exécutée une seule fois au chargement.
+    for (final entry in byName.values) {
+      for (final group in groups) {
+        if (entry.lines.contains(group.lineNumber)) continue;
+        outer:
+        for (final stop in [
+          ...?group.aller?.stops,
+          ...?group.retour?.stops
+        ]) {
+          if (_haversineKm(entry.position, stop.position) * 1000 <= 80) {
+            entry.lines.add(group.lineNumber);
+            break outer;
+          }
+        }
+      }
+    }
+    _searchIndex = byName.values
+        .map((b) => PublicSearchableStop(
+              name: b.display,
+              normalized: b.norm,
+              position: b.position,
+              lines: b.lines.toList()..sort(_compareLineNumber),
+            ))
+        .toList(growable: false);
+  }
+
+  static int _compareLineNumber(String a, String b) {
+    final na = int.tryParse(a);
+    final nb = int.tryParse(b);
+    if (na != null && nb != null) return na.compareTo(nb);
+    if (na != null) return -1;
+    if (nb != null) return 1;
+    return a.compareTo(b);
+  }
+
+  /// Recherche d'arrêts par substring sur le nom normalisé.
+  /// Limit hard à 8 résultats pour éviter de saturer l'autocomplete.
+  List<PublicSearchableStop> searchStops(String query, {int limit = 8}) {
+    final q = _normalizeName(query.trim());
+    if (q.isEmpty) return const [];
+    final out = <PublicSearchableStop>[];
+    for (final s in _searchIndex) {
+      if (s.normalized.contains(q)) {
+        out.add(s);
+        if (out.length >= limit) break;
+      }
+    }
+    return out;
   }
 
   void _computeAllSchematics() {
@@ -525,6 +614,34 @@ class _SeenStop {
   final String nameNorm;
   final LatLng position;
   const _SeenStop(this.nameNorm, this.position);
+}
+
+/// Arrêt indexé pour la recherche autocomplete : nom d'affichage,
+/// nom normalisé pour matching, position canonique, et set des lignes
+/// qui le desservent (par identité de nom OU proximité ≤ 80m).
+class PublicSearchableStop {
+  final String name;
+  final String normalized;
+  final LatLng position;
+  final List<String> lines;
+
+  const PublicSearchableStop({
+    required this.name,
+    required this.normalized,
+    required this.position,
+    required this.lines,
+  });
+}
+
+/// Builder mutable pour [PublicSearchableStop] pendant la construction
+/// de l'index. Utilisé en interne par `_buildSearchIndex`.
+class _SearchableBuilder {
+  final String norm;
+  final String display;
+  final LatLng position;
+  final Set<String> lines = <String>{};
+  _SearchableBuilder(
+      {required this.norm, required this.display, required this.position});
 }
 
 /// Topologie d'une ligne — guide le rendu du schéma dans la sidebar.

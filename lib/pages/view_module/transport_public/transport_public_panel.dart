@@ -1,17 +1,19 @@
+import 'dart:ui' show ImageFilter;
+
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/transit_strings.dart';
 import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
 import 'package:rider_ride_hailing_app/models/route_planner.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_public/route_calculator.dart';
-import 'package:rider_ride_hailing_app/pages/view_module/transport_public/route_itinerary_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_public/transport_network_diagram.dart';
 import 'package:rider_ride_hailing_app/services/public_transport_service.dart';
 import 'package:rider_ride_hailing_app/services/transport_lines_service.dart'
     show LineMetadata;
 import 'package:rider_ride_hailing_app/widget/home_mode_toggle.dart';
-import 'package:rider_ride_hailing_app/widget/language_switcher.dart';
 
 /// Panneau gauche en mode "Transport en commun" — Phase 1.
 ///
@@ -19,14 +21,22 @@ import 'package:rider_ride_hailing_app/widget/language_switcher.dart';
 /// liste scrollable des lignes admin-validées (numéro coloré, nom,
 /// nb d'arrêts). Tap sur une ligne → callback [onLineSelected] pour la
 /// mettre en évidence sur la carte.
-class TransportPublicPanel extends StatelessWidget {
+class TransportPublicPanel extends StatefulWidget {
   final HomeMode mode;
   final ValueChanged<HomeMode> onModeChanged;
   final String? selectedLine; // null = toutes affichées en plein
   final ValueChanged<String?> onLineSelected;
-  /// Appelé quand l'utilisateur sélectionne un itinéraire calculé. Le
-  /// home l'utilise pour surligner sur la carte + push la timeline.
+  /// Appelé quand l'utilisateur sélectionne (ou auto-sélectionne) un
+  /// itinéraire calculé. Le home l'utilise pour surligner sur la carte.
+  /// `null` efface l'itinéraire actif.
   final ValueChanged<TransportRoute?>? onRouteSelected;
+  /// Appelé dès que l'utilisateur fixe ou retire un point de départ /
+  /// arrivée dans le calculateur. Le home l'utilise pour pan/fit la
+  /// carte et tracer un preview pointillé entre les 2 points.
+  final void Function(LatLng? origin, LatLng? destination)? onPointsChanged;
+  /// Reçoit chaque tap sur la carte (en mode public). Le calculateur
+  /// d'itinéraire l'écoute pour ajuster le dernier point posé.
+  final ValueListenable<LatLng?>? mapTapNotifier;
 
   const TransportPublicPanel({
     super.key,
@@ -35,7 +45,18 @@ class TransportPublicPanel extends StatelessWidget {
     required this.selectedLine,
     required this.onLineSelected,
     this.onRouteSelected,
+    this.onPointsChanged,
+    this.mapTapNotifier,
   });
+
+  @override
+  State<TransportPublicPanel> createState() => _TransportPublicPanelState();
+}
+
+class _TransportPublicPanelState extends State<TransportPublicPanel> {
+  /// Quand le calculateur a au moins un résultat affiché, on masque la
+  /// liste des lignes pour rester focalisé sur les itinéraires proposés.
+  bool _hasResults = false;
 
   @override
   Widget build(BuildContext context) {
@@ -43,72 +64,68 @@ class TransportPublicPanel extends StatelessWidget {
       top: 16,
       left: 16,
       bottom: 16,
-      // PointerInterceptor : sans ça les événements scroll/wheel sur la
-      // sidebar traversent jusqu'à la carte Google Maps en dessous et
-      // déclenchent zoom/pan involontaires (mode Course utilise le même
-      // pattern via _WebScrollIsolator dans home_screen_web.dart).
       child: PointerInterceptor(
-        child: Material(
-        color: Colors.transparent,
-        child: Container(
-          width: 320,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildHeader(context),
-              const Divider(height: 1, thickness: 1),
-              Padding(
-                padding:
-                    const EdgeInsets.fromLTRB(14, 14, 14, 8),
-                child: HomeModeToggle(
-                  current: mode,
-                  onChanged: onModeChanged,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 100, sigmaY: 100),
+            child: Container(
+              width: 320,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.90),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.5),
+                  width: 1,
                 ),
               ),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Calculateur d'itinéraire en haut.
-                      RouteCalculator(
-                        onRouteSelected: (route) {
-                          // Surligne sur la carte (callback parent) puis
-                          // ouvre la feuille de route détaillée.
-                          onRouteSelected?.call(route);
-                          Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) =>
-                                RouteItineraryScreen(route: route),
-                          ));
-                        },
+              child: Material(
+                color: Colors.transparent,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildHeader(context),
+                    const Divider(height: 1, thickness: 1),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+                      child: HomeModeToggle(
+                        current: widget.mode,
+                        onChanged: widget.onModeChanged,
                       ),
-                      const Divider(height: 1, thickness: 1),
-                      // Liste des lignes en dessous.
-                      SizedBox(
-                        height: 360,
-                        child: _LinesList(
-                          selectedLine: selectedLine,
-                          onLineSelected: onLineSelected,
+                    ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            RouteCalculator(
+                              onRouteSelected: widget.onRouteSelected,
+                              onPointsChanged: widget.onPointsChanged,
+                              onResultsVisibilityChanged: (visible) {
+                                if (_hasResults == visible) return;
+                                setState(() => _hasResults = visible);
+                              },
+                              mapTapNotifier: widget.mapTapNotifier,
+                            ),
+                            if (!_hasResults) ...[
+                              const Divider(height: 1, thickness: 1),
+                              SizedBox(
+                                height: 360,
+                                child: _LinesList(
+                                  selectedLine: widget.selectedLine,
+                                  onLineSelected: widget.onLineSelected,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-            ],
+            ),
           ),
-        ),
         ),
       ),
     );
@@ -167,8 +184,6 @@ class TransportPublicPanel extends StatelessWidget {
               ));
             },
           ),
-          const SizedBox(width: 4),
-          const LanguageSwitcher(),
         ],
       ),
     );
@@ -266,14 +281,6 @@ class _LinesListState extends State<_LinesList> {
               padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
               child: Row(
                 children: [
-                  Text(
-                    '${metas.length} ${TransitStrings.t('lines.count', locale)}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade600,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
                   const Spacer(),
                   if (widget.selectedLine != null)
                     TextButton(

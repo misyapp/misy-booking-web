@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
-import 'package:rider_ride_hailing_app/functions/print_function.dart';
 
 /// Résultat d'une recherche Nominatim (OSM).
 class NominatimPlace {
@@ -56,16 +55,16 @@ class NominatimService {
       'addressdetails': '0',
     });
     try {
-      // Pas de header User-Agent : sur browser, le navigateur impose le sien
-      // de toute façon (header forbidden) et un User-Agent custom
-      // déclenche un preflight CORS qui échoue (Nominatim renvoie 302 sur
-      // OPTIONS au lieu des en-têtes CORS attendus). Accept-Language est
-      // dans la safelist CORS donc OK.
-      final resp = await http.get(uri, headers: {
-        'Accept-Language': 'fr',
-      });
+      // Aucun header custom : sur browser, tout header non-safelisté
+      // déclenche un preflight OPTIONS qui peut échouer (Nominatim public
+      // ne répond pas correctement aux preflights et renvoie 302 vers
+      // /ui/search.html). Le navigateur impose son propre User-Agent.
+      // Pour Accept-Language, le default browser convient.
+      final resp = await http.get(uri);
       if (resp.statusCode != 200) {
-        myCustomPrintStatement('Nominatim ${resp.statusCode}: ${resp.body}');
+        // Log explicite en console DevTools pour diagnostic.
+        // ignore: avoid_print
+        print('[Nominatim] ${resp.statusCode}: ${resp.body}');
         return const [];
       }
       final data = json.decode(resp.body) as List;
@@ -80,7 +79,8 @@ class NominatimService {
         );
       }).toList();
     } catch (e) {
-      myCustomPrintStatement('Nominatim err: $e');
+      // ignore: avoid_print
+      print('[Nominatim] error: $e');
       return const [];
     }
   }

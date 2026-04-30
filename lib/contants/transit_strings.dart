@@ -66,17 +66,17 @@ class TransitStrings {
       AppLocale.en: 'Lines',
     },
     'lines.count': {
-      AppLocale.fr: 'lignes validées',
-      AppLocale.mg: 'tsipika voamarina',
-      AppLocale.en: 'validated lines',
+      AppLocale.fr: 'lignes',
+      AppLocale.mg: 'tsipika',
+      AppLocale.en: 'lines',
     },
     'lines.empty': {
       AppLocale.fr:
-          'Aucune ligne validée pour le moment. Le réseau s\'enrichit progressivement à mesure que les consultants terrain valident les tracés.',
+          'Le réseau est en cours de chargement. Réessayez dans un instant.',
       AppLocale.mg:
-          'Mbola tsy misy tsipika voamarina. Hihamaro tsikelikely ny tambazotra.',
+          'Mbola eo ampampidirana ny tambazotra. Andramo indray.',
       AppLocale.en:
-          'No validated lines yet. The network grows as field consultants validate routes.',
+          'Network is loading. Please try again shortly.',
     },
     'lines.tap.hint': {
       AppLocale.fr: 'Touchez une ligne pour la mettre en évidence',
@@ -133,9 +133,44 @@ class TransitStrings {
       AppLocale.en: 'To',
     },
     'route.calculate': {
-      AppLocale.fr: 'Calculer',
-      AppLocale.mg: 'Hikajy',
-      AppLocale.en: 'Calculate',
+      AppLocale.fr: 'Lancer la recherche',
+      AppLocale.mg: 'Hikaroka',
+      AppLocale.en: 'Search',
+    },
+    'route.modify': {
+      AppLocale.fr: 'Modifier la recherche',
+      AppLocale.mg: 'Hanova',
+      AppLocale.en: 'Modify search',
+    },
+    'route.when.label': {
+      AppLocale.fr: 'QUAND',
+      AppLocale.mg: 'OVIANA',
+      AppLocale.en: 'WHEN',
+    },
+    'route.when.depart': {
+      AppLocale.fr: 'Partir à',
+      AppLocale.mg: 'Hiainga amin\'ny',
+      AppLocale.en: 'Leave at',
+    },
+    'route.when.arrive': {
+      AppLocale.fr: 'Arriver à',
+      AppLocale.mg: 'Tonga amin\'ny',
+      AppLocale.en: 'Arrive by',
+    },
+    'route.when.now': {
+      AppLocale.fr: 'Maintenant',
+      AppLocale.mg: 'Izao',
+      AppLocale.en: 'Now',
+    },
+    'route.when.today': {
+      AppLocale.fr: 'Aujourd\'hui',
+      AppLocale.mg: 'Androany',
+      AppLocale.en: 'Today',
+    },
+    'route.when.tomorrow': {
+      AppLocale.fr: 'Demain',
+      AppLocale.mg: 'Rahampitso',
+      AppLocale.en: 'Tomorrow',
     },
     'route.calculating': {
       AppLocale.fr: 'Calcul en cours…',

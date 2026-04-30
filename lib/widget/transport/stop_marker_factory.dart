@@ -161,20 +161,14 @@ class StopMarkerFactory {
     return descriptor;
   }
 
-  /// Petit point blanc avec anneau couleur de la ligne. Utilisé à zoom
-  /// intermédiaire (13-14.5) pour montrer la position des arrêts sans
-  /// encombrer la carte avec les numéros.
-  ///
-  /// Le bitmap est strictement symétrique autour de (size/2, size/2) — pas
-  /// de drop shadow décalée — pour que le marker apparaisse centré pile
-  /// sur le LatLng (lui-même snappé sur la polyline). Sans cette symétrie
-  /// stricte, l'anchor 0.5,0.5 de Google Maps positionne le centre
-  /// géométrique du bitmap au LatLng, mais un shadow ou padding asymétrique
-  /// décale le centre visuel.
+  /// Point blanc avec fine bordure noire — neutre, lisible quelle que
+  /// soit la couleur de la ligne. Posé directement sur la polyline (qui
+  /// a elle-même un contour noir), donne un effet "stop blanc dans la
+  /// ligne" type plan métro.
   static Future<BitmapDescriptor> _renderDot(
       Color color, double devicePixelRatio) async {
     final size = _dotSize * devicePixelRatio;
-    final ringWidth = 1.5 * devicePixelRatio;
+    final ringWidth = 1.0 * devicePixelRatio;
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
@@ -183,7 +177,7 @@ class StopMarkerFactory {
     final outerRadius = size / 2;
     final innerRadius = outerRadius - ringWidth;
 
-    canvas.drawCircle(center, outerRadius, Paint()..color = color);
+    canvas.drawCircle(center, outerRadius, Paint()..color = Colors.black);
     canvas.drawCircle(center, innerRadius, Paint()..color = Colors.white);
 
     final picture = recorder.endRecording();

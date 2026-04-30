@@ -11,6 +11,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/my_colors.dart';
@@ -31,7 +32,9 @@ import 'package:rider_ride_hailing_app/pages/auth_module/login_screen.dart' show
 import 'package:rider_ride_hailing_app/pages/auth_module/signup_screen.dart' show SignUpScreen;
 import 'package:rider_ride_hailing_app/pages/auth_module/web_auth_screen.dart'
     show WebAuthMode, WebAuthScreen;
+import 'package:rider_ride_hailing_app/contants/transit_strings.dart' show AppLocale;
 import 'package:rider_ride_hailing_app/pages/auth_module/edit_profile_screen.dart';
+import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/phone_number_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/my_booking_screen.dart';
 import 'package:rider_ride_hailing_app/functions/navigation_functions.dart';
@@ -39,7 +42,7 @@ import 'package:rider_ride_hailing_app/services/guest_storage_service.dart';
 import 'package:rider_ride_hailing_app/models/guest_session.dart';
 import 'package:rider_ride_hailing_app/bottom_sheet_widget/request_for_ride.dart';
 import 'package:rider_ride_hailing_app/bottom_sheet_widget/drive_on_way.dart';
-import 'package:rider_ride_hailing_app/models/route_planner.dart' show TransportRoute, RouteStepType;
+import 'package:rider_ride_hailing_app/models/route_planner.dart' show TransportRoute, RouteStepType, TransportNode;
 import 'package:rider_ride_hailing_app/pages/view_module/transport_public/stop_card.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_public/transport_public_panel.dart';
 import 'package:rider_ride_hailing_app/services/public_transport_service.dart';
@@ -112,6 +115,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // === Markers personnalisés pour pickup/destination ===
   BitmapDescriptor? _pickupMarkerIcon;
   BitmapDescriptor? _destinationMarkerIcon;
+  /// Pin noir (forme goutte) avec disque blanc central — utilisé pour
+  /// l'origin du calculateur d'itinéraire transport en commun.
+  BitmapDescriptor? _publicOriginMarkerIcon;
 
   // === Animation de la polyline ===
   Timer? _polylineAnimationTimer;
@@ -204,6 +210,24 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // de la caméra.
   Set<Polyline> _publicRoutePolylines = {};
   Set<Marker> _publicRouteMarkers = {};
+
+  // Preview O→D : polyline pointillée grise + 2 markers, dessinée pendant
+  // que l'utilisateur saisit son itinéraire et avant le calcul. Effacée
+  // dès qu'un itinéraire est calculé/sélectionné.
+  Set<Polyline> _publicPreviewPolyline = {};
+  Set<Marker> _publicPreviewMarkers = {};
+
+  /// Notifier pushé par le map.onTap en mode public, écouté par le
+  /// calculateur d'itinéraire pour ajuster le dernier point posé (origin
+  /// ou destination) selon où l'user clique.
+  final ValueNotifier<LatLng?> _publicMapTapNotifier = ValueNotifier(null);
+
+  /// Clusters d'arrêts pré-calculés UNE FOIS après le chargement du bundle.
+  /// Évite de recommencer le O(N²) de clustering + snap à chaque rebuild
+  /// (zoom, sélection). Les lignes desservant chaque cluster ne changent
+  /// pas non plus pendant la session ; seule la ligne primaire varie selon
+  /// la sélection en cours.
+  List<_PublicStopAggregate> _baseClusters = const [];
 
   // Cache des coordonnées écran de chaque stop visible. Recalculé à chaque
   // onCameraIdle via une interpolation linéaire depuis getVisibleRegion
@@ -813,13 +837,18 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   /// Crée le marker rond blanc avec contour noir pour le pickup
   Future<void> _createCustomMarkers() async {
-    if (_pickupMarkerIcon != null && _destinationMarkerIcon != null) return;
+    if (_pickupMarkerIcon != null &&
+        _destinationMarkerIcon != null &&
+        _publicOriginMarkerIcon != null) return;
 
     // Créer le marker rond (pickup)
     _pickupMarkerIcon = await _createCircleMarker();
 
     // Créer le marker carré (destination)
     _destinationMarkerIcon = await _createSquareMarker();
+
+    // Pin noir pour l'origine du calculateur transport.
+    _publicOriginMarkerIcon = await _createBlackPinMarker();
   }
 
   Future<BitmapDescriptor> _createCircleMarker() async {
@@ -855,6 +884,17 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final bytes = await image.toByteData(format: ImageByteFormat.png);
 
     return BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+  }
+
+  /// Pin noir : asset `assets/images/origin_pin.png` (forme goutte avec
+  /// disque blanc central). Anchor 0.5/1.0 → pointe pile sur le point géo.
+  Future<BitmapDescriptor> _createBlackPinMarker() async {
+    final byteData = await rootBundle.load('assets/images/origin_pin.png');
+    final bytes = byteData.buffer.asUint8List();
+    // Source 512×512, pin centré dans le bbox. On display en carré
+    // pour préserver la forme. La pointe est à ~98% de la hauteur ; on
+    // ajuste donc l'anchor côté Marker plutôt qu'ici.
+    return BitmapDescriptor.bytes(bytes, width: 48, height: 48);
   }
 
   Future<BitmapDescriptor> _createSquareMarker() async {
@@ -1271,6 +1311,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         selectedLine: _publicSelectedLine,
         onLineSelected: _onPublicLineSelected,
         onRouteSelected: _onPublicRouteSelected,
+        onPointsChanged: _onPublicPointsChanged,
+        mapTapNotifier: _publicMapTapNotifier,
       );
     }
 
@@ -2179,6 +2221,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                 push(context: context, screen: const EditProfileScreen());
               } else if (value == 'trips') {
                 push(context: context, screen: const MyBookingScreen());
+              } else if (value.startsWith('lang.')) {
+                final loc = AppLocale.values.firstWhere(
+                  (l) => 'lang.${l.name}' == value,
+                  orElse: () => AppLocale.fr,
+                );
+                Provider.of<LocaleProvider>(context, listen: false)
+                    .setLocale(loc);
               }
             },
             itemBuilder: (context) => [
@@ -2217,6 +2266,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                 ),
               ],
               const PopupMenuDivider(),
+              ..._buildLanguageMenuItems(context),
+              const PopupMenuDivider(),
               const PopupMenuItem(
                 value: 'logout',
                 child: Row(
@@ -2234,6 +2285,42 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     );
   }
 
+  /// Construit la sous-section "Langue" du popup profil. 3 choix
+  /// (FR/MG/EN), avec une coche sur la langue active.
+  List<PopupMenuEntry<String>> _buildLanguageMenuItems(BuildContext context) {
+    final current = Provider.of<LocaleProvider>(context, listen: false).locale;
+    const labels = {
+      AppLocale.fr: 'Français',
+      AppLocale.mg: 'Malagasy',
+      AppLocale.en: 'English',
+    };
+    return [
+      for (final loc in AppLocale.values)
+        PopupMenuItem<String>(
+          value: 'lang.${loc.name}',
+          child: Row(
+            children: [
+              Icon(
+                loc == current ? Icons.check : Icons.language,
+                size: 18,
+                color: loc == current
+                    ? const Color(0xFF1D3557)
+                    : Colors.grey.shade500,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                labels[loc] ?? loc.name,
+                style: TextStyle(
+                  fontWeight:
+                      loc == current ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ),
+    ];
+  }
+
   Widget _buildMap() {
     final allMarkers = <Marker>{};
     final allPolylines = <Polyline>{};
@@ -2243,9 +2330,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // marker chauffeur / pickup / destination ni polyline d'itinéraire
       // course ne sont rendus — les 2 modes sont strictement isolés.
       if (_publicRoutePolylines.isEmpty) {
-        // Pas d'itinéraire sélectionné → on montre le réseau complet.
+        // Pas d'itinéraire sélectionné → on montre le réseau complet
+        // + éventuel preview O→D (pointillé) en cours de saisie.
         allPolylines.addAll(_publicTransportPolylines);
         allMarkers.addAll(_publicTransportMarkers);
+        allPolylines.addAll(_publicPreviewPolyline);
+        allMarkers.addAll(_publicPreviewMarkers);
       } else {
         // Itinéraire sélectionné → on isole : seul l'itinéraire est rendu,
         // les autres lignes du réseau sont cachées (UX user-spec).
@@ -2331,8 +2421,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   /// Gère le tap sur la carte (pour sélectionner une position)
   void _onMapTap(LatLng latLng) {
-    // Mode public : pas de sélection de position via tap (réservé Phase 2).
-    if (_homeMode == HomeMode.publicTransport) return;
+    // Mode public : on délègue au calculateur d'itinéraire pour ajuster
+    // le dernier point posé (cf. RouteCalculator.mapTapNotifier).
+    if (_homeMode == HomeMode.publicTransport) {
+      _publicMapTapNotifier.value = latLng;
+      return;
+    }
 
     final tripProvider = Provider.of<TripProvider>(context, listen: false);
 
@@ -2361,6 +2455,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       _publicHoveredStop = null;
       _publicRoutePolylines = {};
       _publicRouteMarkers = {};
+      _publicPreviewPolyline = {};
+      _publicPreviewMarkers = {};
     });
     if (mode == HomeMode.publicTransport && !_publicTransportLoaded) {
       _loadPublicTransportLayers();
@@ -2387,6 +2483,97 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// choisi est visible. Cf. `_buildMap` qui exclut les couches network
   /// quand `_publicRoutePolylines` est non vide.
   ///
+  /// Callback du calculateur d'itinéraire : appelé dès que l'utilisateur
+  /// pose ou retire un origin/destination dans les champs.
+  ///
+  /// - 1 point seul : pan vers ce point (zoom 15).
+  /// - 2 points : fit la caméra sur les 2 + trace une polyline pointillée
+  ///   grise entre les deux pour preview avant calcul.
+  /// - Aucun point : efface le preview.
+  ///
+  /// Le preview disparaît automatiquement dès qu'un itinéraire est calculé
+  /// (cf. `_buildMap` qui priorise `_publicRoutePolylines`).
+  void _onPublicPointsChanged(LatLng? origin, LatLng? destination) {
+    final polylines = <Polyline>{};
+    final markers = <Marker>{};
+    if (origin != null && destination != null) {
+      polylines.add(Polyline(
+        polylineId: const PolylineId('public_preview'),
+        points: [origin, destination],
+        color: const Color(0xFF6B7280),
+        width: 3,
+        patterns: [PatternItem.dash(10), PatternItem.gap(8)],
+        zIndex: 150,
+        consumeTapEvents: false,
+      ));
+    }
+    if (origin != null) {
+      markers.add(Marker(
+        markerId: const MarkerId('public_preview_origin'),
+        position: origin,
+        icon: _publicOriginMarkerIcon ??
+            BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueViolet),
+        // Pointe du pin sur le point géo. Le PNG source 512×512 a sa
+        // pointe à ~98% de la hauteur, anchor 0.5/0.98 plutôt que 0.5/1.
+        anchor: const Offset(0.5, 0.98),
+        zIndex: 250,
+        consumeTapEvents: false,
+      ));
+    }
+    if (destination != null) {
+      markers.add(Marker(
+        markerId: const MarkerId('public_preview_dest'),
+        position: destination,
+        icon: _destinationMarkerIcon ??
+            BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueRed),
+        anchor: const Offset(0.5, 0.5),
+        zIndex: 251,
+        consumeTapEvents: false,
+      ));
+    }
+    setState(() {
+      _publicPreviewPolyline = polylines;
+      _publicPreviewMarkers = markers;
+    });
+
+    // Animation caméra.
+    final controller = _mapController;
+    if (controller == null) return;
+    if (origin != null && destination != null) {
+      var minLat = origin.latitude < destination.latitude
+          ? origin.latitude
+          : destination.latitude;
+      var maxLat = origin.latitude > destination.latitude
+          ? origin.latitude
+          : destination.latitude;
+      var minLng = origin.longitude < destination.longitude
+          ? origin.longitude
+          : destination.longitude;
+      var maxLng = origin.longitude > destination.longitude
+          ? origin.longitude
+          : destination.longitude;
+      // Si les 2 points sont quasi confondus, fallback newLatLngZoom.
+      if ((maxLat - minLat).abs() < 0.0005 &&
+          (maxLng - minLng).abs() < 0.0005) {
+        controller.animateCamera(CameraUpdate.newLatLngZoom(origin, 17));
+        return;
+      }
+      controller.animateCamera(CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat, minLng),
+          northeast: LatLng(maxLat, maxLng),
+        ),
+        80,
+      ));
+    } else if (origin != null) {
+      controller.animateCamera(CameraUpdate.newLatLngZoom(origin, 17));
+    } else if (destination != null) {
+      controller.animateCamera(CameraUpdate.newLatLngZoom(destination, 17));
+    }
+  }
+
   /// `null` efface l'itinéraire et restaure le réseau.
   Future<void> _onPublicRouteSelected(TransportRoute? route) async {
     if (route == null) {
@@ -2398,6 +2585,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       _rebuildPublicTransportLayers();
       return;
     }
+    // L'itinéraire prend le relais du preview O→D.
+    _publicPreviewPolyline = {};
+    _publicPreviewMarkers = {};
     final polylines = <Polyline>{};
     final markers = <Marker>{};
     final allPts = <LatLng>[];
@@ -2444,6 +2634,18 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       }
 
       if (pts.length >= 2) {
+        // Outline noir uniquement pour les segments transport (les marches
+        // sont en pointillé gris, l'outline les rendrait illisibles).
+        if (!step.isWalking) {
+          polylines.add(Polyline(
+            polylineId: PolylineId('route_leg_${i}_outline'),
+            points: pts,
+            color: Colors.black.withOpacity(0.85),
+            width: 9,
+            zIndex: 199 + i,
+            consumeTapEvents: false,
+          ));
+        }
         polylines.add(Polyline(
           polylineId: PolylineId('route_leg_$i'),
           points: pts,
@@ -2487,6 +2689,40 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         consumeTapEvents: false,
       ));
       transportLegIdx++;
+    }
+
+    // Petits dots blancs (bord noir fin) à chaque arrêt traversé par les
+    // legs transport — startStop + intermediateStops + endStop. Effet plan
+    // métro : les arrêts ressortent visuellement sur la polyline isolée.
+    final stopDot = await StopMarkerFactory.create(
+      label: '',
+      color: Colors.white,
+      devicePixelRatio: dpr,
+      style: StopMarkerStyle.dot,
+    );
+    final seenStops = <String>{};
+    var stopDotIdx = 0;
+    String dotKey(LatLng p) =>
+        '${p.latitude.toStringAsFixed(5)},${p.longitude.toStringAsFixed(5)}';
+    for (final step in route.steps) {
+      if (step.type != RouteStepType.transport) continue;
+      final stops = <TransportNode>[
+        if (step.startStop != null) step.startStop!,
+        ...step.intermediateStops,
+        if (step.endStop != null) step.endStop!,
+      ];
+      for (final s in stops) {
+        final key = dotKey(s.position);
+        if (!seenStops.add(key)) continue;
+        markers.add(Marker(
+          markerId: MarkerId('route_stop_${stopDotIdx++}'),
+          position: s.position,
+          icon: stopDot,
+          anchor: const Offset(0.5, 0.5),
+          zIndex: 280,
+          consumeTapEvents: false,
+        ));
+      }
     }
 
     // Destination : carré blanc-bordure-noire-point-noir (style Course).
@@ -2535,11 +2771,134 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     try {
       await PublicTransportService.instance.ensureLoaded();
       if (!mounted) return;
+      _precomputeBaseClusters();
       await _rebuildPublicTransportLayers();
       setState(() => _publicTransportLoaded = true);
     } catch (e) {
       myCustomPrintStatement('PublicTransportLayers: erreur chargement $e');
     }
+  }
+
+  /// Pré-calcule UNE FOIS la liste des clusters d'arrêts (dédup name +
+  /// proximité) avec snap à la polyline de leur ligne la plus importante.
+  /// Cette opération est O(N²) mais ne dépend ni du zoom ni de la
+  /// sélection : on la fait une seule fois et on filtre/recolore au
+  /// rebuild ensuite.
+  void _precomputeBaseClusters() {
+    final svc = PublicTransportService.instance;
+    final byImportance = svc.linesByImportance;
+    final importanceRank = <String, int>{
+      for (var i = 0; i < byImportance.length; i++) byImportance[i]: i,
+    };
+    final orderedGroups = <TransportLineGroup>[
+      for (var i = byImportance.length - 1; i >= 0; i--)
+        if (svc.getLineGroup(byImportance[i]) != null)
+          svc.getLineGroup(byImportance[i])!,
+    ];
+
+    // 1. Collecte de tous les raw stops avec snap-to-polyline.
+    final rawStops = <_RawStop>[];
+    for (final group in orderedGroups) {
+      final meta = svc.metadataFor(group.lineNumber);
+      final color =
+          meta != null ? Color(meta.colorValue) : const Color(0xFF1565C0);
+      void collect(TransportLine? line) {
+        if (line == null) return;
+        for (final stop in line.stops) {
+          final snapped = _snapToPolyline(stop.position, line.coordinates);
+          rawStops.add(_RawStop(
+            position: snapped,
+            name: stop.name,
+            lineNumber: group.lineNumber,
+            color: color,
+          ));
+        }
+      }
+      collect(group.aller);
+      collect(group.retour);
+    }
+
+    // 2. Clustering (O(N²) mais une seule fois).
+    final clusters = <_PublicStopAggregate>[];
+    for (final raw in rawStops) {
+      final rawNameNorm = _normalizeStopName(raw.name);
+      _PublicStopAggregate? match;
+      for (final c in clusters) {
+        final dist = _metersBetween(c.position, raw.position);
+        final cNameNorm = _normalizeStopName(c.name);
+        final sameName = rawNameNorm.isNotEmpty &&
+            cNameNorm.isNotEmpty &&
+            rawNameNorm == cNameNorm;
+        if (sameName && dist <= 250.0) {
+          match = c;
+          break;
+        }
+        if (dist <= 35.0) {
+          match = c;
+          break;
+        }
+      }
+      if (match != null) {
+        match.lines.add(raw.lineNumber);
+        if (raw.name.length > match.name.length) match.name = raw.name;
+      } else {
+        clusters.add(_PublicStopAggregate(
+          key: _stopKey(raw.position),
+          position: raw.position,
+          name: raw.name,
+          primaryLine: raw.lineNumber,
+          primaryColor: raw.color,
+        ));
+      }
+    }
+
+    // 3. Pour chaque cluster, choix de la ligne primaire (la plus
+    //    importante qui le dessert) et snap final sur sa polyline.
+    for (final c in clusters) {
+      String? best;
+      var bestRank = 1 << 30;
+      for (final ln in c.lines) {
+        final rank = importanceRank[ln] ?? (1 << 30);
+        if (rank < bestRank) {
+          bestRank = rank;
+          best = ln;
+        }
+      }
+      if (best != null) {
+        final meta = svc.metadataFor(best);
+        c.primaryLine = best;
+        c.primaryColor = meta != null
+            ? Color(meta.colorValue)
+            : const Color(0xFF1565C0);
+        c.basePrimaryLine = c.primaryLine;
+        c.basePrimaryColor = c.primaryColor;
+        final group = svc.getLineGroup(best);
+        if (group != null) {
+          final aller = group.aller?.coordinates ?? const <LatLng>[];
+          final retour = group.retour?.coordinates ?? const <LatLng>[];
+          var bestPos = c.position;
+          var bestDist = double.infinity;
+          if (aller.length >= 2) {
+            final s = _snapToPolyline(c.position, aller);
+            final d = _planarDistSq(c.position, s);
+            if (d < bestDist) {
+              bestDist = d;
+              bestPos = s;
+            }
+          }
+          if (retour.length >= 2) {
+            final s = _snapToPolyline(c.position, retour);
+            final d = _planarDistSq(c.position, s);
+            if (d < bestDist) {
+              bestDist = d;
+              bestPos = s;
+            }
+          }
+          c.position = bestPos;
+        }
+      }
+    }
+    _baseClusters = clusters;
   }
 
   /// Recalcule les Set polyline/marker selon le zoom + la sélection.
@@ -2583,32 +2942,25 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     //   >= 15.5     : carré agrandi (= bigLabel)
     //   sélectionné/survolé : toujours largeLabel (le plus grand) en
     //                          surbrillance, quel que soit le zoom.
-    final showStops = _publicMapZoom >= 13;
+    // Dots blancs sur la polyline visibles dès qu'on commence à zoomer.
+    // Les labels (numéro de ligne) n'apparaissent que plus haut pour ne
+    // pas saturer.
+    final showStops = _publicMapZoom >= 11;
     final useLabels = _publicMapZoom >= 14.5;
     final useBigLabels = _publicMapZoom >= 15.5;
 
-    // Liste plate avant clustering. Permet de dédupliquer un arrêt aller +
-    // son équivalent retour qui sont à des positions légèrement décalées
-    // (typiquement 15-30m, de chaque côté de la rue).
-    final rawStops = <_RawStop>[];
-
-    // Ordre d'itération : on dessine les lignes les MOINS importantes en
-    // premier pour que les plus longues (= les axes) passent par-dessus
-    // visuellement. Le marker d'un cluster prend la couleur/numéro de la
-    // ligne la plus importante (cf. plus bas).
+    // Polylines visibles : on parcourt UNIQUEMENT les groupes filtrés.
+    // Le clustering des stops, lui, est pré-calculé une fois (cf.
+    // _precomputeBaseClusters) et on filtre juste par lignes visibles.
     final byImportance = svc.linesByImportance;
     final renderOrder = [
       for (var i = byImportance.length - 1; i >= 0; i--) byImportance[i],
     ];
-    final orderedGroups = <TransportLineGroup>[
-      for (final ln in renderOrder)
-        if (svc.getLineGroup(ln) != null) svc.getLineGroup(ln)!,
-    ];
-
-    for (final group in orderedGroups) {
-      if (!visible.contains(group.lineNumber)) continue;
-
-      final meta = svc.metadataFor(group.lineNumber);
+    for (final lineNumber in renderOrder) {
+      if (!visible.contains(lineNumber)) continue;
+      final group = svc.getLineGroup(lineNumber);
+      if (group == null) continue;
+      final meta = svc.metadataFor(lineNumber);
       final color =
           meta != null ? Color(meta.colorValue) : const Color(0xFF1565C0);
       final isSelected = selected != null;
@@ -2618,7 +2970,15 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       void addPolyline(TransportLine? line, String dir) {
         if (line == null || line.coordinates.length < 2) return;
         polylines.add(Polyline(
-          polylineId: PolylineId('pt_${group.lineNumber}_$dir'),
+          polylineId: PolylineId('pt_${lineNumber}_${dir}_outline'),
+          points: line.coordinates,
+          color: Colors.black.withOpacity(0.85),
+          width: width + 2,
+          zIndex: isSelected ? 4 : 0,
+          consumeTapEvents: false,
+        ));
+        polylines.add(Polyline(
+          polylineId: PolylineId('pt_${lineNumber}_$dir'),
           points: line.coordinates,
           color: color.withOpacity(lineOpacity),
           width: width,
@@ -2627,144 +2987,42 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         ));
       }
 
-      void collectStops(TransportLine? line) {
-        if (line == null) return;
-        if (!showStops) return;
-        for (final stop in line.stops) {
-          // Snap au point le plus proche sur la polyline pour que le marker
-          // tombe pile au centre du trait (les positions GeoJSON peuvent
-          // être légèrement décalées de l'OSRM tracing).
-          final snapped =
-              _snapToPolyline(stop.position, line.coordinates);
-          rawStops.add(_RawStop(
-            position: snapped,
-            name: stop.name,
-            lineNumber: group.lineNumber,
-            color: color,
-          ));
-        }
-      }
-
       addPolyline(group.aller, 'aller');
       addPolyline(group.retour, 'retour');
-      collectStops(group.aller);
-      collectStops(group.retour);
     }
 
-    // Clustering type IDFM :
-    // - même nom (non vide) ET dans un rayon de 250m → même arrêt conceptuel
-    //   (couvre les cas aller/retour décalés de 60-150m sur des axes à
-    //   contre-sens, plus les arrêts en correspondance avec petit décalage).
-    // - sinon proximité géométrique 35m → 2 stops physiquement très proches.
-    // Si une ligne (aller + retour) ou plusieurs lignes desservent le cluster,
-    // on accumule toutes leurs lignes pour les exposer dans la card au clic.
-    final clusters = <_PublicStopAggregate>[];
-    for (final raw in rawStops) {
-      final rawNameNorm = _normalizeStopName(raw.name);
-      _PublicStopAggregate? match;
-      for (final c in clusters) {
-        final dist = _metersBetween(c.position, raw.position);
-        final cNameNorm = _normalizeStopName(c.name);
-        final sameName = rawNameNorm.isNotEmpty &&
-            cNameNorm.isNotEmpty &&
-            rawNameNorm == cNameNorm;
-        if (sameName && dist <= 250.0) {
-          match = c;
-          break;
+    // Stops : itère les clusters pré-calculés, garde uniquement ceux dont
+    // au moins une ligne desservant est visible. Si une ligne est
+    // sélectionnée, c'est elle qui devient primaire pour le rendu (couleur
+    // du badge), sinon on garde la primaire pré-calculée.
+    final stopsByKey = <String, _PublicStopAggregate>{};
+    if (showStops) {
+      for (final c in _baseClusters) {
+        final hasVisibleLine = c.lines.any(visible.contains);
+        if (!hasVisibleLine) continue;
+        // Restaure le primaire pré-calculé puis override si une ligne est
+        // actuellement sélectionnée et passe par ce cluster.
+        if (c.basePrimaryLine != null) {
+          c.primaryLine = c.basePrimaryLine!;
+          c.primaryColor = c.basePrimaryColor!;
         }
-        if (dist <= 35.0) {
-          match = c;
-          break;
+        if (selected != null && c.lines.contains(selected)) {
+          final selectedMeta = svc.metadataFor(selected);
+          c.primaryLine = selected;
+          c.primaryColor = selectedMeta != null
+              ? Color(selectedMeta.colorValue)
+              : const Color(0xFF1565C0);
         }
-      }
-      if (match != null) {
-        match.lines.add(raw.lineNumber);
-        if (raw.name.length > match.name.length) match.name = raw.name;
-      } else {
-        clusters.add(_PublicStopAggregate(
-          key: _stopKey(raw.position),
-          position: raw.position,
-          name: raw.name,
-          primaryLine: raw.lineNumber,
-          primaryColor: raw.color,
-        ));
+        stopsByKey[c.key] = c;
       }
     }
 
-    // Choix de la "ligne primaire" pour chaque cluster :
-    // - Si une ligne est sélectionnée et passe par ce cluster → c'est elle.
-    // - Sinon : la ligne la PLUS importante (= longueur totale max) qui
-    //   passe par ce cluster. Cohérent avec l'ordre de dessin des polylines
-    //   (la plus importante est posée en dernier → visible au-dessus).
-    final importanceRank = <String, int>{
-      for (var i = 0; i < byImportance.length; i++) byImportance[i]: i,
-    };
-    for (final c in clusters) {
-      if (selected != null && c.lines.contains(selected)) {
-        final selectedMeta = svc.metadataFor(selected);
-        c.primaryLine = selected;
-        c.primaryColor = selectedMeta != null
-            ? Color(selectedMeta.colorValue)
-            : const Color(0xFF1565C0);
-        continue;
-      }
-      String? best;
-      var bestRank = 1 << 30;
-      for (final ln in c.lines) {
-        final rank = importanceRank[ln] ?? (1 << 30);
-        if (rank < bestRank) {
-          bestRank = rank;
-          best = ln;
-        }
-      }
-      if (best != null && best != c.primaryLine) {
-        final meta = svc.metadataFor(best);
-        c.primaryLine = best;
-        c.primaryColor = meta != null
-            ? Color(meta.colorValue)
-            : const Color(0xFF1565C0);
-      }
-    }
-
-    // Snap final : pour chaque cluster, projette sa position sur la polyline
-    // de sa ligne primaire (aller OU retour, le plus proche). Sans ça, un
-    // cluster qui agrège des stops de plusieurs lignes garde la position du
-    // 1er stop matché — qui peut être sur une polyline parallèle à 30-50m.
-    // Le marker apparaissait alors flotter à côté du trait de la ligne
-    // primaire qu'il est censé représenter.
-    for (final c in clusters) {
-      final group = svc.getLineGroup(c.primaryLine);
-      if (group == null) continue;
-      final aller = group.aller?.coordinates ?? const <LatLng>[];
-      final retour = group.retour?.coordinates ?? const <LatLng>[];
-      LatLng best = c.position;
-      double bestDist = double.infinity;
-      if (aller.length >= 2) {
-        final s = _snapToPolyline(c.position, aller);
-        final d = _planarDistSq(c.position, s);
-        if (d < bestDist) {
-          bestDist = d;
-          best = s;
-        }
-      }
-      if (retour.length >= 2) {
-        final s = _snapToPolyline(c.position, retour);
-        final d = _planarDistSq(c.position, s);
-        if (d < bestDist) {
-          bestDist = d;
-          best = s;
-        }
-      }
-      c.position = best;
-    }
-
-    final stopsByKey = <String, _PublicStopAggregate>{
-      for (final c in clusters) c.key: c,
-    };
-
-    // Génération des markers custom pour les stops collectés.
+    // Génération des markers custom — parallélisée. La factory cache par
+    // (label, color, dpr, style), donc seuls les nouveaux variants paient
+    // une rastérisation ; les autres reviennent du cache instantanément.
     final markers = <Marker>{};
     final hovered = _publicHoveredStop;
+    final markerFutures = <Future<Marker>>[];
     for (final agg in stopsByKey.values) {
       final isStopSelected = selectedStop == agg.key;
       final isStopHovered = !isStopSelected && hovered == agg.key;
@@ -2778,22 +3036,23 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       } else {
         style = StopMarkerStyle.dot;
       }
-      final icon = await StopMarkerFactory.create(
+      markerFutures.add(StopMarkerFactory.create(
         label: agg.primaryLine,
         color: agg.primaryColor,
         devicePixelRatio: dpr,
         style: style,
-      );
-      markers.add(Marker(
-        markerId: MarkerId('stop_${agg.key}'),
-        position: agg.position,
-        icon: icon,
-        anchor: const Offset(0.5, 0.5),
-        zIndex: isStopSelected ? 100 : (isStopHovered ? 50 : 10),
-        consumeTapEvents: true,
-        onTap: () => _onPublicStopTap(agg),
-      ));
+      ).then((icon) => Marker(
+            markerId: MarkerId('stop_${agg.key}'),
+            position: agg.position,
+            icon: icon,
+            anchor: const Offset(0.5, 0.5),
+            zIndex: isStopSelected ? 100 : (isStopHovered ? 50 : 10),
+            consumeTapEvents: true,
+            onTap: () => _onPublicStopTap(agg),
+          )));
     }
+    final builtMarkers = await Future.wait(markerFutures);
+    markers.addAll(builtMarkers);
 
     if (!mounted) return;
     setState(() {
@@ -4454,8 +4713,14 @@ class _PublicStopAggregate {
   /// que le marker tombe pile au centre du trait coloré rendu.
   LatLng position;
   String name;
+  /// Ligne primaire et couleur ACTUELLES (peuvent être overridées au rebuild
+  /// si une ligne est sélectionnée).
   String primaryLine;
   Color primaryColor;
+  /// Snapshot fixé au pré-calcul, restauré à chaque rebuild si plus rien
+  /// n'est sélectionné. Évite que la sélection précédente "colle".
+  String? basePrimaryLine;
+  Color? basePrimaryColor;
   final Set<String> lines = <String>{};
 
   _PublicStopAggregate({
