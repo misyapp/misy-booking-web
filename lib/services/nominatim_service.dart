@@ -38,8 +38,6 @@ class NominatimService {
 
   static const String _endpoint =
       'https://nominatim.openstreetmap.org/search';
-  static const String _userAgent =
-      'Misy-Booking-Web/1.0 (https://book.misy.app; contact@misyapp.com)';
 
   // ViewBox biais Madagascar (lon_min, lat_min, lon_max, lat_max).
   static const String _viewbox = '43.2,-25.6,50.5,-11.9';
@@ -58,8 +56,12 @@ class NominatimService {
       'addressdetails': '0',
     });
     try {
+      // Pas de header User-Agent : sur browser, le navigateur impose le sien
+      // de toute façon (header forbidden) et un User-Agent custom
+      // déclenche un preflight CORS qui échoue (Nominatim renvoie 302 sur
+      // OPTIONS au lieu des en-têtes CORS attendus). Accept-Language est
+      // dans la safelist CORS donc OK.
       final resp = await http.get(uri, headers: {
-        'User-Agent': _userAgent,
         'Accept-Language': 'fr',
       });
       if (resp.statusCode != 200) {
