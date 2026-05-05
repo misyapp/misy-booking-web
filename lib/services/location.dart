@@ -183,11 +183,27 @@ Future<void> getcurrentAddress() async {
       : currentFullAddress;
 }
 
-Future<Map> getLatLngByPlaceId(String placeId) async {
+/// Récupère les détails d'un Place via son placeId.
+///
+/// IMPORTANT — paramètre [fields] : restreint à Basic Data (gratuite en
+/// session token). NE PAS étendre sans valider la facture : ajouter
+/// `rating`, `opening_hours`, `phone`, `website` déclenche les SKUs
+/// Atmosphere Data ($0.0043/req) et Contact Data ($0.0026/req) qui ont
+/// coûté ~$48/mois en avril 2026 sur misy_booking_web.
+/// Champs autorisés (Basic Data) : place_id, geometry/location,
+/// formatted_address, name, address_components, types, vicinity, plus_code.
+///
+/// [sessionToken] : si fourni, Google bundle cet appel avec les autocomplete
+/// précédents de la même session = 1 unité facturée au lieu de N
+/// (Phase 3 audit GCP). Doit être identique pour tous les appels d'une
+/// même session de sélection (autocomplete + 1 placeDetails final).
+Future<Map> getLatLngByPlaceId(String placeId, {String? sessionToken}) async {
+  const fields = 'place_id,geometry/location,formatted_address,name';
+  final tokenParam = (sessionToken != null && sessionToken.isNotEmpty)
+      ? '&sessiontoken=$sessionToken'
+      : '';
   String url =
-      'https://maps.googleapis.com/maps/api/place/details/json?placeid=$placeId&key=$googleMapApiKey';
-  // http.Response response =
-  // http.Response('{"message":"failure","status":0}', 404);
+      'https://maps.googleapis.com/maps/api/place/details/json?placeid=$placeId&fields=$fields&key=$googleMapApiKey$tokenParam';
   try {
     http.Response response = await http.get(
       Uri.parse(url),
@@ -209,8 +225,6 @@ Future<Map> getAddressWithPlusCodeByLatLng(
     {required double latitude, required double longitude}) async {
   String url =
       'https://maps.googleapis.com/maps/api/geocode/json?latlng=$latitude,$longitude&key=$googleMapApiKey';
-  // http.Response response =
-  // http.Response('{"message":"failure","status":0}', 404);
   try {
     http.Response response = await http.get(
       Uri.parse(url),
@@ -372,8 +386,10 @@ TotalTimeDistanceModal _createTotalTimeDistance(String body) {
 }
 
 Future<Map> getAddressByLatLongFromApi(String lat, String long) async {
+  // Voir [getLatLngByPlaceId] pour les règles `fields=` (Basic Data only).
+  const fields = 'place_id,geometry/location,formatted_address,name';
   String url =
-      'https://maps.googleapis.com/maps/api/place/details/json?location=$lat,$long&key=$googleMapApiKey';
+      'https://maps.googleapis.com/maps/api/place/details/json?location=$lat,$long&fields=$fields&key=$googleMapApiKey';
   // http.Response response =
   // http.Response('{"message":"failure","status":0}', 404);
   try {
@@ -686,13 +702,22 @@ Future<void> startLocationListner(Function callbck) async {
   });
 }
 
-Future<List> getPlacePridiction(text) async {
+/// Autocomplete Places.
+///
+/// [sessionToken] : si fourni, Google bundle ce keystroke avec les autres
+/// autocomplete + le placeDetails final dans une seule unité facturée
+/// (Phase 3 audit GCP). Passer le même token pendant toute la sélection
+/// d'un pickup ou d'un drop, puis le réinitialiser après le placeDetails.
+Future<List> getPlacePridiction(text, {String? sessionToken}) async {
+  final tokenParam = (sessionToken != null && sessionToken.isNotEmpty)
+      ? '&sessiontoken=$sessionToken'
+      : '';
   // Vérifier si currentPosition est disponible
   if (currentPosition == null) {
     myCustomPrintStatement("⚠️ getPlacePridiction: currentPosition est null, recherche sans localisation");
     // Faire la recherche sans le paramètre location
     String url =
-        "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=$text&key=$googleMapApiKey&language=en";
+        "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=$text&key=$googleMapApiKey&language=en$tokenParam";
     final response = await http.get(Uri.parse(url));
     final extractedData = json.decode(response.body);
     if (extractedData["error_message"] != null) {
@@ -703,7 +728,7 @@ Future<List> getPlacePridiction(text) async {
   }
 
   String url =
-      "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=$text&key=$googleMapApiKey&language=en&radius=500&location=${currentPosition!.latitude},${currentPosition!.longitude}";
+      "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=$text&key=$googleMapApiKey&language=en&radius=500&location=${currentPosition!.latitude},${currentPosition!.longitude}$tokenParam";
   final response = await http.get(Uri.parse(url));
   final extractedData = json.decode(response.body);
   myCustomLogStatements(

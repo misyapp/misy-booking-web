@@ -6,6 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/global_data.dart';
+import 'package:rider_ride_hailing_app/services/reverse_geocoder.dart';
 import 'package:rider_ride_hailing_app/contants/global_keys.dart';
 import 'package:rider_ride_hailing_app/contants/language_strings.dart';
 import 'package:rider_ride_hailing_app/contants/my_colors.dart';
@@ -288,44 +289,24 @@ class PickupAndDropLocationState extends State<PickupAndDropLocation> with Widge
   pickedLocationLatLong(
       {required double latitude, required double longitude}) async {
     showLinearLoader.value = true;
-    var getAddress = await getAddressWithPlusCodeByLatLng(
-        latitude: latitude, longitude: longitude);
     dropLocation['lat'] = latitude;
     dropLocation['lng'] = longitude;
-
-    // Vérifier si les résultats sont vides avant d'y accéder
-    if (getAddress['results'] == null || getAddress['results'].isEmpty) {
-      myCustomPrintStatement("⚠️ Geocoding API: aucun résultat trouvé pour $latitude, $longitude");
-      dropLocation['controller'].text = "$latitude, $longitude";
+    try {
+      // Levier F audit GCP : reverse geocoding configurable Google/Nominatim
+      // depuis dashboard /admin/settings (step `web.dropSelect`).
+      final address = await ReverseGeocoder.instance.reverseGeocode(
+        latitude: latitude,
+        longitude: longitude,
+        step: 'web.dropSelect',
+      );
+      dropLocation['controller'].text = address;
+    } catch (e) {
+      myCustomPrintStatement('⚠️ ReverseGeocoder web.dropSelect failed: $e');
+      dropLocation['controller'].text = '$latitude, $longitude';
+    } finally {
       showLinearLoader.value = false;
       if (showConfirmPopUp.value) {
         hideLoading();
-      }
-      return;
-    }
-
-    // 🔧 FIX: Toujours nettoyer le Plus Code de l'adresse de fallback
-    dropLocation['controller'].text =
-    removeGooglePlusCode(getAddress['results'][0]['formatted_address']);
-    showLinearLoader.value = false;
-    if (showConfirmPopUp.value) {
-      hideLoading();
-    }
-    // Chercher le Fokontany (neighborhood ou administrative_area_level_4)
-    for (int i = 0; i < getAddress['results'].length; i++) {
-      final List<dynamic> results =
-          getAddress['results'][i]['address_components'] ?? [];
-      for (final component in results) {
-        final List<dynamic> types = component['types'] ?? [];
-
-        if (types.contains("neighborhood") ||
-            types.contains("administrative_area_level_4")) {
-          myCustomPrintStatement(
-              "i ---------$i ${component['long_name']}, ${getAddress['results'][0]['formatted_address']}}");
-          dropLocation['controller'].text =
-          "${component['long_name']}, ${removeGooglePlusCode(getAddress['results'][0]['formatted_address'])}";
-          return;
-        }
       }
     }
   }
@@ -333,46 +314,24 @@ class PickupAndDropLocationState extends State<PickupAndDropLocation> with Widge
   pickUpLocationMapLatLong(
       {required double latitude, required double longitude}) async {
     showLinearLoader.value = true;
-    var getAddress = await getAddressWithPlusCodeByLatLng(
-        latitude: latitude, longitude: longitude);
-
     pickupLocation['lat'] = latitude;
     pickupLocation['lng'] = longitude;
-
-    // Vérifier si les résultats sont vides avant d'y accéder
-    if (getAddress['results'] == null || getAddress['results'].isEmpty) {
-      myCustomPrintStatement("⚠️ Geocoding API: aucun résultat trouvé pour $latitude, $longitude");
-      pickupLocation['controller'].text = "$latitude, $longitude";
+    try {
+      // Levier F audit GCP : reverse geocoding configurable Google/Nominatim
+      // depuis dashboard /admin/settings (step `web.pickupSelect`).
+      final address = await ReverseGeocoder.instance.reverseGeocode(
+        latitude: latitude,
+        longitude: longitude,
+        step: 'web.pickupSelect',
+      );
+      pickupLocation['controller'].text = address;
+    } catch (e) {
+      myCustomPrintStatement('⚠️ ReverseGeocoder web.pickupSelect failed: $e');
+      pickupLocation['controller'].text = '$latitude, $longitude';
+    } finally {
       showLinearLoader.value = false;
       if (showConfirmPopUp.value) {
         hideLoading();
-      }
-      return;
-    }
-
-    // 🔧 FIX: Toujours nettoyer le Plus Code de l'adresse de fallback
-    pickupLocation['controller'].text =
-    removeGooglePlusCode(getAddress['results'][0]['formatted_address']);
-    showLinearLoader.value = false;
-    if (showConfirmPopUp.value) {
-      hideLoading();
-    }
-    // Chercher le Fokontany (neighborhood ou administrative_area_level_4)
-    for (int i = 0; i < getAddress['results'].length; i++) {
-      final List<dynamic> results =
-          getAddress['results'][i]['address_components'] ?? [];
-      for (final component in results) {
-        final List<dynamic> types = component['types'] ?? [];
-
-        // 🔧 FIX: Ajouter administrative_area_level_4 (Fokontany à Madagascar)
-        if (types.contains("neighborhood") ||
-            types.contains("administrative_area_level_4")) {
-          myCustomPrintStatement(
-              "i ---------$i ${component['long_name']}, ${getAddress['results'][0]['formatted_address']}}");
-          pickupLocation['controller'].text =
-          "${component['long_name']}, ${removeGooglePlusCode(getAddress['results'][0]['formatted_address'])}";
-          return;
-        }
       }
     }
   }

@@ -26,6 +26,7 @@ import 'package:rider_ride_hailing_app/provider/trip_provider.dart';
 import 'package:rider_ride_hailing_app/provider/auth_provider.dart';
 import 'package:rider_ride_hailing_app/services/firestore_services.dart';
 import 'package:rider_ride_hailing_app/services/location.dart';
+import 'package:rider_ride_hailing_app/services/reverse_geocoder.dart';
 import 'package:rider_ride_hailing_app/services/places_autocomplete_web.dart';
 import 'package:rider_ride_hailing_app/services/route_service.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/login_screen.dart' show LoginPage;
@@ -4061,44 +4062,20 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
   }
 
-  /// Reverse geocoding via Google Geocoding API
+  /// Reverse geocoding configurable Google/Nominatim (Levier F audit GCP).
+  /// Cascade par étape configurée dans Firestore `setting/geocoding_config`
+  /// (step `web.mapClick`). Modifiable depuis le dashboard /admin/settings.
   Future<String> _reverseGeocode(LatLng latLng) async {
     try {
-      final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/geocode/json'
-        '?latlng=${latLng.latitude},${latLng.longitude}'
-        '&key=$googleMapApiKey'
-        '&language=fr',
+      return await ReverseGeocoder.instance.reverseGeocode(
+        latitude: latLng.latitude,
+        longitude: latLng.longitude,
+        step: 'web.mapClick',
       );
-
-      final response = await http.get(url);
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-
-        if (data['status'] == 'OK' && data['results'] != null && data['results'].isNotEmpty) {
-          // Chercher une adresse formatée appropriée
-          for (final result in data['results']) {
-            final types = result['types'] as List?;
-            // Préférer les adresses de rue ou les points d'intérêt
-            if (types != null &&
-                (types.contains('street_address') ||
-                    types.contains('route') ||
-                    types.contains('premise') ||
-                    types.contains('point_of_interest'))) {
-              return result['formatted_address'] ?? 'Position sélectionnée';
-            }
-          }
-          // Sinon prendre la première adresse
-          return data['results'][0]['formatted_address'] ?? 'Position sélectionnée';
-        }
-      }
     } catch (e) {
-      debugPrint('Erreur reverse geocoding: $e');
+      debugPrint('Erreur reverse geocoding (web.mapClick): $e');
+      return '${latLng.latitude.toStringAsFixed(5)}, ${latLng.longitude.toStringAsFixed(5)}';
     }
-
-    // Fallback: coordonnées brutes
-    return '${latLng.latitude.toStringAsFixed(5)}, ${latLng.longitude.toStringAsFixed(5)}';
   }
 
   /// Liste de suggestions étendue style Apple Maps (prend tout l'espace disponible)
