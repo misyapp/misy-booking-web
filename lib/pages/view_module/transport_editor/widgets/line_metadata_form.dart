@@ -9,6 +9,7 @@ class LineMetadataFormController {
   final TextEditingController numberCtrl = TextEditingController();
   final TextEditingController nameCtrl = TextEditingController();
   final TextEditingController coopCtrl = TextEditingController();
+  final TextEditingController priceCtrl = TextEditingController();
   final TextEditingController firstCtrl = TextEditingController();
   final TextEditingController lastCtrl = TextEditingController();
   final TextEditingController frequencyCtrl = TextEditingController();
@@ -30,6 +31,7 @@ class LineMetadataFormController {
     numberCtrl.dispose();
     nameCtrl.dispose();
     coopCtrl.dispose();
+    priceCtrl.dispose();
     firstCtrl.dispose();
     lastCtrl.dispose();
     frequencyCtrl.dispose();
@@ -41,6 +43,7 @@ class LineMetadataFormController {
     numberCtrl.text = m.lineNumber;
     nameCtrl.text = m.displayName;
     coopCtrl.text = m.cooperative ?? '';
+    priceCtrl.text = m.priceAriary?.toString() ?? '';
     transportType = m.transportType;
     colorValue = m.colorValue;
     final s = m.schedule;
@@ -51,6 +54,13 @@ class LineMetadataFormController {
       scheduleNotesCtrl.text = s.notes ?? '';
       daysOfOperation = s.daysOfOperation.toSet();
     }
+  }
+
+  /// Lit le prix saisi en Ariary, ou null si vide / non parsable.
+  int? get priceAriary {
+    final s = priceCtrl.text.trim();
+    if (s.isEmpty) return null;
+    return int.tryParse(s);
   }
 
   String get colorHex =>
@@ -92,6 +102,12 @@ class LineMetadataForm extends StatefulWidget {
   /// True : la ligne existe déjà → numéro non éditable (clé Firestore).
   final bool numberLocked;
 
+  /// Codes déjà utilisés (manifest + Firestore). Quand fourni en mode
+  /// création (`!numberLocked`), un widget en dessous du champ filtre les
+  /// codes existants qui matchent la saisie pour éviter les collisions.
+  /// Null → pas de suggestion (mode édition ou liste pas chargée).
+  final Set<String>? existingCodes;
+
   /// Appelé à chaque changement utile pour que le parent rebuild la barre
   /// d'actions / l'état de validation.
   final VoidCallback? onChanged;
@@ -100,6 +116,7 @@ class LineMetadataForm extends StatefulWidget {
     super.key,
     required this.controller,
     this.numberLocked = false,
+    this.existingCodes,
     this.onChanged,
   });
 
@@ -148,15 +165,23 @@ class _LineMetadataFormState extends State<LineMetadataForm> {
           enabled: !widget.numberLocked,
           decoration: InputDecoration(
             labelText: 'Numéro / code',
-            hintText: 'ex: 201, TCE2…',
+            hintText: 'ex: 201, 201bis, 201-Anosibe, TCE2…',
             border: const OutlineInputBorder(),
             helperText: widget.numberLocked
-                ? 'Le numéro est la clé de la ligne, non modifiable.'
-                : null,
+                ? 'Le numéro est la clé de la ligne, non modifiable ici.'
+                : 'Le code doit être unique. Si plusieurs lignes ont le même '
+                    'numéro public, ajoute un suffixe (bis, A, B, nom de '
+                    'quartier…).',
+            helperMaxLines: 3,
           ),
           textCapitalization: TextCapitalization.characters,
           onChanged: (_) => _bumped(),
         ),
+        if (!widget.numberLocked && widget.existingCodes != null)
+          _ExistingCodesSuggestion(
+            query: c.numberCtrl.text,
+            existingCodes: widget.existingCodes!,
+          ),
         const SizedBox(height: 12),
         TextField(
           controller: c.nameCtrl,
@@ -164,6 +189,10 @@ class _LineMetadataFormState extends State<LineMetadataForm> {
             labelText: 'Nom affiché',
             hintText: 'ex: Ligne 201 — Anosibe → Ambohibao',
             border: OutlineInputBorder(),
+            helperText:
+                'Doit être unique. Si tu vois un doublon avec une ligne '
+                'existante, précise (couleur, quartier, opérateur…).',
+            helperMaxLines: 3,
           ),
           onChanged: (_) => _bumped(),
         ),
@@ -175,6 +204,20 @@ class _LineMetadataFormState extends State<LineMetadataForm> {
             hintText: 'ex: Kofifa, Cotrabe…',
             border: OutlineInputBorder(),
           ),
+          onChanged: (_) => _bumped(),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: c.priceCtrl,
+          decoration: const InputDecoration(
+            labelText: 'Prix du trajet (Ar)',
+            hintText: 'ex: 600',
+            border: OutlineInputBorder(),
+            suffixText: 'Ar',
+            helperText: 'Tarif unique en Ariary. Laisse vide si inconnu.',
+          ),
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           onChanged: (_) => _bumped(),
         ),
         const SizedBox(height: 12),
@@ -311,6 +354,132 @@ class _LineMetadataFormState extends State<LineMetadataForm> {
             color: selected ? Colors.black : Colors.grey.shade300,
             width: selected ? 3 : 1,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Affiche sous le champ "Numéro / code" une liste filtrée de codes déjà
+/// utilisés qui matchent la saisie courante (substring, case-insensitive).
+/// Aide le consultant à choisir un code disponible sans tâtonner.
+///
+/// Affiche au maximum 8 codes pour rester compact. Vide quand le champ est
+/// vide ou qu'aucun code ne match.
+class _ExistingCodesSuggestion extends StatelessWidget {
+  final String query;
+  final Set<String> existingCodes;
+
+  const _ExistingCodesSuggestion({
+    required this.query,
+    required this.existingCodes,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return const SizedBox.shrink();
+    final matches = existingCodes
+        .where((c) => c.toLowerCase().contains(q))
+        .toList()
+      ..sort();
+    if (matches.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F5E9),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: const Color(0xFF66BB6A)),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.check_circle, size: 14, color: Color(0xFF2E7D32)),
+              SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Code disponible.',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF2E7D32),
+                      fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    final exact = matches.any((c) => c.toLowerCase() == q);
+    final shown = matches.take(8).toList();
+    final remaining = matches.length - shown.length;
+    final color = exact ? const Color(0xFFE53935) : const Color(0xFFFB8C00);
+    final bg = exact ? const Color(0xFFFFEBEE) : const Color(0xFFFFF3E0);
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: color),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                    exact ? Icons.error_outline : Icons.warning_amber_outlined,
+                    size: 14,
+                    color: color),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    exact
+                        ? '⚠ Le code « $query » est DÉJÀ utilisé. Ajoute un suffixe.'
+                        : 'Codes déjà utilisés contenant « $query » :',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: color,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                for (final c in shown)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: color.withOpacity(0.5)),
+                    ),
+                    child: Text(c,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: color,
+                            fontWeight: FontWeight.w500)),
+                  ),
+                if (remaining > 0)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text('+$remaining autres',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: color,
+                            fontStyle: FontStyle.italic)),
+                  ),
+              ],
+            ),
+          ],
         ),
       ),
     );

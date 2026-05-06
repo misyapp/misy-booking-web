@@ -91,6 +91,22 @@ class LineSchedule {
       };
 }
 
+/// État de publication d'une ligne (utilisé uniquement par les écrans
+/// éditeur/admin pour afficher un badge — l'app prod ne l'expose jamais
+/// puisqu'elle ne consomme que les lignes publiées).
+enum LinePublicationState {
+  /// Présente dans `transport_lines_published` (visible côté app prod).
+  published,
+
+  /// Présente uniquement dans `transport_lines_edited` (consultant a créé
+  /// la ligne, jamais validée par l'admin → invisible côté app prod).
+  unpublishedNew,
+
+  /// Présente dans `transport_lines_edited` avec au moins une direction
+  /// rejetée par l'admin → consultant doit refaire avant publication.
+  unpublishedRejected,
+}
+
 /// Métadonnées d'une ligne de transport depuis le manifest
 class LineMetadata {
   final String lineNumber;
@@ -108,6 +124,15 @@ class LineMetadata {
   /// Horaires d'exploitation. Null = pas encore renseignés.
   final LineSchedule? schedule;
 
+  /// Prix du trajet en Ariary (tarif unique). Null = pas encore renseigné.
+  /// Stocké en Firestore comme `price_ariary` (entier).
+  final int? priceAriary;
+
+  /// État de publication (par défaut `published`). Renseigné uniquement par
+  /// `getAllLineMetadataForEditor()` pour permettre au dashboard consultant
+  /// d'afficher un badge sur les lignes pas encore en prod.
+  final LinePublicationState publicationState;
+
   const LineMetadata({
     required this.lineNumber,
     required this.displayName,
@@ -118,6 +143,8 @@ class LineMetadata {
     this.retour,
     this.cooperative,
     this.schedule,
+    this.priceAriary,
+    this.publicationState = LinePublicationState.published,
   });
 
   factory LineMetadata.fromJson(Map<String, dynamic> json) {
@@ -140,18 +167,21 @@ class LineMetadata {
           ? LineSchedule.fromJson(
               Map<String, dynamic>.from(json['schedule'] as Map))
           : null,
+      priceAriary: (json['price_ariary'] as num?)?.toInt(),
     );
   }
 
   /// Reproduit l'objet en remplaçant les champs fournis. Utile pour fusionner
-  /// les overrides Firestore (cooperative/schedule édités) sur les métadonnées
-  /// du manifest.
+  /// les overrides Firestore (cooperative/schedule/prix édités) sur les
+  /// métadonnées du manifest.
   LineMetadata copyWith({
     String? displayName,
     String? colorHex,
     String? transportType,
     String? cooperative,
     LineSchedule? schedule,
+    int? priceAriary,
+    LinePublicationState? publicationState,
   }) {
     return LineMetadata(
       lineNumber: lineNumber,
@@ -163,8 +193,13 @@ class LineMetadata {
       retour: retour,
       cooperative: cooperative ?? this.cooperative,
       schedule: schedule ?? this.schedule,
+      priceAriary: priceAriary ?? this.priceAriary,
+      publicationState: publicationState ?? this.publicationState,
     );
   }
+
+  bool get isUnpublished =>
+      publicationState != LinePublicationState.published;
 
   int get colorValue {
     try {
@@ -339,7 +374,112 @@ class TransportLinesService {
           ? LineSchedule.fromJson(
               Map<String, dynamic>.from(ov['schedule'] as Map))
           : null,
+      priceAriary: (ov['price_ariary'] as num?)?.toInt(),
     );
+  }
+
+  /// Variante de [getAllLineMetadata] destinée aux **écrans éditeur/admin**.
+  /// Inclut en plus les lignes 100% Firestore présentes dans
+  /// `transport_lines_edited` mais pas (encore) dans `transport_lines_published`
+  /// — typiquement : nouvelles lignes créées par un consultant en attente
+  /// de review, ou lignes rejetées par l'admin.
+  ///
+  /// Marque ces lignes avec `publicationState` ∈
+  /// {`unpublishedNew`, `unpublishedRejected`} pour permettre au dashboard
+  /// d'afficher un badge.
+  ///
+  /// L'app prod doit continuer à appeler [getAllLineMetadata] (qui filtre
+  /// les non-publiées, sinon des lignes non validées remonteraient en prod).
+  Future<List<LineMetadata>> getAllLineMetadataForEditor() async {
+    await _loadManifest();
+    final base = _manifest?.values.toList() ?? [];
+    final published = await TransportEditorService.instance
+        .loadAllPublishedMetadata();
+    final edited = await TransportEditorService.instance
+        .loadAllEditedMetadata();
+    final out = <LineMetadata>[];
+    final seen = <String>{};
+
+    for (final m in base) {
+      final pub = published[m.lineNumber];
+      if (pub?['is_deleted'] == true) continue;
+      seen.add(m.lineNumber);
+      // Les lignes du manifest sont par définition publiées (on les overlay
+      // avec les overrides published si présents). edited n'est pas overlayé
+      // ici — il est juste utilisé comme source pour les nouvelles lignes
+      // ci-dessous.
+      out.add(_overlay(m, pub));
+    }
+
+    // Lignes 100% Firestore (présentes dans edited et/ou published mais pas
+    // dans le manifest). On donne priorité aux données published si elles
+    // existent (= ligne approuvée par admin), sinon on prend celles d'edited.
+    final firestoreCodes = {...published.keys, ...edited.keys};
+    for (final code in firestoreCodes) {
+      if (seen.contains(code)) continue;
+      final pub = published[code];
+      final ed = edited[code];
+      if (pub?['is_deleted'] == true || ed?['is_deleted'] == true) continue;
+
+      final src = pub ?? ed!;
+      LinePublicationState state;
+      if (pub != null) {
+        // Présente dans published → publiée. Si elle est aussi dans edited
+        // avec une dir rejetée, c'est qu'une nouvelle édition a été demandée
+        // par l'admin → on garde published comme état (la prod l'utilise).
+        state = LinePublicationState.published;
+      } else {
+        // Pas dans published → nouvelle ligne. On distingue 2 cas :
+        // - au moins une dir rejetée par l'admin → unpublishedRejected
+        // - sinon → unpublishedNew (en attente de 1ère review)
+        final allerRejected = ed?['aller_admin_status'] == 'rejected';
+        final retourRejected = ed?['retour_admin_status'] == 'rejected';
+        state = (allerRejected || retourRejected)
+            ? LinePublicationState.unpublishedRejected
+            : LinePublicationState.unpublishedNew;
+      }
+
+      out.add(LineMetadata(
+        lineNumber: code,
+        displayName: (src['display_name'] as String?) ?? 'Ligne $code',
+        transportType: (src['transport_type'] as String?) ?? 'bus',
+        colorHex: (src['color'] as String?) ?? '0xFF1565C0',
+        isBundled: false,
+        cooperative: (src['cooperative'] as String?)?.trim().isEmpty == true
+            ? null
+            : src['cooperative'] as String?,
+        schedule: src['schedule'] is Map
+            ? LineSchedule.fromJson(
+                Map<String, dynamic>.from(src['schedule'] as Map))
+            : null,
+        priceAriary: (src['price_ariary'] as num?)?.toInt(),
+        publicationState: state,
+      ));
+    }
+    return out;
+  }
+
+  /// Snapshot synchrone des codes + nom-normalisé→code connus côté UI.
+  /// Source : manifest bundlé chargé en mémoire + appel Firestore live.
+  /// Utilisé par le formulaire création pour le check pré-submit et la
+  /// suggestion live "codes déjà utilisés".
+  Future<({Set<String> codes, Map<String, String> namesByCode})>
+      getExistingCodesAndDisplayNames() async {
+    await _loadManifest();
+    final fs = await TransportEditorService.instance
+        .loadFirestoreCodesAndNames();
+    final codes = <String>{...fs.codes};
+    final namesByCode = <String, String>{...fs.namesByCode};
+    if (_manifest != null) {
+      for (final m in _manifest!.values) {
+        codes.add(m.lineNumber);
+        final norm = TransportEditorService.normalizeName(m.displayName);
+        if (norm.isNotEmpty) {
+          namesByCode.putIfAbsent(norm, () => m.lineNumber);
+        }
+      }
+    }
+    return (codes: codes, namesByCode: namesByCode);
   }
 
   /// Charge une ligne depuis ses métadonnées

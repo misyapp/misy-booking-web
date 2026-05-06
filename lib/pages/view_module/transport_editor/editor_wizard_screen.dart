@@ -250,10 +250,12 @@ class _WizardBodyState extends State<_WizardBody> {
             ? LineSchedule.fromJson(
                 Map<String, dynamic>.from(doc['schedule'] as Map))
             : null,
+        priceAriary: (doc['price_ariary'] as num?)?.toInt(),
       ));
 
     bool clearCoop = false;
     bool clearSchedule = false;
+    bool clearPrice = false;
 
     final saved = await showDialog<bool>(
       context: context,
@@ -279,6 +281,14 @@ class _WizardBodyState extends State<_WizardBody> {
                 }),
                 icon: const Icon(Icons.clear, size: 16),
                 label: const Text('Effacer coopérative'),
+              ),
+              TextButton.icon(
+                onPressed: () => setLocal(() {
+                  ctrl.priceCtrl.clear();
+                  clearPrice = true;
+                }),
+                icon: const Icon(Icons.clear, size: 16),
+                label: const Text('Effacer prix'),
               ),
               TextButton.icon(
                 onPressed: () => setLocal(() {
@@ -322,11 +332,37 @@ class _WizardBodyState extends State<_WizardBody> {
         clearCooperative: clearCoop,
         schedule: clearSchedule ? null : builtSchedule,
         clearSchedule: clearSchedule,
+        priceAriary: clearPrice ? null : ctrl.priceAriary,
+        clearPrice: clearPrice,
       );
       // Reload local doc pour refléter immédiatement dans l'UI.
       await p.loadLine(line, initialStep: p.step);
       if (!mounted) return;
       _snack(context, 'Infos mises à jour ✓');
+    } on LineDisplayNameExistsException catch (e) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(children: [
+            Icon(Icons.error_outline, color: Color(0xFFE53935)),
+            SizedBox(width: 8),
+            Text('Nom déjà utilisé'),
+          ]),
+          content: Text(
+            'Le nom « ${e.requested} » est déjà utilisé par la ligne '
+            '${e.conflictingCode}. Précise le nom (couleur, quartier, '
+            'opérateur…) ou édite directement la ligne ${e.conflictingCode}.',
+            style: const TextStyle(fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       _snack(context, 'Erreur : $e');

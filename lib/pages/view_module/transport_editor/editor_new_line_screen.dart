@@ -3,6 +3,7 @@ import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/build_
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/line_metadata_form.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/tutorial_helpers.dart';
 import 'package:rider_ride_hailing_app/services/transport_editor_service.dart';
+import 'package:rider_ride_hailing_app/services/transport_lines_service.dart';
 import 'package:showcaseview/showcaseview.dart';
 
 /// Création d'une nouvelle ligne de bus de A à Z.
@@ -29,16 +30,38 @@ class _EditorNewLineScreenState extends State<EditorNewLineScreen> {
 
   bool _submitting = false;
 
+  /// Snapshot des codes/noms déjà utilisés (manifest + Firestore). Chargé
+  /// une fois au mount pour alimenter la suggestion live sous le champ
+  /// numéro et les pré-checks d'unicité.
+  Set<String> _existingCodes = {};
+  Map<String, String> _existingNamesByCode = {};
+
   final GlobalKey _tutoMetaKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
+    _loadExistingCodes();
     TutorialHelper.autoStartOnce(
       context: context,
       tourId: 'new_line_v3_steps',
       keys: [_tutoMetaKey],
     );
+  }
+
+  Future<void> _loadExistingCodes() async {
+    try {
+      final snap = await TransportLinesService.instance
+          .getExistingCodesAndDisplayNames();
+      if (!mounted) return;
+      setState(() {
+        _existingCodes = snap.codes;
+        _existingNamesByCode = snap.namesByCode;
+      });
+    } catch (_) {
+      // Tant pis : on perd juste la suggestion live, le check serveur
+      // (createNewLine) reste autoritatif.
+    }
   }
 
   @override
@@ -201,10 +224,12 @@ class _EditorNewLineScreenState extends State<EditorNewLineScreen> {
       title: 'Identité + horaires',
       description:
           'Renseigne ici le numéro, le nom, le type, la coopérative, la '
-          'couleur et les horaires. Tous les champs autres que numéro / nom '
-          'sont optionnels — tu pourras revenir les compléter plus tard.',
+          'couleur, le prix et les horaires. Tous les champs autres que '
+          'numéro / nom sont optionnels — tu pourras revenir les compléter '
+          'plus tard.',
       child: LineMetadataForm(
         controller: _form,
+        existingCodes: _existingCodes,
         onChanged: () => setState(() {}),
       ),
     );
@@ -348,28 +373,150 @@ class _EditorNewLineScreenState extends State<EditorNewLineScreen> {
   }
 
   Future<void> _submit() async {
+    final code = _form.numberCtrl.text.trim();
+    final name = _form.nameCtrl.text.trim();
+
+    // Pré-check côté UI pour fail-fast avant le round-trip Firestore. Le
+    // serveur (createNewLine) re-vérifie de toute façon avec autorité.
+    if (_existingCodes.contains(code)) {
+      _showCodeCollisionDialog(code);
+      return;
+    }
+    final norm = TransportEditorService.normalizeName(name);
+    final owner = _existingNamesByCode[norm];
+    if (owner != null) {
+      _showNameCollisionDialog(name, owner);
+      return;
+    }
+
     setState(() => _submitting = true);
     try {
       await TransportEditorService.instance.createNewLine(
-        lineNumber: _form.numberCtrl.text.trim(),
-        displayName: _form.nameCtrl.text.trim(),
+        lineNumber: code,
+        displayName: name,
         transportType: _form.transportType,
         colorHex: _form.colorHex,
         cooperative: _form.coopCtrl.text,
         schedule: _form.buildScheduleJson(),
+        priceAriary: _form.priceAriary,
         allerFeatureCollection: _allerFC!,
         retourFeatureCollection: _retourFC!,
       );
       if (!mounted) return;
-      _snack('Ligne ${_form.numberCtrl.text.trim()} créée ✓');
+      _snack('Ligne $code créée ✓');
       Future.delayed(const Duration(milliseconds: 600), () {
         if (mounted) Navigator.of(context).pop();
       });
+    } on LineCodeExistsException {
+      if (!mounted) return;
+      _showCodeCollisionDialog(code);
+    } on LineDisplayNameExistsException catch (e) {
+      if (!mounted) return;
+      _showNameCollisionDialog(name, e.conflictingCode);
     } catch (e) {
       _snack('Erreur : $e');
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  Future<void> _showCodeCollisionDialog(String code) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(children: [
+          Icon(Icons.error_outline, color: Color(0xFFE53935)),
+          SizedBox(width: 8),
+          Text('Code déjà utilisé'),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Le code « $code » existe déjà.',
+                style: const TextStyle(fontSize: 14)),
+            const SizedBox(height: 10),
+            const Text('Ajoute un suffixe pour distinguer cette nouvelle ligne :',
+                style: TextStyle(fontSize: 13, color: Colors.black54)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final suffix in const [
+                  'bis',
+                  'A',
+                  'B',
+                  'Rouge',
+                  'Bleu',
+                  '-Anosibe'
+                ])
+                  ActionChip(
+                    label: Text('$code$suffix',
+                        style: const TextStyle(fontSize: 12)),
+                    onPressed: () {
+                      _form.numberCtrl.text = '$code$suffix';
+                      _form.numberCtrl.selection = TextSelection.collapsed(
+                          offset: '$code$suffix'.length);
+                      Navigator.of(ctx).pop();
+                      setState(() {});
+                    },
+                  ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showNameCollisionDialog(
+      String name, String conflictingCode) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(children: [
+          Icon(Icons.error_outline, color: Color(0xFFE53935)),
+          SizedBox(width: 8),
+          Text('Nom déjà utilisé'),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Le nom « $name » est déjà utilisé par la ligne '
+              '$conflictingCode.',
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Si c\'est la même ligne : annule cette création et édite '
+              'l\'existante depuis le dashboard.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Sinon, précise le nom (ex : ajoute la couleur, le quartier, '
+              'l\'opérateur).',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK, je modifie'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _snack(String msg) {

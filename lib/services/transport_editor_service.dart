@@ -45,6 +45,77 @@ class TransportEditorService {
     return TransportLineValidation.fromFirestore(lineNumber, doc.data()!);
   }
 
+  /// Charge les métadonnées scalaires (display_name, color, cooperative,
+  /// schedule, price_ariary, is_new_line, is_deleted, et les statuts admin
+  /// par direction) pour TOUTES les lignes de `transport_lines_edited`.
+  /// Inclut donc les lignes 100% Firestore créées par les consultants qui
+  /// ne sont pas encore (ou pas du tout) publiées.
+  ///
+  /// Ne charge PAS les feature_collection (champ volumineux). Utilisé par le
+  /// dashboard consultant pour afficher SES lignes en cours, peu importe leur
+  /// statut admin.
+  Future<Map<String, Map<String, dynamic>>> loadAllEditedMetadata() async {
+    try {
+      final snap = await _db.collection(collEdited).get();
+      final out = <String, Map<String, dynamic>>{};
+      for (final doc in snap.docs) {
+        final data = Map<String, dynamic>.from(doc.data());
+        for (final dir in ['aller', 'retour']) {
+          if (data[dir] is Map) {
+            final m = Map<String, dynamic>.from(data[dir] as Map);
+            m.remove('feature_collection_json');
+            data[dir] = m;
+          }
+        }
+        out[doc.id] = data;
+      }
+      return out;
+    } catch (e) {
+      myCustomPrintStatement('loadAllEditedMetadata KO: $e');
+      return {};
+    }
+  }
+
+  /// Charge un snapshot live des codes + nom-normalisé→code depuis edited+
+  /// published. Utilisé par `createNewLine` pour la vérification atomique
+  /// d'unicité juste avant l'écriture, et par l'UI pour le check pré-submit.
+  /// **Ne couvre pas le manifest bundlé** — l'UI est responsable de fournir
+  /// ces codes-là. La normalisation des noms est faite via [normalizeName].
+  Future<({Set<String> codes, Map<String, String> namesByCode})>
+      loadFirestoreCodesAndNames() async {
+    final codes = <String>{};
+    final namesByCode = <String, String>{};
+    void collect(String code, dynamic raw) {
+      if (raw is! String) return;
+      final norm = normalizeName(raw);
+      if (norm.isEmpty) return;
+      namesByCode[norm] = code;
+    }
+
+    final results = await Future.wait([
+      _db.collection(collEdited).get(),
+      _db.collection(collPublished).get(),
+    ]);
+    for (final snap in results) {
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        if (data['is_deleted'] == true) continue;
+        codes.add(doc.id);
+        collect(doc.id, data['display_name']);
+      }
+    }
+    return (codes: codes, namesByCode: namesByCode);
+  }
+
+  /// Normalise un nom affiché pour la comparaison d'unicité : lowercase,
+  /// espaces multiples → single, trim, accents PAS retirés (volontairement).
+  static String normalizeName(String name) {
+    return name
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), ' ');
+  }
+
   /// Charge les métadonnées publiées (display_name, color, cooperative,
   /// schedule, is_deleted, etc.) pour toutes les lignes. Utilisé par
   /// `TransportLinesService.getAllLineMetadata` pour fusionner les overrides
@@ -495,12 +566,27 @@ class TransportEditorService {
     String? colorHex,
     String? cooperative,
     Map<String, dynamic>? schedule,
+    int? priceAriary,
     bool clearCooperative = false,
     bool clearSchedule = false,
+    bool clearPrice = false,
   }) async {
     final now = FieldValue.serverTimestamp();
     final uid = AdminAuthService.instance.currentUid;
     final email = AdminAuthService.instance.currentEmail;
+
+    // Si on change le nom affiché → vérifier qu'aucune AUTRE ligne ne porte
+    // déjà ce nom (case-insensitive). Évite que 2 consultants créent
+    // accidentellement le même libellé sur des codes différents.
+    if (displayName != null && displayName.trim().isNotEmpty) {
+      final norm = normalizeName(displayName);
+      final snap = await loadFirestoreCodesAndNames();
+      final owner = snap.namesByCode[norm];
+      if (owner != null && owner != lineNumber) {
+        throw LineDisplayNameExistsException(
+            requested: displayName.trim(), conflictingCode: owner);
+      }
+    }
 
     final patch = <String, dynamic>{
       'last_updated': now,
@@ -524,6 +610,11 @@ class TransportEditorService {
       patch['schedule'] = FieldValue.delete();
     } else if (schedule != null) {
       patch['schedule'] = schedule;
+    }
+    if (clearPrice) {
+      patch['price_ariary'] = FieldValue.delete();
+    } else if (priceAriary != null) {
+      patch['price_ariary'] = priceAriary;
     }
 
     // 1. Écrit dans transport_lines_edited (source de vérité session).
@@ -696,11 +787,22 @@ class TransportEditorService {
     required Map<String, dynamic> retourFeatureCollection,
     String? cooperative,
     Map<String, dynamic>? schedule,
+    int? priceAriary,
   }) async {
     final ref = _db.collection(collEdited).doc(lineNumber);
-    final exists = (await ref.get()).exists;
-    if (exists) {
-      throw Exception('Ligne $lineNumber existe déjà');
+
+    // Vérification atomique d'unicité juste avant l'écriture (Firestore est
+    // notre source de vérité pour edited+published — le manifest bundlé,
+    // lui, est checké côté UI avant submit).
+    final snap = await loadFirestoreCodesAndNames();
+    if (snap.codes.contains(lineNumber)) {
+      throw LineCodeExistsException(code: lineNumber);
+    }
+    final norm = normalizeName(displayName);
+    final owner = snap.namesByCode[norm];
+    if (owner != null) {
+      throw LineDisplayNameExistsException(
+          requested: displayName.trim(), conflictingCode: owner);
     }
 
     final coopClean = cooperative?.trim();
@@ -714,6 +816,7 @@ class TransportEditorService {
       'is_new_line': true,
       if (coopClean != null && coopClean.isNotEmpty) 'cooperative': coopClean,
       if (schedule != null) 'schedule': schedule,
+      if (priceAriary != null) 'price_ariary': priceAriary,
       'aller': {
         'feature_collection_json': json.encode(allerFeatureCollection),
         'updated_at': FieldValue.serverTimestamp(),
@@ -772,6 +875,39 @@ class TransportEditorService {
       'timestamp': FieldValue.serverTimestamp(),
     });
   }
+}
+
+// ───────────────────── Exceptions d'unicité ─────────────────────
+
+/// Levée par [TransportEditorService.createNewLine] quand le code/numéro
+/// demandé existe déjà dans `transport_lines_edited` ou
+/// `transport_lines_published`. L'UI catch l'exception pour afficher un
+/// message dédié (suggestion de suffixe).
+class LineCodeExistsException implements Exception {
+  final String code;
+  LineCodeExistsException({required this.code});
+  @override
+  String toString() =>
+      'Le code « $code » est déjà utilisé. Ajoute un suffixe (bis, A, B, '
+      'nom de quartier…) pour distinguer les lignes.';
+}
+
+/// Levée par [TransportEditorService.createNewLine] et
+/// [TransportEditorService.updateLineMetadata] quand le nom affiché demandé
+/// existe déjà sur une autre ligne (case-insensitive). [conflictingCode]
+/// = code de la ligne qui porte déjà ce nom.
+class LineDisplayNameExistsException implements Exception {
+  final String requested;
+  final String conflictingCode;
+  LineDisplayNameExistsException({
+    required this.requested,
+    required this.conflictingCode,
+  });
+  @override
+  String toString() =>
+      'Le nom « $requested » est déjà utilisé par la ligne $conflictingCode. '
+      'Si c\'est la même ligne, édite l\'existante. Sinon précise le nom '
+      '(couleur, quartier, opérateur).';
 }
 
 // ─────────────────────── Helpers GeoJSON ────────────────────────

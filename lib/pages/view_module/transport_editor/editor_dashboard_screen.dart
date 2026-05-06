@@ -92,7 +92,11 @@ class _DashboardBodyState extends State<_DashboardBody> {
   }
 
   Future<void> _loadMetadata() async {
-    final meta = await TransportLinesService.instance.getAllLineMetadata();
+    // Variante "for editor" : inclut les lignes 100% Firestore créées par
+    // un consultant (en attente de review ou rejetées) — sinon le consultant
+    // ne voit pas SA propre nouvelle ligne tant qu'elle n'est pas publiée.
+    final meta = await TransportLinesService.instance
+        .getAllLineMetadataForEditor();
     meta.sort((a, b) => a.lineNumber.compareTo(b.lineNumber));
     if (mounted) {
       setState(() {
@@ -1019,18 +1023,28 @@ class _DashboardBodyState extends State<_DashboardBody> {
   Widget _buildLineCard(
       LineMetadata m, TransportLineValidation v, int index) {
     final deletePending = v.deleteRequested;
+    // Couleur de bordure : rouge si suppression demandée OU rejetée par
+    // admin ; orange si nouvelle ligne en review ; vert si fully validated.
     final borderColor = deletePending
         ? const Color(0xFFE53935)
-        : (v.isFullyValidated
-            ? const Color(0xFF66BB6A)
-            : Colors.grey.shade300);
+        : (m.publicationState == LinePublicationState.unpublishedRejected
+            ? const Color(0xFFE53935)
+            : (m.publicationState == LinePublicationState.unpublishedNew
+                ? const Color(0xFFFB8C00)
+                : (v.isFullyValidated
+                    ? const Color(0xFF66BB6A)
+                    : Colors.grey.shade300)));
     final card = Card(
       elevation: 1,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(
           color: borderColor,
-          width: (deletePending || v.isFullyValidated) ? 2 : 1,
+          width: (deletePending ||
+                  v.isFullyValidated ||
+                  m.isUnpublished)
+              ? 2
+              : 1,
         ),
       ),
       child: InkWell(
@@ -1068,24 +1082,21 @@ class _DashboardBodyState extends State<_DashboardBody> {
                         ],
                       ],
                     ),
-                    const SizedBox(height: 2),
                     Text(
-                      _buildSubtitle(m),
-                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                      overflow: TextOverflow.ellipsis,
+                      'Code : ${m.lineNumber}',
+                      style: TextStyle(fontSize: 10, color: Colors.grey[500]),
                     ),
-                    if (m.schedule != null && !m.schedule!.isEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        _formatScheduleSummary(m.schedule!),
-                        style: TextStyle(
-                            fontSize: 11, color: Colors.grey[600]),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                    if (m.isUnpublished) ...[
+                      const SizedBox(height: 4),
+                      _publicationBadge(m.publicationState),
                     ],
                     const SizedBox(height: 6),
+                    _buildTagChips(m),
+                    const SizedBox(height: 8),
                     _buildPastilles(v, withTutoKey: index == 0),
-                    if (v.isFullyValidated && !deletePending) ...[
+                    if (v.isFullyValidated &&
+                        !deletePending &&
+                        !m.isUnpublished) ...[
                       const SizedBox(height: 4),
                       const Text(
                         'Tape pour rééditer ↻',
@@ -1135,6 +1146,157 @@ class _DashboardBodyState extends State<_DashboardBody> {
       );
     }
     return card;
+  }
+
+  /// Petit badge en haut de la card pour signaler que la ligne n'est pas
+  /// (encore) en prod. Sert au consultant à voir d'un coup d'œil le statut
+  /// de SES nouvelles créations.
+  Widget _publicationBadge(LinePublicationState state) {
+    Color color;
+    IconData icon;
+    String label;
+    switch (state) {
+      case LinePublicationState.unpublishedNew:
+        color = const Color(0xFFFB8C00);
+        icon = Icons.schedule;
+        label = 'Nouvelle — en attente de review admin';
+        break;
+      case LinePublicationState.unpublishedRejected:
+        color = const Color(0xFFE53935);
+        icon = Icons.replay;
+        label = 'Rejetée — à refaire';
+        break;
+      case LinePublicationState.published:
+        return const SizedBox.shrink();
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: Colors.white),
+          const SizedBox(width: 4),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 10,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  /// Rangée de chips visibles avec les "tags" de la ligne : type, opérateur,
+  /// prix, horaires (résumé). Remplace l'ancien subtitle texte gris peu
+  /// lisible. Wrap pour passer en multi-lignes si la card est étroite.
+  Widget _buildTagChips(LineMetadata m) {
+    final chips = <Widget>[];
+    chips.add(_tagChip(
+      icon: _iconForTransportType(m.transportType),
+      label: _labelForTransportType(m.transportType),
+      color: const Color(0xFF1565C0),
+    ));
+    if (m.cooperative != null && m.cooperative!.trim().isNotEmpty) {
+      chips.add(_tagChip(
+        icon: Icons.business,
+        label: m.cooperative!.trim(),
+        color: const Color(0xFF6A1B9A),
+      ));
+    }
+    if (m.priceAriary != null) {
+      chips.add(_tagChip(
+        icon: Icons.payments_outlined,
+        label: '${m.priceAriary} Ar',
+        color: const Color(0xFF2E7D32),
+      ));
+    }
+    if (m.schedule != null && !m.schedule!.isEmpty) {
+      final s = _formatScheduleSummary(m.schedule!);
+      if (s.isNotEmpty) {
+        chips.add(_tagChip(
+          icon: Icons.schedule,
+          label: s.replaceFirst('🕒 ', ''),
+          color: const Color(0xFF00838F),
+        ));
+      }
+    }
+    if (chips.isEmpty) {
+      return Text(
+        'Aucune métadonnée renseignée — édite les infos de la ligne.',
+        style: TextStyle(
+          fontSize: 11,
+          color: Colors.grey[500],
+          fontStyle: FontStyle.italic,
+        ),
+      );
+    }
+    return Wrap(
+      spacing: 4,
+      runSpacing: 4,
+      children: chips,
+    );
+  }
+
+  Widget _tagChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 3),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10,
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _iconForTransportType(String type) {
+    switch (type) {
+      case 'urbanTrain':
+        return Icons.train;
+      case 'telepherique':
+        return Icons.airline_stops;
+      case 'bus':
+      default:
+        return Icons.directions_bus;
+    }
+  }
+
+  String _labelForTransportType(String type) {
+    switch (type) {
+      case 'urbanTrain':
+        return 'Train urbain';
+      case 'telepherique':
+        return 'Téléphérique';
+      case 'bus':
+      default:
+        return 'Bus / Taxi-be';
+    }
   }
 
   Widget _buildPastilles(TransportLineValidation v,
@@ -1369,14 +1531,6 @@ class _DashboardBodyState extends State<_DashboardBody> {
         ],
       ),
     );
-  }
-
-  String _buildSubtitle(LineMetadata m) {
-    final parts = <String>['Ligne ${m.lineNumber}', m.transportType];
-    if (m.cooperative != null && m.cooperative!.trim().isNotEmpty) {
-      parts.add(m.cooperative!.trim());
-    }
-    return parts.join(' · ');
   }
 
   String _formatScheduleSummary(LineSchedule s) {
