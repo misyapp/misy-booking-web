@@ -776,6 +776,99 @@ class TransportEditorService {
     );
   }
 
+  // ───────────────────────── Renommage code ─────────────────────────
+
+  /// Renomme le code/numéro d'une ligne existante : migre les 3 docs
+  /// Firestore (transport_lines_edited, transport_lines_published si
+  /// présent, transport_line_validations) du `oldCode` vers `newCode`.
+  /// Conserve les anciens `transport_edits_log` intacts (audit historique).
+  ///
+  /// Atomique via WriteBatch — soit toute la migration réussit, soit rien.
+  /// Lève [LineCodeExistsException] si `newCode` est déjà utilisé
+  /// (en edited OU published — on couvre les 2 collections).
+  ///
+  /// **Important** : les anciens logs transport_edits_log gardent
+  /// `line_number=oldCode` pour préserver l'historique. Le log de rename
+  /// (kind='rename') porte le mapping old↔new pour reconstituer le lien.
+  Future<void> renameLine({
+    required String oldCode,
+    required String newCode,
+  }) async {
+    if (oldCode == newCode) return;
+    final cleanNew = newCode.trim();
+    if (cleanNew.isEmpty) {
+      throw Exception('Nouveau code vide');
+    }
+
+    // 1. Pré-checks unicité dans edited ET published.
+    final newEditedRef = _db.collection(collEdited).doc(cleanNew);
+    final newPubRef = _db.collection(collPublished).doc(cleanNew);
+    final existsInEdited = (await newEditedRef.get()).exists;
+    final existsInPub = (await newPubRef.get()).exists;
+    if (existsInEdited || existsInPub) {
+      throw LineCodeExistsException(code: cleanNew);
+    }
+
+    // 2. Read des anciens docs.
+    final oldEditedDoc =
+        await _db.collection(collEdited).doc(oldCode).get();
+    if (!oldEditedDoc.exists) {
+      throw Exception('Ligne $oldCode introuvable dans transport_lines_edited');
+    }
+    final oldPubDoc =
+        await _db.collection(collPublished).doc(oldCode).get();
+    final oldValidDoc =
+        await _db.collection(collValidations).doc(oldCode).get();
+
+    // 3. WriteBatch : copy + delete atomiques.
+    final now = FieldValue.serverTimestamp();
+    final email = AdminAuthService.instance.currentEmail;
+    final batch = _db.batch();
+
+    final editedData = Map<String, dynamic>.from(oldEditedDoc.data()!);
+    editedData['line_number'] = cleanNew;
+    editedData['renamed_from'] = oldCode;
+    editedData['renamed_at'] = now;
+    if (email != null) editedData['renamed_by_email'] = email;
+    batch.set(newEditedRef, editedData);
+    batch.delete(_db.collection(collEdited).doc(oldCode));
+
+    if (oldPubDoc.exists) {
+      final pubData = Map<String, dynamic>.from(oldPubDoc.data()!);
+      pubData['line_number'] = cleanNew;
+      pubData['renamed_from'] = oldCode;
+      pubData['renamed_at'] = now;
+      if (email != null) pubData['renamed_by_email'] = email;
+      batch.set(newPubRef, pubData);
+      batch.delete(_db.collection(collPublished).doc(oldCode));
+    }
+
+    if (oldValidDoc.exists) {
+      final validData = Map<String, dynamic>.from(oldValidDoc.data()!);
+      validData['renamed_from'] = oldCode;
+      validData['renamed_at'] = now;
+      batch.set(_db.collection(collValidations).doc(cleanNew), validData);
+      batch.delete(_db.collection(collValidations).doc(oldCode));
+    }
+
+    await batch.commit();
+
+    // 4. Log dédié (en dehors du batch — un add() séparé sur transport_edits_log).
+    //    Stocke explicitement old_line_number + new_line_number pour pouvoir
+    //    retrouver l'historique après coup.
+    await _db.collection(collLog).add({
+      'line_number': cleanNew,
+      'old_line_number': oldCode,
+      'new_line_number': cleanNew,
+      'direction': 'aller', // n/a, kind=rename
+      'kind': 'rename',
+      'action': 'renamed',
+      'user_uid': AdminAuthService.instance.currentUid,
+      'user_email': email,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+  }
+
   // ───────────────────────── Nouvelle ligne ─────────────────────────
 
   Future<void> createNewLine({

@@ -266,10 +266,50 @@ class _WizardBodyState extends State<_WizardBody> {
             content: SizedBox(
               width: 480,
               child: SingleChildScrollView(
-                child: LineMetadataForm(
-                  controller: ctrl,
-                  numberLocked: true,
-                  onChanged: () => setLocal(() {}),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE3F2FD),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFF1565C0)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.swap_horiz,
+                              size: 16, color: Color(0xFF1565C0)),
+                          const SizedBox(width: 6),
+                          const Expanded(
+                            child: Text(
+                              'Code de la ligne verrouillé. Pour le changer :',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: () =>
+                                _openRenameDialog(line, dialogCtx, p),
+                            icon: const Icon(Icons.drive_file_rename_outline,
+                                size: 14),
+                            label: const Text('Renommer le code'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFF1565C0),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              minimumSize: const Size(0, 28),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    LineMetadataForm(
+                      controller: ctrl,
+                      numberLocked: true,
+                      onChanged: () => setLocal(() {}),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -368,6 +408,187 @@ class _WizardBodyState extends State<_WizardBody> {
       _snack(context, 'Erreur : $e');
     } finally {
       ctrl.disposeAll();
+    }
+  }
+
+  /* ───── Renommage du code de la ligne (clé Firestore) ───── */
+
+  /// Dialog dédié pour renommer le code/numéro d'une ligne. Migration
+  /// atomique des 3 docs Firestore via `TransportEditorService.renameLine`.
+  /// Au succès : ferme le dialog metadata parent + pop le wizard pour
+  /// rebasculer sur le dashboard (qui se rafraîchira via le stream).
+  ///
+  /// On accède au TransportEditorProvider [p] pour ne pas le perdre — mais
+  /// on ne le reload pas après rename : la ligne sous l'ancien code n'existe
+  /// plus, le wizard ne doit pas rester ouvert dessus.
+  Future<void> _openRenameDialog(
+    String currentCode,
+    BuildContext metadataDialogCtx,
+    TransportEditorProvider p,
+  ) async {
+    final newCodeCtrl = TextEditingController();
+    Set<String> existingCodes = {};
+    String? error;
+    bool busy = false;
+    // Référence vers le setLocal du StatefulBuilder, pour pouvoir rebuild
+    // depuis le .then() de la Future qui charge les codes existants.
+    void Function(VoidCallback)? setLocalRef;
+
+    TransportLinesService.instance
+        .getExistingCodesAndDisplayNames()
+        .then((snap) {
+      existingCodes = snap.codes;
+      setLocalRef?.call(() {});
+    }).catchError((_) {});
+
+    final renamed = await showDialog<bool>(
+      context: context,
+      builder: (renameCtx) {
+        return StatefulBuilder(builder: (ctx, setLocal) {
+          setLocalRef = setLocal;
+          final newCode = newCodeCtrl.text.trim();
+          final isSame = newCode == currentCode;
+          final isEmpty = newCode.isEmpty;
+          final collides = existingCodes.contains(newCode);
+          final canSubmit = !isEmpty && !isSame && !collides && !busy;
+
+          return AlertDialog(
+            title: Row(children: const [
+              Icon(Icons.drive_file_rename_outline,
+                  color: Color(0xFF1565C0)),
+              SizedBox(width: 8),
+              Text('Renommer le code de la ligne'),
+            ]),
+            content: SizedBox(
+              width: 460,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF3E0),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFFFB8C00)),
+                    ),
+                    child: Row(
+                      children: const [
+                        Icon(Icons.warning_amber_outlined,
+                            size: 18, color: Color(0xFFE65100)),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Le code est la clé technique de la ligne. Le '
+                            'renommer migre les 3 documents Firestore (édition, '
+                            'publication, validations). Les logs d\'audit '
+                            'restent intacts.',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text('Code actuel : $currentCode',
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: newCodeCtrl,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.characters,
+                    enabled: !busy,
+                    decoration: InputDecoration(
+                      labelText: 'Nouveau code',
+                      hintText: 'ex: 201bis, 201A, 201-Anosibe…',
+                      border: const OutlineInputBorder(),
+                      errorText: error ??
+                          (isSame
+                              ? 'Identique au code actuel'
+                              : (collides
+                                  ? 'Déjà utilisé — choisis-en un autre'
+                                  : null)),
+                    ),
+                    onChanged: (_) => setLocal(() => error = null),
+                  ),
+                  if (newCode.isNotEmpty && existingCodes.isNotEmpty)
+                    _RenameCodesHint(
+                      query: newCode,
+                      existingCodes: existingCodes,
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: busy
+                    ? null
+                    : () => Navigator.of(renameCtx).pop(false),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1565C0),
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: !canSubmit
+                    ? null
+                    : () async {
+                        setLocal(() {
+                          busy = true;
+                          error = null;
+                        });
+                        try {
+                          await TransportEditorService.instance.renameLine(
+                            oldCode: currentCode,
+                            newCode: newCode,
+                          );
+                          if (renameCtx.mounted) {
+                            Navigator.of(renameCtx).pop(true);
+                          }
+                        } on LineCodeExistsException catch (e) {
+                          setLocal(() {
+                            busy = false;
+                            error = 'Le code « ${e.code} » est déjà utilisé.';
+                          });
+                        } catch (e) {
+                          setLocal(() {
+                            busy = false;
+                            error = 'Erreur : $e';
+                          });
+                        }
+                      },
+                icon: busy
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.check, size: 16),
+                label: const Text('Renommer'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+    newCodeCtrl.dispose();
+
+    if (renamed != true || !mounted) return;
+
+    // Succès : on ferme le dialog metadata parent (sans save metadata car la
+    // ligne n'existe plus sous l'ancien code) puis on pop le wizard pour
+    // retourner au dashboard (le stream Firestore rafraîchira la liste).
+    if (metadataDialogCtx.mounted) {
+      Navigator.of(metadataDialogCtx).pop(false);
+    }
+    if (mounted) {
+      _snack(context, 'Ligne renommée ✓ (retour au dashboard)');
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted) Navigator.of(context).pop();
+      });
     }
   }
 
@@ -1039,3 +1260,102 @@ class _WizardBodyState extends State<_WizardBody> {
 }
 
 enum _BuildMode { editFast, rebuildFull }
+
+/// Mini-widget de suggestion live pour le dialog rename : montre les codes
+/// existants matchant la saisie (substring, case-insensitive). Vert si
+/// disponible, rouge si déjà utilisé.
+class _RenameCodesHint extends StatelessWidget {
+  final String query;
+  final Set<String> existingCodes;
+
+  const _RenameCodesHint({
+    required this.query,
+    required this.existingCodes,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return const SizedBox.shrink();
+    final matches = existingCodes
+        .where((c) => c.toLowerCase().contains(q))
+        .toList()
+      ..sort();
+    if (matches.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F5E9),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: const Color(0xFF66BB6A)),
+          ),
+          child: const Row(children: [
+            Icon(Icons.check_circle, size: 14, color: Color(0xFF2E7D32)),
+            SizedBox(width: 6),
+            Text('Code disponible.',
+                style: TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF2E7D32),
+                    fontWeight: FontWeight.w600)),
+          ]),
+        ),
+      );
+    }
+    final shown = matches.take(8).toList();
+    final remaining = matches.length - shown.length;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF3E0),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFFFB8C00)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Codes proches déjà utilisés :',
+                style: TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFFE65100),
+                    fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                for (final c in shown)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: const Color(0xFFFB8C00)),
+                    ),
+                    child: Text(c,
+                        style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFFE65100),
+                            fontWeight: FontWeight.w500)),
+                  ),
+                if (remaining > 0)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text('+$remaining autres',
+                        style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFFE65100),
+                            fontStyle: FontStyle.italic)),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
