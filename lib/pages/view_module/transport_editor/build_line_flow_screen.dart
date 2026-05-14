@@ -360,6 +360,7 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
                               // après MarkerLayer pour rester au-dessus.
                               if (p.step == BuildLineStep.review) ...[
                                 _buildReviewStopsDragLayer(p),
+                                _buildReviewWaypointsDragLayer(p),
                                 // D et A draggables aussi (cas "déplacer
                                 // l'arrivée sans tout refaire").
                                 _buildReviewTerminiDragLayer(p),
@@ -429,24 +430,37 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
         ));
       }
     }
-    for (final w in p.waypoints) {
-      markers.add(Marker(
-        point: w.position,
-        width: 18,
-        height: 18,
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            border: Border.all(color: const Color(0xFF1565C0), width: 2.5),
-            boxShadow: const [
-              BoxShadow(color: Color(0x55000000), blurRadius: 3),
-            ],
-          ),
-        ),
-      ));
+    // En étape review, les waypoints sont rendus via DragMarkers
+    // (_buildReviewWaypointsDragLayer) pour permettre drag + long press.
+    if (!isReview) {
+      for (final w in p.waypoints) {
+        markers.add(Marker(
+          point: w.position,
+          width: 18,
+          height: 18,
+          child: _waypointDot(),
+        ));
+      }
     }
     return markers;
+  }
+
+  Widget _waypointDot({bool isDragging = false}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: isDragging
+              ? const Color(0xFF42A5F5)
+              : const Color(0xFF1565C0),
+          width: 2.5,
+        ),
+        boxShadow: const [
+          BoxShadow(color: Color(0x55000000), blurRadius: 3),
+        ],
+      ),
+    );
   }
 
   Marker _pinMarker(LatLng pos, String label, Color color,
@@ -498,6 +512,33 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
             ),
             onDragEnd: (_, newPos) =>
                 p.setDestination(newPos, name: p.destinationName),
+          ),
+      ],
+    );
+  }
+
+  /// Layer DragMarkers pour les waypoints (points forcés de passage) en étape
+  /// review : drag pour décaler, long press pour supprimer. Mêmes affordances
+  /// que les arrêts, sans tap=renommer (un waypoint n'a pas de nom).
+  Widget _buildReviewWaypointsDragLayer(BuildLineFlowProvider p) {
+    return DragMarkers(
+      alignment: Alignment.center,
+      markers: [
+        for (int i = 0; i < p.waypoints.length; i++)
+          DragMarker(
+            key: ValueKey('review-waypoint-$i'),
+            point: p.waypoints[i].position,
+            size: const Size(32, 32),
+            alignment: Alignment.center,
+            builder: (ctx, pos, isDragging) => Center(
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: _waypointDot(isDragging: isDragging),
+              ),
+            ),
+            onDragEnd: (_, newPos) => p.moveWaypoint(i, newPos),
+            onLongPress: (_) => _onReviewWaypointLongPress(p, i),
           ),
       ],
     );
@@ -731,6 +772,35 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
   }
 
   /// Long press sur un pin existant en étape review : supprimer (avec confirm).
+  Future<void> _onReviewWaypointLongPress(
+      BuildLineFlowProvider p, int index) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer ce point de passage ?'),
+        content: const Text(
+          'Le tracé ne sera plus forcé à passer par ce point.\n\n'
+          'Tu devras recalculer le tracé avant de terminer.',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    p.removeWaypoint(index);
+  }
+
   Future<void> _onReviewStopLongPress(
       BuildLineFlowProvider p, int index) async {
     final name = p.stops[index].name;
