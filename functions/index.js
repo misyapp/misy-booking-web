@@ -24,6 +24,12 @@ exports.iamSetTransportClaims = iam.iamSetTransportClaims;
 exports.iamResetTransportPassword = iam.iamResetTransportPassword;
 exports.iamDeleteTransportUser = iam.iamDeleteTransportUser;
 
+// IAM Driver — pose du custom claim `driver` consommé par l'espace
+// chauffeur web (beta.misy.app/chauffeurs/espace).
+const iamDriver = require("./iam_driver");
+exports.iamSetDriverClaim = iamDriver.iamSetDriverClaim;
+exports.iamBackfillDriverClaims = iamDriver.iamBackfillDriverClaims;
+
 const db = admin.firestore();
 const Timestamp = admin.firestore.Timestamp;
 // Create and deploy your first functions
