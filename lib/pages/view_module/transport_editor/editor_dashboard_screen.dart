@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +12,7 @@ import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/admin_
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/editor_new_line_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/editor_wizard_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/annotation_dialog.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/line_tag_chips.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/tutorial_helpers.dart';
 import 'package:rider_ride_hailing_app/services/admin_auth_service.dart';
 import 'package:rider_ride_hailing_app/services/transport_editor_service.dart';
@@ -548,6 +551,9 @@ class _DashboardBodyState extends State<_DashboardBody> {
       final meta = _metaFor(g.lineNumber);
       final color =
           meta != null ? Color(meta.colorValue) : const Color(0xFF1565C0);
+      // Bi-color : 2e polyline en dashed par-dessus la principale (style IDFM).
+      final color2v = meta?.colorValue2;
+      final color2 = color2v != null ? Color(color2v) : null;
 
       for (final step in EditorStep.values) {
         final dirKey = step.isAller ? 'aller' : 'retour';
@@ -568,6 +574,15 @@ class _DashboardBodyState extends State<_DashboardBody> {
               color: color.withOpacity(0.85),
               strokeWidth: 3.5,
             ));
+            if (color2 != null) {
+              polylines.add(Polyline(
+                points: pts,
+                color: color2,
+                strokeWidth: 3.5,
+                pattern:
+                    StrokePattern.dashed(segments: const [12.0, 12.0]),
+              ));
+            }
             allPoints.addAll(pts);
           }
         } else if (consultantSubmitted) {
@@ -581,6 +596,16 @@ class _DashboardBodyState extends State<_DashboardBody> {
             strokeWidth: 3,
             pattern: StrokePattern.dashed(segments: const [10.0, 6.0]),
           ));
+          if (color2 != null) {
+            // Sur une polyline déjà dashed, on ajoute la 2e couleur dashed
+            // avec un offset différent → résultat visuel "bandes" alternées.
+            polylines.add(Polyline(
+              points: pts,
+              color: color2.withOpacity(0.85),
+              strokeWidth: 3,
+              pattern: StrokePattern.dashed(segments: const [10.0, 18.0]),
+            ));
+          }
           allPoints.addAll(pts);
         }
       }
@@ -1054,7 +1079,7 @@ class _DashboardBodyState extends State<_DashboardBody> {
           padding: const EdgeInsets.all(10),
           child: Row(
             children: [
-              _colorDot(m.colorValue),
+              _colorDot(m.colorValue, m.colorValue2),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -1091,7 +1116,7 @@ class _DashboardBodyState extends State<_DashboardBody> {
                       _publicationBadge(m.publicationState),
                     ],
                     const SizedBox(height: 6),
-                    _buildTagChips(m),
+                    LineTagChips(line: m),
                     const SizedBox(height: 8),
                     _buildPastilles(v, withTutoKey: index == 0),
                     if (v.isFullyValidated &&
@@ -1188,115 +1213,6 @@ class _DashboardBodyState extends State<_DashboardBody> {
         ],
       ),
     );
-  }
-
-  /// Rangée de chips visibles avec les "tags" de la ligne : type, opérateur,
-  /// prix, horaires (résumé). Remplace l'ancien subtitle texte gris peu
-  /// lisible. Wrap pour passer en multi-lignes si la card est étroite.
-  Widget _buildTagChips(LineMetadata m) {
-    final chips = <Widget>[];
-    chips.add(_tagChip(
-      icon: _iconForTransportType(m.transportType),
-      label: _labelForTransportType(m.transportType),
-      color: const Color(0xFF1565C0),
-    ));
-    if (m.cooperative != null && m.cooperative!.trim().isNotEmpty) {
-      chips.add(_tagChip(
-        icon: Icons.business,
-        label: m.cooperative!.trim(),
-        color: const Color(0xFF6A1B9A),
-      ));
-    }
-    if (m.priceAriary != null) {
-      chips.add(_tagChip(
-        icon: Icons.payments_outlined,
-        label: '${m.priceAriary} Ar',
-        color: const Color(0xFF2E7D32),
-      ));
-    }
-    if (m.schedule != null && !m.schedule!.isEmpty) {
-      final s = _formatScheduleSummary(m.schedule!);
-      if (s.isNotEmpty) {
-        chips.add(_tagChip(
-          icon: Icons.schedule,
-          label: s.replaceFirst('🕒 ', ''),
-          color: const Color(0xFF00838F),
-        ));
-      }
-    }
-    if (chips.isEmpty) {
-      return Text(
-        'Aucune métadonnée renseignée — édite les infos de la ligne.',
-        style: TextStyle(
-          fontSize: 11,
-          color: Colors.grey[500],
-          fontStyle: FontStyle.italic,
-        ),
-      );
-    }
-    return Wrap(
-      spacing: 4,
-      runSpacing: 4,
-      children: chips,
-    );
-  }
-
-  Widget _tagChip({
-    required IconData icon,
-    required String label,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withOpacity(0.4)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 11, color: color),
-          const SizedBox(width: 3),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 180),
-            child: Text(
-              label,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 10,
-                color: color,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  IconData _iconForTransportType(String type) {
-    switch (type) {
-      case 'urbanTrain':
-        return Icons.train;
-      case 'telepherique':
-        return Icons.airline_stops;
-      case 'bus':
-      default:
-        return Icons.directions_bus;
-    }
-  }
-
-  String _labelForTransportType(String type) {
-    switch (type) {
-      case 'urbanTrain':
-        return 'Train urbain';
-      case 'telepherique':
-        return 'Téléphérique';
-      case 'bus':
-      default:
-        return 'Bus / Taxi-be';
-    }
   }
 
   Widget _buildPastilles(TransportLineValidation v,
@@ -1515,47 +1431,39 @@ class _DashboardBodyState extends State<_DashboardBody> {
     return pastille;
   }
 
-  Widget _colorDot(int colorValue) {
+  Widget _colorDot(int colorValue, [int? colorValue2]) {
+    final shadow = [
+      BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 3),
+    ];
+    if (colorValue2 == null) {
+      return Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: Color(colorValue),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2),
+          boxShadow: shadow,
+        ),
+      );
+    }
     return Container(
       width: 36,
       height: 36,
       decoration: BoxDecoration(
-        color: Color(colorValue),
         shape: BoxShape.circle,
         border: Border.all(color: Colors.white, width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.15),
-            blurRadius: 3,
+        boxShadow: shadow,
+      ),
+      child: ClipOval(
+        child: CustomPaint(
+          painter: _DashboardSplitPainter(
+            Color(colorValue),
+            Color(colorValue2),
           ),
-        ],
+        ),
       ),
     );
-  }
-
-  String _formatScheduleSummary(LineSchedule s) {
-    final parts = <String>[];
-    if (s.firstDeparture != null && s.lastDeparture != null) {
-      parts.add('${s.firstDeparture}–${s.lastDeparture}');
-    } else if (s.firstDeparture != null) {
-      parts.add('dès ${s.firstDeparture}');
-    } else if (s.lastDeparture != null) {
-      parts.add('jusqu\'à ${s.lastDeparture}');
-    }
-    if (s.frequencyMin != null) parts.add('toutes les ${s.frequencyMin} min');
-    if (s.daysOfOperation.length < 7) {
-      const labels = {
-        'mon': 'Lun',
-        'tue': 'Mar',
-        'wed': 'Mer',
-        'thu': 'Jeu',
-        'fri': 'Ven',
-        'sat': 'Sam',
-        'sun': 'Dim',
-      };
-      parts.add(s.daysOfOperation.map((d) => labels[d] ?? d).join('/'));
-    }
-    return parts.isEmpty ? '' : '🕒 ${parts.join(' · ')}';
   }
 
   void _openWizard(LineMetadata m, TransportLineValidation v) {
@@ -1763,4 +1671,36 @@ class _AccessDeniedScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Peintre split diagonal pour le gros pastille couleur (36×36) à gauche
+/// de chaque card. Trianglulaire haut-gauche = couleur principale, bas-droit
+/// = couleur secondaire. Visuellement cohérent avec le mini-swatch des chips.
+class _DashboardSplitPainter extends CustomPainter {
+  final Color color1;
+  final Color color2;
+
+  _DashboardSplitPainter(this.color1, this.color2);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final p1 = ui.Path()
+      ..moveTo(0, 0)
+      ..lineTo(w, 0)
+      ..lineTo(0, h)
+      ..close();
+    canvas.drawPath(p1, Paint()..color = color1);
+    final p2 = ui.Path()
+      ..moveTo(w, 0)
+      ..lineTo(w, h)
+      ..lineTo(0, h)
+      ..close();
+    canvas.drawPath(p2, Paint()..color = color2);
+  }
+
+  @override
+  bool shouldRepaint(_DashboardSplitPainter old) =>
+      old.color1 != color1 || old.color2 != color2;
 }

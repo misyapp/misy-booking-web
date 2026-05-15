@@ -396,6 +396,7 @@ class _EditorNewLineScreenState extends State<EditorNewLineScreen> {
         displayName: name,
         transportType: _form.transportType,
         colorHex: _form.colorHex,
+        colorHex2: _form.colorHex2,
         cooperative: _form.coopCtrl.text,
         schedule: _form.buildScheduleJson(),
         priceAriary: _form.priceAriary,

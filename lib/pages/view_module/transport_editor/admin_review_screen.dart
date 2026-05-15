@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:rider_ride_hailing_app/models/transport_line.dart';
 import 'package:rider_ride_hailing_app/models/transport_line_validation.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/build_line_flow_screen.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/line_tag_chips.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/osm_base_map.dart';
 import 'package:rider_ride_hailing_app/provider/build_line_flow_provider.dart';
 import 'package:rider_ride_hailing_app/services/admin_auth_service.dart';
@@ -751,6 +754,9 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
       final meta = _metaFor(g.lineNumber);
       final color =
           meta != null ? Color(meta.colorValue) : const Color(0xFF5E35B1);
+      // Bi-color : 2e polyline en dashed par-dessus la principale (style IDFM).
+      final color2v = meta?.colorValue2;
+      final color2 = color2v != null ? Color(color2v) : null;
 
       for (final step in EditorStep.values) {
         final dirKey = step.isAller ? 'aller' : 'retour';
@@ -770,6 +776,15 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
               color: color.withOpacity(0.85),
               strokeWidth: 3.5,
             ));
+            if (color2 != null) {
+              activeLayer.add(Polyline(
+                points: pts,
+                color: color2,
+                strokeWidth: 3.5,
+                pattern:
+                    StrokePattern.dashed(segments: const [12.0, 12.0]),
+              ));
+            }
             allPoints.addAll(pts);
           }
         } else {
@@ -790,6 +805,15 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
                   pattern:
                       StrokePattern.dashed(segments: const [10.0, 6.0]),
                 ));
+                if (color2 != null) {
+                  activeLayer.add(Polyline(
+                    points: pts,
+                    color: color2.withOpacity(0.85),
+                    strokeWidth: 3,
+                    pattern: StrokePattern.dashed(
+                        segments: const [10.0, 18.0]),
+                  ));
+                }
                 allPoints.addAll(pts);
                 drewSubmission = true;
               }
@@ -1562,16 +1586,7 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
             children: [
               Row(
                 children: [
-                  if (meta != null)
-                    Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: Color(meta.colorValue),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                    ),
+                  if (meta != null) _lineColorBadge(meta, 24),
                   if (meta != null) const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1593,6 +1608,10 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
                 '${dateStr.isEmpty ? "" : " · $dateStr"}',
                 style: TextStyle(fontSize: 12, color: Colors.grey[700]),
               ),
+              if (meta != null) ...[
+                const SizedBox(height: 6),
+                LineTagChips(line: meta, showEmptyHint: false),
+              ],
               if (item.consultantNote != null) ...[
                 const SizedBox(height: 6),
                 Container(
@@ -1652,6 +1671,38 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// Pastille couleur de ligne pour l'en-tête de la review card. Si la ligne
+  /// a une couleur secondaire, rendue en diagonale (haut-gauche = principale,
+  /// bas-droit = secondaire) pour cohérence visuelle avec la carte.
+  Widget _lineColorBadge(LineMetadata meta, double size) {
+    final c1 = Color(meta.colorValue);
+    final c2v = meta.colorValue2;
+    if (c2v == null) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: c1,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2),
+        ),
+      );
+    }
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2),
+      ),
+      child: ClipOval(
+        child: CustomPaint(
+          painter: _AdminLineSplitPainter(c1, Color(c2v)),
         ),
       ),
     );
@@ -2802,4 +2853,40 @@ class _ConsultantStat {
   int approved = 0;
   int rejected = 0;
   DateTime? lastActivity;
+}
+
+/// Peintre split diagonal pour les pastilles couleur des cards admin review
+/// (24×24 dans le header de _buildReviewCard). Triangulaire haut-gauche
+/// = couleur principale, bas-droit = couleur secondaire.
+class _AdminLineSplitPainter extends CustomPainter {
+  final Color color1;
+  final Color color2;
+
+  _AdminLineSplitPainter(this.color1, this.color2);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    canvas.drawPath(
+      ui.Path()
+        ..moveTo(0, 0)
+        ..lineTo(w, 0)
+        ..lineTo(0, h)
+        ..close(),
+      Paint()..color = color1,
+    );
+    canvas.drawPath(
+      ui.Path()
+        ..moveTo(w, 0)
+        ..lineTo(w, h)
+        ..lineTo(0, h)
+        ..close(),
+      Paint()..color = color2,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_AdminLineSplitPainter old) =>
+      old.color1 != color1 || old.color2 != color2;
 }

@@ -368,6 +368,8 @@ class _WizardBodyState extends State<_WizardBody> {
         displayName: ctrl.nameCtrl.text,
         transportType: ctrl.transportType,
         colorHex: ctrl.colorHex,
+        colorHex2: ctrl.colorHex2,
+        clearColor2: ctrl.colorHex2 == null,
         cooperative: clearCoop ? null : ctrl.coopCtrl.text,
         clearCooperative: clearCoop,
         schedule: clearSchedule ? null : builtSchedule,

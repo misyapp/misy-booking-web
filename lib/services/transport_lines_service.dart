@@ -113,6 +113,13 @@ class LineMetadata {
   final String displayName;
   final String transportType;
   final String colorHex;
+
+  /// Couleur secondaire optionnelle. Quand renseignée, la ligne est rendue
+  /// "bi-color" sur les cartes éditeur/admin : trait plein color1 + trait
+  /// pointillé color2 par-dessus (style IDFM). Stockée en Firestore comme
+  /// `color2`. Null = ligne mono-couleur.
+  final String? colorHex2;
+
   final bool isBundled;
   final RouteMetadata? aller;
   final RouteMetadata? retour;
@@ -138,6 +145,7 @@ class LineMetadata {
     required this.displayName,
     required this.transportType,
     required this.colorHex,
+    this.colorHex2,
     required this.isBundled,
     this.aller,
     this.retour,
@@ -153,6 +161,9 @@ class LineMetadata {
       displayName: json['display_name'],
       transportType: json['transport_type'],
       colorHex: json['color'],
+      colorHex2: (json['color2'] as String?)?.trim().isEmpty == true
+          ? null
+          : json['color2'] as String?,
       isBundled: json['is_bundled'] ?? false,
       aller: json['aller'] != null
           ? RouteMetadata.fromJson(json['aller'])
@@ -174,9 +185,15 @@ class LineMetadata {
   /// Reproduit l'objet en remplaçant les champs fournis. Utile pour fusionner
   /// les overrides Firestore (cooperative/schedule/prix édités) sur les
   /// métadonnées du manifest.
+  /// Sentinel pour distinguer "champ non fourni" (garde l'existant) de
+  /// "champ explicitement effacé" (passe `_unset`). Permet à colorHex2 de
+  /// passer null pour signifier "efface la 2e couleur" via copyWith.
+  static const Object _unset = Object();
+
   LineMetadata copyWith({
     String? displayName,
     String? colorHex,
+    Object? colorHex2 = _unset,
     String? transportType,
     String? cooperative,
     LineSchedule? schedule,
@@ -188,6 +205,9 @@ class LineMetadata {
       displayName: displayName ?? this.displayName,
       transportType: transportType ?? this.transportType,
       colorHex: colorHex ?? this.colorHex,
+      colorHex2: identical(colorHex2, _unset)
+          ? this.colorHex2
+          : colorHex2 as String?,
       isBundled: isBundled,
       aller: aller,
       retour: retour,
@@ -206,6 +226,17 @@ class LineMetadata {
       return int.parse(colorHex.replaceFirst('0x', ''), radix: 16);
     } catch (_) {
       return 0xFF2196F3; // Bleu par défaut
+    }
+  }
+
+  /// Couleur secondaire parsée (null si non renseignée ou mal formée).
+  int? get colorValue2 {
+    final hex = colorHex2;
+    if (hex == null || hex.trim().isEmpty) return null;
+    try {
+      return int.parse(hex.replaceFirst('0x', ''), radix: 16);
+    } catch (_) {
+      return null;
     }
   }
 }
@@ -346,6 +377,9 @@ class TransportLinesService {
         displayName: (data['display_name'] as String?) ?? 'Ligne $line',
         transportType: (data['transport_type'] as String?) ?? 'bus',
         colorHex: (data['color'] as String?) ?? '0xFF1565C0',
+        colorHex2: (data['color2'] as String?)?.trim().isEmpty == true
+            ? null
+            : data['color2'] as String?,
         isBundled: false,
         cooperative: (data['cooperative'] as String?)?.trim().isEmpty == true
             ? null
@@ -363,9 +397,17 @@ class TransportLinesService {
   /// Garde les valeurs du manifest pour les champs non présents.
   LineMetadata _overlay(LineMetadata m, Map<String, dynamic>? ov) {
     if (ov == null) return m;
+    // color2: 3 cas → champ absent (garde l'existant), chaîne vide ou null
+    // explicite (= efface la 2e couleur), chaîne non vide (override).
+    final hasColor2Key = ov.containsKey('color2');
+    final color2Raw = ov['color2'];
+    final color2Cleaned = (color2Raw is String && color2Raw.trim().isNotEmpty)
+        ? color2Raw
+        : null;
     return m.copyWith(
       displayName: ov['display_name'] as String?,
       colorHex: ov['color'] as String?,
+      colorHex2: hasColor2Key ? color2Cleaned : LineMetadata._unset,
       transportType: ov['transport_type'] as String?,
       cooperative: (ov['cooperative'] as String?)?.trim().isEmpty == true
           ? null
@@ -444,6 +486,9 @@ class TransportLinesService {
         displayName: (src['display_name'] as String?) ?? 'Ligne $code',
         transportType: (src['transport_type'] as String?) ?? 'bus',
         colorHex: (src['color'] as String?) ?? '0xFF1565C0',
+        colorHex2: (src['color2'] as String?)?.trim().isEmpty == true
+            ? null
+            : src['color2'] as String?,
         isBundled: false,
         cooperative: (src['cooperative'] as String?)?.trim().isEmpty == true
             ? null

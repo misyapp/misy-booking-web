@@ -318,6 +318,7 @@ class TransportEditorService {
         if (lineMetadata['transport_type'] != null)
           'transport_type': lineMetadata['transport_type'],
         if (lineMetadata['color'] != null) 'color': lineMetadata['color'],
+        if (lineMetadata['color2'] != null) 'color2': lineMetadata['color2'],
       },
       direction: {
         'feature_collection_json': json.encode(featureCollection),
@@ -414,6 +415,7 @@ class TransportEditorService {
         if (lineMetadata['transport_type'] != null)
           'transport_type': lineMetadata['transport_type'],
         if (lineMetadata['color'] != null) 'color': lineMetadata['color'],
+        if (lineMetadata['color2'] != null) 'color2': lineMetadata['color2'],
       },
       direction: {
         'feature_collection_json': encoded,
@@ -564,12 +566,14 @@ class TransportEditorService {
     String? displayName,
     String? transportType,
     String? colorHex,
+    String? colorHex2,
     String? cooperative,
     Map<String, dynamic>? schedule,
     int? priceAriary,
     bool clearCooperative = false,
     bool clearSchedule = false,
     bool clearPrice = false,
+    bool clearColor2 = false,
   }) async {
     final now = FieldValue.serverTimestamp();
     final uid = AdminAuthService.instance.currentUid;
@@ -600,6 +604,11 @@ class TransportEditorService {
     }
     if (colorHex != null && colorHex.trim().isNotEmpty) {
       patch['color'] = colorHex.trim();
+    }
+    if (clearColor2) {
+      patch['color2'] = FieldValue.delete();
+    } else if (colorHex2 != null && colorHex2.trim().isNotEmpty) {
+      patch['color2'] = colorHex2.trim();
     }
     if (clearCooperative) {
       patch['cooperative'] = FieldValue.delete();
@@ -876,6 +885,7 @@ class TransportEditorService {
     required String displayName,
     required String transportType,
     required String colorHex,
+    String? colorHex2,
     required Map<String, dynamic> allerFeatureCollection,
     required Map<String, dynamic> retourFeatureCollection,
     String? cooperative,
@@ -905,6 +915,8 @@ class TransportEditorService {
       'display_name': displayName,
       'transport_type': transportType,
       'color': colorHex,
+      if (colorHex2 != null && colorHex2.trim().isNotEmpty)
+        'color2': colorHex2.trim(),
       'is_bundled': true,
       'is_new_line': true,
       if (coopClean != null && coopClean.isNotEmpty) 'cooperative': coopClean,

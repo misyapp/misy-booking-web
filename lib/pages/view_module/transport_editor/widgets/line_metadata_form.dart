@@ -17,6 +17,12 @@ class LineMetadataFormController {
 
   String transportType = 'bus';
   int colorValue = 0xFF1565C0;
+
+  /// Couleur secondaire optionnelle (style ligne IDFM bi-color). Null = mono.
+  /// Rendue en trait pointillé par-dessus la couleur principale sur les
+  /// cartes éditeur/admin.
+  int? colorValue2;
+
   Set<String> daysOfOperation = {
     'mon',
     'tue',
@@ -46,6 +52,7 @@ class LineMetadataFormController {
     priceCtrl.text = m.priceAriary?.toString() ?? '';
     transportType = m.transportType;
     colorValue = m.colorValue;
+    colorValue2 = m.colorValue2;
     final s = m.schedule;
     if (s != null) {
       firstCtrl.text = s.firstDeparture ?? '';
@@ -65,6 +72,11 @@ class LineMetadataFormController {
 
   String get colorHex =>
       '0x${colorValue.toRadixString(16).padLeft(8, '0').toUpperCase()}';
+
+  /// Hex de la couleur secondaire ou null si mono-couleur.
+  String? get colorHex2 => colorValue2 == null
+      ? null
+      : '0x${colorValue2!.toRadixString(16).padLeft(8, '0').toUpperCase()}';
 
   /// Construit l'objet `schedule` à persister, ou `null` si tous les champs
   /// sont vides (pour effacement côté Firestore).
@@ -240,12 +252,48 @@ class _LineMetadataFormState extends State<LineMetadataForm> {
           },
         ),
         const SizedBox(height: 16),
-        const Text('Couleur', style: TextStyle(fontWeight: FontWeight.bold)),
+        const Text('Couleur principale',
+            style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         Wrap(
           spacing: 10,
           runSpacing: 10,
           children: _presetColors.map(_colorSwatch).toList(),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Expanded(
+              child: Text('Couleur secondaire (optionnelle)',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            if (c.colorValue2 != null)
+              TextButton.icon(
+                onPressed: () {
+                  c.colorValue2 = null;
+                  _bumped();
+                },
+                icon: const Icon(Icons.close, size: 16),
+                label: const Text('Retirer'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 32),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Pour les lignes à bandes bicolores. Rendue en pointillé '
+          'par-dessus la couleur principale sur la carte.',
+          style: TextStyle(fontSize: 12, color: Colors.black54),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: _presetColors.map(_colorSwatch2).toList(),
         ),
         const SizedBox(height: 24),
         const Divider(height: 1),
@@ -354,6 +402,41 @@ class _LineMetadataFormState extends State<LineMetadataForm> {
             color: selected ? Colors.black : Colors.grey.shade300,
             width: selected ? 3 : 1,
           ),
+        ),
+      ),
+    );
+  }
+
+  /// Swatch pour la couleur secondaire. Carré (pour différencier visuellement
+  /// du rond de la couleur principale). Re-cliquer la même couleur la
+  /// désactive (toggle off).
+  Widget _colorSwatch2(int c) {
+    final ctrl = widget.controller;
+    final selected = ctrl.colorValue2 == c;
+    final sameAsPrimary = ctrl.colorValue == c;
+    return InkWell(
+      onTap: sameAsPrimary
+          ? null
+          : () {
+              ctrl.colorValue2 = selected ? null : c;
+              _bumped();
+            },
+      child: Opacity(
+        opacity: sameAsPrimary ? 0.25 : 1.0,
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: Color(c),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: selected ? Colors.black : Colors.grey.shade300,
+              width: selected ? 3 : 1,
+            ),
+          ),
+          child: selected
+              ? const Icon(Icons.check, size: 18, color: Colors.white)
+              : null,
         ),
       ),
     );
