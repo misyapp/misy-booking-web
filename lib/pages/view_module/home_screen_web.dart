@@ -321,12 +321,28 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       print('🔍 _readUrlParameters appelée');
       print('🔍 URL complète: ${html.window.location.href}');
       final uri = Uri.parse(html.window.location.href);
-      // Les paramètres sont après le # dans Flutter web
-      final fragment = uri.fragment; // ex: /home?pickup=xxx&destination=yyy
-      print('🔍 Fragment: $fragment');
-      if (fragment.contains('?')) {
-        final queryString = fragment.split('?').last;
-        final params = Uri.splitQueryString(queryString);
+
+      // Deux formats acceptés :
+      // 1) Format standard (query string)  : book.misy.app/?pickup=...&pickupLat=...
+      // 2) Format hash legacy               : book.misy.app/#/?pickup=...&pickupLat=...
+      //
+      // usePathUrlStrategy() (main.dart:95) nettoie le hash au boot, donc le
+      // format 1 est le seul qui survit. Le format 2 reste lu en fallback au cas
+      // où une vieille version du site vitrine soit encore en cache navigateur.
+      Map<String, String> params = {};
+      if (uri.queryParameters.isNotEmpty) {
+        params = Map<String, String>.from(uri.queryParameters);
+        print('🔍 Query params: $params');
+      } else {
+        final fragment = uri.fragment;
+        print('🔍 Fragment: $fragment');
+        if (fragment.contains('?')) {
+          final queryString = fragment.split('?').last;
+          params = Uri.splitQueryString(queryString);
+        }
+      }
+
+      if (params.isNotEmpty) {
 
         final pickup = params['pickup'];
         final destination = params['destination'];
@@ -9610,11 +9626,22 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         'address': _destinationLocation['address'],
       };
 
-      // Un seul appel API pour récupérer la route, la distance et le temps
+      // Un seul appel API pour récupérer la route, la distance et le temps.
+      // Si _fetchRouteAndUpdateMap échoue (déjà retry 1× en interne), on prévient
+      // l'user au lieu de rester bloqué silencieusement sur le formulaire pré-rempli.
       final routeInfo = await _fetchRouteAndUpdateMap();
 
       if (routeInfo == null) {
         _isSearching.value = false;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text("Impossible de calculer l'itinéraire. Vérifiez votre connexion ou réessayez."),
+              behavior: SnackBarBehavior.floating,
+              action: SnackBarAction(label: 'Réessayer', onPressed: _onSearch),
+            ),
+          );
+        }
         return;
       }
 
@@ -9678,39 +9705,42 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   Future<RouteInfo?> _fetchRouteAndUpdateMap() async {
     if (_pickupLocation['lat'] == null || _destinationLocation['lat'] == null) return null;
 
+    final origin = LatLng(_pickupLocation['lat'], _pickupLocation['lng']);
+    final destination = LatLng(_destinationLocation['lat'], _destinationLocation['lng']);
+
+    // Retry 1× : l'OSRM proxy a des hiccups transitoires, surtout sur un deep-link
+    // où la requête part avant que le service worker / proxy soit "chaud".
+    RouteInfo? routeInfo;
     try {
-      final origin = LatLng(_pickupLocation['lat'], _pickupLocation['lng']);
-      final destination = LatLng(_destinationLocation['lat'], _destinationLocation['lng']);
-
-      final routeInfo = await RouteService.fetchRoute(
-        origin: origin,
-        destination: destination,
-      );
-
-      final polylinePoints = routeInfo.coordinates;
-
-      setState(() {
-        // Stocker les coordonnées pour l'animation
-        _routeCoordinates = polylinePoints;
-        _polylineAnimationOffset = 0.0;
-      });
-
-      // Démarrer l'animation de la polyline
-      _startPolylineAnimation();
-
-      // Zoom pour afficher tout l'itinéraire
-      if (polylinePoints.isNotEmpty && _mapController != null) {
-        final bounds = _boundsFromLatLngList(polylinePoints);
-        _mapController!.animateCamera(
-          CameraUpdate.newLatLngBounds(bounds, 80),
-        );
-      }
-
-      return routeInfo;
+      routeInfo = await RouteService.fetchRoute(origin: origin, destination: destination);
     } catch (e) {
-      debugPrint('Error fetching route: $e');
-      return null;
+      debugPrint('Route fetch 1st attempt failed: $e — retry in 800ms');
+      try {
+        await Future.delayed(const Duration(milliseconds: 800));
+        routeInfo = await RouteService.fetchRoute(origin: origin, destination: destination);
+      } catch (e2) {
+        debugPrint('Route fetch retry failed: $e2');
+        return null;
+      }
     }
+
+    final polylinePoints = routeInfo.coordinates;
+
+    setState(() {
+      _routeCoordinates = polylinePoints;
+      _polylineAnimationOffset = 0.0;
+    });
+
+    _startPolylineAnimation();
+
+    if (polylinePoints.isNotEmpty && _mapController != null) {
+      final bounds = _boundsFromLatLngList(polylinePoints);
+      _mapController!.animateCamera(
+        CameraUpdate.newLatLngBounds(bounds, 80),
+      );
+    }
+
+    return routeInfo;
   }
 
   LatLngBounds _boundsFromLatLngList(List<LatLng> list) {
