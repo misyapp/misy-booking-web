@@ -259,6 +259,57 @@ Future<Uint8List> generateCustomerInvoice(
                                     fontWeight: pw.FontWeight.normal),
                           ),
                         ]),
+                        if (bookingDetails['startedTime'] is Timestamp)
+                          pw.Row(children: [
+                            pw.Text(
+                              'Prise en charge : ',
+                              style: pw.Theme.of(context)
+                                  .defaultTextStyle
+                                  .copyWith(
+                                      color: PdfColors.black,
+                                      fontSize: 15,
+                                      fontWeight: pw.FontWeight.bold),
+                            ),
+                            pw.Text(
+                              formatTimestamp(
+                                  Timestamp.fromDate((bookingDetails['startedTime'] as Timestamp)
+                                      .toDate()
+                                      .toUtc()
+                                      .add(const Duration(hours: 3))),
+                                  formateString: 'dd-MM-yyyy HH:mm'),
+                              style: pw.Theme.of(context)
+                                  .defaultTextStyle
+                                  .copyWith(
+                                      color: PdfColors.black,
+                                      fontSize: 14,
+                                      fontWeight: pw.FontWeight.normal),
+                            ),
+                          ]),
+                        pw.Row(children: [
+                          pw.Text(
+                            'Dépose : ',
+                            style: pw.Theme.of(context)
+                                .defaultTextStyle
+                                .copyWith(
+                                    color: PdfColors.black,
+                                    fontSize: 15,
+                                    fontWeight: pw.FontWeight.bold),
+                          ),
+                          pw.Text(
+                            formatTimestamp(
+                                Timestamp.fromDate((bookingDetails['endTime'] as Timestamp)
+                                    .toDate()
+                                    .toUtc()
+                                    .add(const Duration(hours: 3))),
+                                formateString: 'dd-MM-yyyy HH:mm'),
+                            style: pw.Theme.of(context)
+                                .defaultTextStyle
+                                .copyWith(
+                                    color: PdfColors.black,
+                                    fontSize: 14,
+                                    fontWeight: pw.FontWeight.normal),
+                          ),
+                        ]),
                       ],
                     )),
                   ],
