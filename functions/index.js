@@ -607,6 +607,91 @@ exports.sendNotificationFunction = functions.https.onRequest(
 
         console.log("Notification sent successfully:");
 
+        // ─── État machine fcmFirstFailureAt (2026-05-19) ───
+        // Règle : un driver est flippé offline UNIQUEMENT si
+        //   (a) TOUS ses tokens FCM sont 404 → "token mort"
+        //   (b) doc.updateTime ≥ 5 min → l'app n'écrit plus son GPS (garde-fou)
+        //   (c) ≥ 2 h se sont écoulées depuis la 1ère failure consécutive
+        // Si une seule des 3 conditions manque → reste online.
+        // Si n'importe quel token redevient OK → reset fcmFirstFailureAt.
+        // Voir reference_cloud_functions_architecture.md
+        if (userId && userId !== "" && deviceTokens.length > 0) {
+          try {
+            const userRef = db.collection(usersCollection).doc(userId);
+            const userSnap = await userRef.get();
+            if (userSnap.exists) {
+              const userData = userSnap.data();
+              const isDriver = userData.isCustomer === false;
+              const isOnline = userData.isOnline === true;
+              const now = admin.firestore.Timestamp.now();
+              const docUpdateAgeMs =
+                now.toMillis() - userSnap.updateTime.toMillis();
+              const FIVE_MIN_MS = 5 * 60 * 1000;
+              const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+
+              const allTokensInvalid =
+                invalidTokens.length === deviceTokens.length;
+              const anyTokenValid = newTokens.length > 0;
+
+              // Cas A — au moins un token a répondu OK → reset état failure
+              if (anyTokenValid && userData.fcmFirstFailureAt) {
+                await userRef.update({
+                  fcmFirstFailureAt: admin.firestore.FieldValue.delete(),
+                });
+                console.log(`[fcm-state] reset for ${userId} (token success)`);
+              }
+
+              // Cas B — TOUS les tokens du driver sont morts
+              if (allTokensInvalid && isDriver && isOnline) {
+                if (docUpdateAgeMs < FIVE_MIN_MS) {
+                  // Garde-fou : app écrit son GPS, FCM peut être bug transitoire
+                  console.log(`[fcm-state] all invalid for ${userId} but doc.updateTime fresh — skip`);
+                } else {
+                  const firstFailureAt = userData.fcmFirstFailureAt;
+                  if (!firstFailureAt) {
+                    // 1ère failure → marquer maintenant
+                    await userRef.update({
+                      fcmFirstFailureAt: now,
+                    });
+                    console.log(`[fcm-state] mark 1st failure for ${userId}`);
+                  } else {
+                    const failureAgeMs =
+                      now.toMillis() - firstFailureAt.toMillis();
+                    if (failureAgeMs >= TWO_HOURS_MS) {
+                      // ≥ 2 h de failures consécutives → flip offline
+                      await userRef.update({
+                        isOnline: false,
+                        deviceId: [],
+                        autoOfflineAt: now,
+                        autoOfflineReason: "fcm_all_invalid_2h",
+                        fcmFirstFailureAt:
+                          admin.firestore.FieldValue.delete(),
+                      });
+                      console.log(`[fcm-state] FLIP OFFLINE ${userId} (FCM dead ${Math.round(failureAgeMs/60000)}min)`);
+                    } else {
+                      console.log(`[fcm-state] wait ${userId} (${Math.round(failureAgeMs/60000)}min < 2h)`);
+                    }
+                  }
+                }
+              } else if (invalidTokens.length > 0 && newTokens.length > 0) {
+                // Cas C — tokens partiellement morts → cleanup les morts
+                // (le driver garde au moins un canal vivant → reste online)
+                const currentDeviceId = userData.deviceId || [];
+                if (Array.isArray(currentDeviceId) && currentDeviceId.length > 0) {
+                  const cleaned = currentDeviceId.filter(
+                    (t) => !invalidTokens.includes(t));
+                  if (cleaned.length !== currentDeviceId.length) {
+                    await userRef.update({ deviceId: cleaned });
+                    console.log(`[fcm-state] cleaned ${currentDeviceId.length - cleaned.length} dead tokens for ${userId}`);
+                  }
+                }
+              }
+            }
+          } catch (stateErr) {
+            console.error("[fcm-state] error:", stateErr.message);
+          }
+        }
+
       }
 
       res.status(200).send({ message: "ok" });
