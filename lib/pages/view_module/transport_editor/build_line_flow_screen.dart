@@ -96,6 +96,11 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
   // destination) consomme ce nom comme prefill du dialog.
   String? _pendingSearchName;
 
+  // Étape review uniquement : si true, le prochain clic carte insère un
+  // waypoint au lieu d'un arrêt (one-shot, reset après la pose ou via
+  // bouton Annuler).
+  bool _armWaypointOnNextTap = false;
+
   @override
   void initState() {
     super.initState();
@@ -307,6 +312,11 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
                         // de la carte, pour cohérence.
                         onStopDelete: (i) => _onReviewStopLongPress(p, i),
                         onStopRename: (i) => _onReviewStopTap(p, i),
+                        armWaypoint: _armWaypointOnNextTap,
+                        onArmWaypoint: () =>
+                            setState(() => _armWaypointOnNextTap = true),
+                        onDisarmWaypoint: () =>
+                            setState(() => _armWaypointOnNextTap = false),
                       ),
                     ),
                     Expanded(
@@ -597,7 +607,14 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
         p.addWaypoint(latLng);
         break;
       case BuildLineStep.review:
-        await _onReviewInsertStop(p, latLng);
+        if (_armWaypointOnNextTap) {
+          p.addWaypoint(latLng);
+          setState(() => _armWaypointOnNextTap = false);
+          _snack(context,
+              'Waypoint ajouté — recalcule le tracé avant de terminer');
+        } else {
+          await _onReviewInsertStop(p, latLng);
+        }
         break;
     }
   }
@@ -640,9 +657,16 @@ class _BuildLineFlowScreenState extends State<BuildLineFlowScreen>
         }
         return;
       case BuildLineStep.review:
-        await _onReviewInsertStop(p, stop.position,
-            prefillName: stop.hasName ? stop.name : null,
-            osmId: stop.id);
+        if (_armWaypointOnNextTap) {
+          p.addWaypoint(stop.position);
+          setState(() => _armWaypointOnNextTap = false);
+          _snack(context,
+              'Waypoint ajouté — recalcule le tracé avant de terminer');
+        } else {
+          await _onReviewInsertStop(p, stop.position,
+              prefillName: stop.hasName ? stop.name : null,
+              osmId: stop.id);
+        }
         return;
     }
   }
@@ -1296,6 +1320,10 @@ class _SidePanel extends StatelessWidget {
   // Optionnels pour que les autres étapes n'aient pas à les passer.
   final void Function(int index)? onStopDelete;
   final void Function(int index)? onStopRename;
+  // Étape review : état + setters du mode "prochain clic = waypoint".
+  final bool armWaypoint;
+  final VoidCallback? onArmWaypoint;
+  final VoidCallback? onDisarmWaypoint;
 
   const _SidePanel({
     required this.step,
@@ -1307,6 +1335,9 @@ class _SidePanel extends StatelessWidget {
     required this.onRecomputeWithWaypoints,
     this.onStopDelete,
     this.onStopRename,
+    this.armWaypoint = false,
+    this.onArmWaypoint,
+    this.onDisarmWaypoint,
   });
 
   @override
@@ -1474,6 +1505,9 @@ class _SidePanel extends StatelessWidget {
           onRecompute: onRecomputeWithWaypoints,
           onStopDelete: onStopDelete,
           onStopRename: onStopRename,
+          armWaypoint: armWaypoint,
+          onArmWaypoint: onArmWaypoint,
+          onDisarmWaypoint: onDisarmWaypoint,
         );
     }
   }
@@ -1663,12 +1697,18 @@ class _ReviewPanel extends StatelessWidget {
   final VoidCallback onRecompute;
   final void Function(int index)? onStopDelete;
   final void Function(int index)? onStopRename;
+  final bool armWaypoint;
+  final VoidCallback? onArmWaypoint;
+  final VoidCallback? onDisarmWaypoint;
 
   const _ReviewPanel({
     required this.provider,
     required this.onRecompute,
     required this.onStopDelete,
     required this.onStopRename,
+    this.armWaypoint = false,
+    this.onArmWaypoint,
+    this.onDisarmWaypoint,
   });
 
   @override
@@ -1704,6 +1744,55 @@ class _ReviewPanel extends StatelessWidget {
             style: TextStyle(fontSize: 11, color: Colors.black87, height: 1.4),
           ),
         ),
+        const SizedBox(height: 8),
+        if (armWaypoint)
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF8E1),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: const Color(0xFFFFB300)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.touch_app,
+                    size: 16, color: Color(0xFFE65100)),
+                const SizedBox(width: 6),
+                const Expanded(
+                  child: Text(
+                    'Cliquez sur la carte pour poser le waypoint',
+                    style:
+                        TextStyle(fontSize: 11, color: Color(0xFFE65100)),
+                  ),
+                ),
+                InkWell(
+                  onTap: onDisarmWaypoint,
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Text('Annuler',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFFE65100),
+                            decoration: TextDecoration.underline)),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF1565C0),
+                side: const BorderSide(color: Color(0xFF1565C0)),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+              ),
+              onPressed: onArmWaypoint,
+              icon: const Icon(Icons.add_location_alt_outlined, size: 16),
+              label: const Text('Insérer un waypoint'),
+            ),
+          ),
         const SizedBox(height: 10),
         if (p.isRouteDirty) ...[
           Container(
