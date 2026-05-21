@@ -23,6 +23,7 @@ import 'package:rider_ride_hailing_app/provider/admin_settings_provider.dart';
 import 'package:rider_ride_hailing_app/provider/airtel_money_payment_gateway_provider.dart';
 import 'package:rider_ride_hailing_app/provider/dark_theme_provider.dart';
 import 'package:rider_ride_hailing_app/provider/google_map_provider.dart';
+import 'package:rider_ride_hailing_app/utils/deep_link_params.dart';
 import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
 import 'package:rider_ride_hailing_app/provider/notification_provider.dart';
 import 'package:rider_ride_hailing_app/provider/orange_money_payment_gateway_provider.dart';
@@ -86,7 +87,23 @@ void _clearFirestoreCacheInBackground() {
   });
 }
 
-void main() async {
+void main() => bootstrap();
+
+/// Body du boot Flutter, partagé entre entry points :
+/// - lib/main.dart            → BuildMode.booking (book.misy.app)
+/// - lib/main_taxibe.dart     → BuildMode.taxibe  (taxibe.misy.app)
+///
+/// L'init Firebase / FCM / providers est identique. Le flag
+/// [BuildModeFlag.current] est posé avant l'appel pour que les écrans
+/// partagés adaptent leur UI au runtime.
+Future<void> bootstrap() async {
+  // CRITIQUE : capturer les query params AVANT toute init Flutter / router.
+  // Sinon `usePathUrlStrategy()` + le navigator strippent l'URL et les params
+  // (pickup, destination, login=1…) sont perdus avant que les écrans ne les lisent.
+  if (kIsWeb) {
+    DeepLinkParams.capture();
+  }
+
   WidgetsFlutterBinding.ensureInitialized();
 
   // URL path-based sur le web : Bluehost a déjà un SPA-fallback qui sert
@@ -614,6 +631,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   '/transport-editor': (context) => const EditorDashboardScreen(),
                   '/transport-admin': (context) => const AdminReviewScreen(),
                   '/transport-iam': (context) => const IamScreen(),
+                  // Alias courts utilisés par taxibe.misy.app. Cibles identiques.
+                  '/login': (context) => const TransportLoginScreen(),
+                  '/editor': (context) => const EditorDashboardScreen(),
+                  '/admin': (context) => const AdminReviewScreen(),
+                  '/iam': (context) => const IamScreen(),
                 },
                 builder: EasyLoading.init(),
               ));

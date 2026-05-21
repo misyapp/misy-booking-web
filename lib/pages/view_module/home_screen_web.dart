@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:rider_ride_hailing_app/contants/build_mode.dart';
 import 'package:rider_ride_hailing_app/contants/my_colors.dart';
 import 'package:rider_ride_hailing_app/contants/my_image_url.dart';
 import 'package:rider_ride_hailing_app/contants/global_data.dart';
@@ -29,6 +30,7 @@ import 'package:rider_ride_hailing_app/services/location.dart';
 import 'package:rider_ride_hailing_app/services/reverse_geocoder.dart';
 import 'package:rider_ride_hailing_app/services/places_autocomplete_web.dart';
 import 'package:rider_ride_hailing_app/services/route_service.dart';
+import 'package:rider_ride_hailing_app/utils/deep_link_params.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/login_screen.dart' show LoginPage;
 import 'package:rider_ride_hailing_app/pages/auth_module/signup_screen.dart' show SignUpScreen;
 import 'package:rider_ride_hailing_app/pages/auth_module/web_auth_screen.dart'
@@ -112,6 +114,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   // Rôle éditeur terrain transport (custom claim transport_editor)
   bool _isTransportEditor = false;
+  // Rôle admin transport (custom claim transport_admin). En taxibe, ouvre
+  // l'accès à /admin et /iam depuis le menu utilisateur "Contribuer".
+  bool _isTransportAdmin = false;
 
   // === Markers personnalisés pour pickup/destination ===
   BitmapDescriptor? _pickupMarkerIcon;
@@ -165,13 +170,21 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // === Mode public (transport en commun) ===
   // Toggle Course / Transport en commun. La carte reste partagée — seules les
   // couches et le panneau gauche changent.
-  HomeMode _homeMode = HomeMode.course;
+  // En mode taxibe (taxibe.misy.app), on démarre directement en transport
+  // public et on bypass la gate admin (le site n'expose QUE le transport
+  // en commun + les outils editor/admin via les routes /editor /admin).
+  HomeMode _homeMode = BuildModeFlag.isTaxibe
+      ? HomeMode.publicTransport
+      : HomeMode.course;
 
   // Gate : pour le moment, le mode "Transport en commun" n'est exposé qu'au
   // compte admin@misyapp.com. Les autres utilisateurs ne voient ni le toggle
   // ni la sidebar dédiée. À retirer quand la feature sera publique.
   static const String _publicModeAdminEmail = 'admin@misyapp.com';
-  bool _isPublicModeAdmin = false;
+  // En mode taxibe, le transport public est ouvert à tous (pas de gate
+  // admin). En mode booking, il faut le claim transport_public_admin (cf.
+  // _watchPublicModeGate).
+  bool _isPublicModeAdmin = BuildModeFlag.isTaxibe;
   StreamSubscription<User?>? _authSubscription;
 
   // Polylines + markers du réseau taxi-be pour l'overlay de la carte. Calculés
@@ -261,6 +274,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     if (mounted && ok != _isTransportEditor) {
       setState(() => _isTransportEditor = ok);
     }
+    final admin = await AdminAuthService.instance.isTransportAdmin();
+    if (mounted && admin != _isTransportAdmin) {
+      setState(() => _isTransportAdmin = admin);
+    }
   }
 
   /// Callback quand TripProvider change (pour gérer le reset après course terminée)
@@ -343,20 +360,44 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   /// Lit les paramètres URL pour pré-remplir les champs (depuis le widget misy.app)
+  ///
+  /// Source des params : `DeepLinkParams.params`, capturé au tout début de main()
+  /// AVANT que `usePathUrlStrategy()` + le router Flutter ne nettoient l'URL.
+  /// Au moment où cet initState tourne, `window.location.href` et `Uri.base`
+  /// ont déjà été ramenés à `https://book.misy.app/` (sans query-string).
+  ///
+  /// Deux formats supportés :
+  ///  - **Query-string** (path-strategy, format envoyé par misy.app) :
+  ///    `https://book.misy.app/?pickup=X&pickupLat=Y...`
+  ///  - **Fragment** (legacy hash-strategy) : `https://book.misy.app/#/?pickup=X...`
   void _readUrlParameters() {
     if (!kIsWeb) return;
 
     try {
       print('🔍 _readUrlParameters appelée');
-      print('🔍 URL complète: ${html.window.location.href}');
-      final uri = Uri.parse(html.window.location.href);
-      // Les paramètres sont après le # dans Flutter web
-      final fragment = uri.fragment; // ex: /home?pickup=xxx&destination=yyy
-      print('🔍 Fragment: $fragment');
-      if (fragment.contains('?')) {
-        final queryString = fragment.split('?').last;
-        final params = Uri.splitQueryString(queryString);
+      print('🔍 URL au moment du initState: ${html.window.location.href}');
 
+      // 1. Source primaire : params capturés au boot dans main().
+      Map<String, String> params = Map<String, String>.from(DeepLinkParams.params);
+      print('🔍 DeepLinkParams: $params');
+
+      // 2. Fallback : si rien n'a été capturé au boot, tenter les query params
+      // courants (utile pour les navigations internes qui posent des params).
+      if (params.isEmpty) {
+        final uri = Uri.parse(html.window.location.href);
+        params = Map<String, String>.from(uri.queryParameters);
+        if (params.isEmpty) {
+          // 3. Dernier fallback : params dans le fragment (legacy hash-strategy).
+          final fragment = uri.fragment;
+          print('🔍 Fragment (fallback): $fragment');
+          if (fragment.contains('?')) {
+            final queryString = fragment.split('?').last;
+            params = Uri.splitQueryString(queryString);
+          }
+        }
+      }
+
+      if (params.isNotEmpty) {
         final pickup = params['pickup'];
         final destination = params['destination'];
         final pickupLat = params['pickupLat'];
@@ -1129,7 +1170,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// Met à jour [_isPublicModeAdmin] selon l'utilisateur courant. Quand le
   /// gate se ferme (logout, switch de compte non-admin), on force le retour
   /// en mode Course pour ne pas laisser l'utilisateur sur une UI cachée.
+  ///
+  /// No-op en mode taxibe : le transport public est ouvert à tous, pas
+  /// de gate à observer.
   void _watchPublicModeGate() {
+    if (BuildModeFlag.isTaxibe) return;
     void apply(User? user) {
       final isAdmin = user?.email == _publicModeAdminEmail;
       if (!mounted) return;
@@ -1314,6 +1359,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         onRouteSelected: _onPublicRouteSelected,
         onPointsChanged: _onPublicPointsChanged,
         mapTapNotifier: _publicMapTapNotifier,
+        showModeToggle: !BuildModeFlag.isTaxibe,
       );
     }
 
@@ -2145,6 +2191,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   Widget _buildProfileButton() {
+    // Mode taxibe : la home publique n'a pas de notion de compte rider.
+    // On expose juste un point d'entrée discret pour les contributeurs
+    // (consultants/admins terrain) — sans S'inscrire (les comptes editor/
+    // admin sont provisionnés via les scripts Node).
+    if (BuildModeFlag.isTaxibe) {
+      return _buildTaxibeContributeButton();
+    }
     return Positioned(
       top: 16,
       right: 16,
@@ -2320,6 +2373,144 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           ),
         ),
     ];
+  }
+
+  /// Bouton "Contribuer" affiché en haut à droite sur taxibe.misy.app.
+  ///
+  /// Logged-out : entrée pour les contributeurs terrain (signaler une
+  /// erreur, créer une ligne manquante, etc.). Tap → /login →
+  /// TransportLoginScreen.
+  ///
+  /// Logged-in : popup avec raccourcis /editor (si claim editor) et
+  /// /admin (si claim admin) + déconnexion. Pas de "Mes trajets" ni
+  /// profil (UI booking).
+  Widget _buildTaxibeContributeButton() {
+    return Positioned(
+      top: 16,
+      right: 16,
+      child: ValueListenableBuilder(
+        valueListenable: userData,
+        builder: (context, user, _) {
+          final isLoggedIn = user != null;
+          if (!isLoggedIn) {
+            return Tooltip(
+              message: 'Signaler une erreur, contribuer à une ligne…',
+              child: TextButton.icon(
+                onPressed: () =>
+                    Navigator.of(context).pushNamed('/login'),
+                icon: const Icon(Icons.add_road,
+                    size: 18, color: Colors.black87),
+                label: const Text(
+                  'Contribuer',
+                  style: TextStyle(
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.white.withOpacity(0.9),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+              ),
+            );
+          }
+
+          // Logged-in : popup avec raccourcis editor/admin selon claims.
+          return PopupMenuButton<String>(
+            offset: const Offset(0, 45),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            tooltip: 'Espace contributeur',
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.9),
+                shape: BoxShape.circle,
+              ),
+              child: CircleAvatar(
+                radius: 18,
+                backgroundColor: Colors.grey.shade200,
+                backgroundImage: user.profileImage.isNotEmpty
+                    ? NetworkImage(user.profileImage)
+                    : null,
+                child: user.profileImage.isEmpty
+                    ? Icon(Icons.person,
+                        color: Colors.grey.shade600, size: 20)
+                    : null,
+              ),
+            ),
+            onSelected: (value) {
+              if (value == 'editor') {
+                Navigator.of(context).pushNamed('/editor');
+              } else if (value == 'admin') {
+                Navigator.of(context).pushNamed('/admin');
+              } else if (value == 'iam') {
+                Navigator.of(context).pushNamed('/iam');
+              } else if (value == 'logout') {
+                final authProvider = Provider.of<CustomAuthProvider>(
+                    context,
+                    listen: false);
+                authProvider.logout(context);
+              }
+            },
+            itemBuilder: (context) => [
+              if (_isTransportEditor)
+                const PopupMenuItem(
+                  value: 'editor',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit_road, color: Color(0xFF1565C0)),
+                      SizedBox(width: 8),
+                      Text('Éditeur terrain'),
+                    ],
+                  ),
+                ),
+              if (_isTransportAdmin) ...[
+                const PopupMenuItem(
+                  value: 'admin',
+                  child: Row(
+                    children: [
+                      Icon(Icons.fact_check, color: Color(0xFF6A1B9A)),
+                      SizedBox(width: 8),
+                      Text('Admin review'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'iam',
+                  child: Row(
+                    children: [
+                      Icon(Icons.admin_panel_settings,
+                          color: Color(0xFF6A1B9A)),
+                      SizedBox(width: 8),
+                      Text('Gestion des accès'),
+                    ],
+                  ),
+                ),
+              ],
+              if (_isTransportEditor || _isTransportAdmin)
+                const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Déconnexion',
+                        style: TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Widget _buildMap() {

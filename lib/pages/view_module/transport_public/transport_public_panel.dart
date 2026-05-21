@@ -37,6 +37,9 @@ class TransportPublicPanel extends StatefulWidget {
   /// Reçoit chaque tap sur la carte (en mode public). Le calculateur
   /// d'itinéraire l'écoute pour ajuster le dernier point posé.
   final ValueListenable<LatLng?>? mapTapNotifier;
+  /// Affiche le toggle Course/Transport. False sur taxibe.misy.app où le
+  /// site ne propose QUE le transport public (pas de mode booking).
+  final bool showModeToggle;
 
   const TransportPublicPanel({
     super.key,
@@ -47,6 +50,7 @@ class TransportPublicPanel extends StatefulWidget {
     this.onRouteSelected,
     this.onPointsChanged,
     this.mapTapNotifier,
+    this.showModeToggle = true,
   });
 
   @override
@@ -86,13 +90,14 @@ class _TransportPublicPanelState extends State<TransportPublicPanel> {
                   children: [
                     _buildHeader(context),
                     const Divider(height: 1, thickness: 1),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
-                      child: HomeModeToggle(
-                        current: widget.mode,
-                        onChanged: widget.onModeChanged,
+                    if (widget.showModeToggle)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+                        child: HomeModeToggle(
+                          current: widget.mode,
+                          onChanged: widget.onModeChanged,
+                        ),
                       ),
-                    ),
                     Expanded(
                       child: SingleChildScrollView(
                         child: Column(
