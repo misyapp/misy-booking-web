@@ -89,13 +89,13 @@ void _clearFirestoreCacheInBackground() {
 
 void main() => bootstrap();
 
-/// Body du boot Flutter, partagé entre entry points :
-/// - lib/main.dart            → BuildMode.booking (book.misy.app)
-/// - lib/main_taxibe.dart     → BuildMode.taxibe  (taxibe.misy.app)
+/// Body du boot Flutter de book.misy.app. Init Firebase / FCM / providers
+/// + capture des deep-link params avant l'init du router.
 ///
-/// L'init Firebase / FCM / providers est identique. Le flag
-/// [BuildModeFlag.current] est posé avant l'appel pour que les écrans
-/// partagés adaptent leur UI au runtime.
+/// Historique : un entry point `lib/main_taxibe.dart` existait pour
+/// taxibe.misy.app (mode Transport en commun forcé). Migré vers un
+/// redirect 301 → book.misy.app le 2026-05-28 ; le code dual-build a
+/// été retiré au même moment.
 Future<void> bootstrap() async {
   // CRITIQUE : capturer les query params AVANT toute init Flutter / router.
   // Sinon `usePathUrlStrategy()` + le navigator strippent l'URL et les params

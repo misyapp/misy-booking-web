@@ -14,7 +14,6 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
-import 'package:rider_ride_hailing_app/contants/build_mode.dart';
 import 'package:rider_ride_hailing_app/contants/my_colors.dart';
 import 'package:rider_ride_hailing_app/contants/my_image_url.dart';
 import 'package:rider_ride_hailing_app/contants/global_data.dart';
@@ -169,23 +168,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   // === Mode public (transport en commun) ===
   // Toggle Course / Transport en commun. La carte reste partagée — seules les
-  // couches et le panneau gauche changent.
-  // En mode taxibe (taxibe.misy.app), on démarre directement en transport
-  // public et on bypass la gate admin (le site n'expose QUE le transport
-  // en commun + les outils editor/admin via les routes /editor /admin).
-  HomeMode _homeMode = BuildModeFlag.isTaxibe
-      ? HomeMode.publicTransport
-      : HomeMode.course;
-
-  // Gate : pour le moment, le mode "Transport en commun" n'est exposé qu'au
-  // compte admin@misyapp.com. Les autres utilisateurs ne voient ni le toggle
-  // ni la sidebar dédiée. À retirer quand la feature sera publique.
-  static const String _publicModeAdminEmail = 'admin@misyapp.com';
-  // En mode taxibe, le transport public est ouvert à tous (pas de gate
-  // admin). En mode booking, il faut le claim transport_public_admin (cf.
-  // _watchPublicModeGate).
-  bool _isPublicModeAdmin = BuildModeFlag.isTaxibe;
-  StreamSubscription<User?>? _authSubscription;
+  // couches et le panneau gauche changent. La feature est ouverte à tous les
+  // utilisateurs (loggés ou non) depuis 2026-05-28 — historiquement gated
+  // derrière admin@misyapp.com, puis exposée publiquement après la migration
+  // du subdomain taxibe.misy.app vers un redirect 301 → book.misy.app.
+  HomeMode _homeMode = HomeMode.course;
 
   // Polylines + markers du réseau taxi-be pour l'overlay de la carte. Calculés
   // au load + à chaque palier de zoom franchi (filtrage type IDFM : moins de
@@ -267,7 +254,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _restorePendingScheduledBooking();
     _createCustomMarkers();
     _checkTransportEditorRole();
-    _watchPublicModeGate();
 
     // Écouter les changements de TripProvider pour reset l'UI après course
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1171,34 +1157,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _isPickupFocused.dispose();
     _isDestinationFocused.dispose();
     _isSearching.dispose();
-    _authSubscription?.cancel();
     super.dispose();
-  }
-
-  /// Met à jour [_isPublicModeAdmin] selon l'utilisateur courant. Quand le
-  /// gate se ferme (logout, switch de compte non-admin), on force le retour
-  /// en mode Course pour ne pas laisser l'utilisateur sur une UI cachée.
-  ///
-  /// No-op en mode taxibe : le transport public est ouvert à tous, pas
-  /// de gate à observer.
-  void _watchPublicModeGate() {
-    if (BuildModeFlag.isTaxibe) return;
-    void apply(User? user) {
-      final isAdmin = user?.email == _publicModeAdminEmail;
-      if (!mounted) return;
-      if (isAdmin == _isPublicModeAdmin) return;
-      setState(() {
-        _isPublicModeAdmin = isAdmin;
-        if (!isAdmin && _homeMode == HomeMode.publicTransport) {
-          _homeMode = HomeMode.course;
-          _publicSelectedLine = null;
-        }
-      });
-    }
-
-    apply(FirebaseAuth.instance.currentUser);
-    _authSubscription =
-        FirebaseAuth.instance.authStateChanges().listen(apply);
   }
 
   @override
@@ -1222,7 +1181,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           // Détection de hover en mode public : MouseRegion translucent qui
           // ne bloque pas les pointer events (clicks Google Maps OK), mais
           // capture la position du curseur pour grossir le marker survolé.
-          if (_homeMode == HomeMode.publicTransport && _isPublicModeAdmin)
+          if (_homeMode == HomeMode.publicTransport)
             Positioned.fill(
               child: MouseRegion(
                 opaque: false,
@@ -1254,7 +1213,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           // Ancrée au pixel-écran du marker via _publicSelectedStopScreenPos
           // (mise à jour à chaque mouvement de caméra).
           if (_homeMode == HomeMode.publicTransport &&
-              _isPublicModeAdmin &&
               _publicSelectedStop != null &&
               _publicStopsByKey[_publicSelectedStop] != null)
             Builder(
@@ -1361,9 +1319,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final currentStep = tripProvider.currentStep;
 
     // En mode "Transport en commun" : sidebar dédiée, peu importe l'étape
-    // Course (les 2 modes sont isolés). Gardé derrière le flag admin tant
-    // que la feature n'est pas publique.
-    if (_homeMode == HomeMode.publicTransport && _isPublicModeAdmin) {
+    // Course (les 2 modes sont isolés).
+    if (_homeMode == HomeMode.publicTransport) {
       return TransportPublicPanel(
         mode: _homeMode,
         onModeChanged: _setHomeMode,
@@ -2205,11 +2162,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   Widget _buildProfileButton() {
-    // Mode taxibe : la home publique n'a pas de notion de compte rider.
-    // On expose juste un point d'entrée discret pour les contributeurs
-    // (consultants/admins terrain) — sans S'inscrire (les comptes editor/
-    // admin sont provisionnés via les scripts Node).
-    if (BuildModeFlag.isTaxibe) {
+    // En mode Transport en commun, expose le menu "Contribuer" (raccourcis
+    // éditeur / admin pour les claims correspondants, sans S'inscrire — pas
+    // de notion de compte rider à ce moment-là).
+    if (_homeMode == HomeMode.publicTransport) {
       return _buildTaxibeContributeButton();
     }
     return Positioned(
@@ -2389,11 +2345,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     ];
   }
 
-  /// Bouton "Contribuer" affiché en haut à droite sur taxibe.misy.app.
+  /// Bouton "Contribuer" affiché en haut à droite en mode Transport en
+  /// commun. Historiquement dédié à taxibe.misy.app, partagé maintenant
+  /// avec book.misy.app après la migration de la feature transport.
   ///
   /// Logged-out : entrée pour les contributeurs terrain (signaler une
-  /// erreur, créer une ligne manquante, etc.). Tap → /login →
-  /// TransportLoginScreen.
+  /// erreur, créer une ligne manquante, etc.). Tap → /transport-login.
   ///
   /// Logged-in : popup avec raccourcis /editor (si claim editor) et
   /// /admin (si claim admin) + déconnexion. Pas de "Mes trajets" ni
@@ -2650,16 +2607,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   // ─────────────────────── Mode public (Transport en commun) ───────────────────────
 
-  /// Le toggle overlay est visible si l'utilisateur a accès aux deux modes.
-  /// Sur taxibe.misy.app le site est mono-mode (transport uniquement) ;
-  /// sur book le toggle est gardé derrière le gate admin tant que le mode
-  /// public n'est pas exposé publiquement.
-  bool get _showModeToggleOverlay =>
-      _isPublicModeAdmin && !BuildModeFlag.isTaxibe;
+  /// Le toggle overlay est visible pour tous les utilisateurs (depuis
+  /// 2026-05-28, après la migration de la feature transport vers book).
+  static const bool _showModeToggleOverlay = true;
 
-  /// `top` à appliquer aux panels latéraux : 76 si le toggle overlay est
-  /// visible (pour ne pas se chevaucher), 16 sinon.
-  double get _panelTopInset => _showModeToggleOverlay ? 76 : 16;
+  /// `top` à appliquer aux panels latéraux : 76 pour ne pas chevaucher
+  /// l'overlay du toggle.
+  static const double _panelTopInset = 76;
 
   Widget _buildModeToggleOverlay() {
     return Positioned(
@@ -2667,24 +2621,24 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       left: 16,
       child: PointerInterceptor(
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
             child: Container(
-              width: 320,
-              padding: const EdgeInsets.all(6),
+              width: 360,
+              padding: const EdgeInsets.all(5),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.92),
-                borderRadius: BorderRadius.circular(12),
+                color: Colors.white.withOpacity(0.95),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.6),
+                  color: Colors.white.withOpacity(0.7),
                   width: 0.5,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 20,
-                    offset: const Offset(0, 6),
+                    color: Colors.black.withOpacity(0.12),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
                   ),
                 ],
               ),
@@ -2746,7 +2700,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   void _setHomeMode(HomeMode mode) {
     if (_homeMode == mode) return;
-    if (mode == HomeMode.publicTransport && !_isPublicModeAdmin) return;
     setState(() {
       _homeMode = mode;
       _publicSelectedLine = null;
@@ -3426,7 +3379,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// stop sous le curseur (zone de 14px autour).
   Future<void> _refreshPublicStopScreenCache() async {
     if (_homeMode != HomeMode.publicTransport ||
-        !_isPublicModeAdmin ||
         _mapController == null ||
         _publicMapAreaSize == Size.zero ||
         _publicStopsByKey.isEmpty) {

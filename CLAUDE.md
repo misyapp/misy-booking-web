@@ -86,23 +86,10 @@ lib/
 
 ### Build & Deployment
 
-Le repo héberge **deux** sites Flutter web depuis le même codebase, distingués
-par l'entry point (et un flag `BuildModeFlag.current`) :
-
-| Site                | Entry point             | Mode                 | Path serveur                  |
-|---------------------|-------------------------|----------------------|-------------------------------|
-| `book.misy.app`     | `lib/main.dart`         | BuildMode.booking    | `/var/www/book.misy.app/`     |
-| `taxibe.misy.app`   | `lib/main_taxibe.dart`  | BuildMode.taxibe     | `/var/www/taxibe.misy.app/`   |
-
-Le code transport (`lib/pages/view_module/transport_public/`, `transport_editor/`,
-`services/transport_*`, `models/routing/raptor/`) est partagé entre les 2 builds.
-Zéro duplication, zéro script de sync — chaque modif est visible des 2 côtés
-au prochain build.
-
-`home_screen_web.dart` lit `BuildModeFlag.isTaxibe` au runtime pour :
-- forcer `_homeMode = HomeMode.publicTransport` au boot
-- bypasser la gate `_isPublicModeAdmin`
-- masquer le toggle Course/Transport (passé à `TransportPublicPanel.showModeToggle = false`)
+Un seul site Flutter web (`book.misy.app`) héberge à la fois le mode Course
+(VTC/moto) et le mode Transport en commun, toggleable via un overlay
+flottant en haut à gauche, accessible à tous les utilisateurs (loggés ou
+non) depuis 2026-05-28.
 
 #### Build & Deploy book.misy.app
 ```bash
@@ -110,40 +97,49 @@ flutter build web --release
 ./deploy.sh
 ```
 
-#### Build & Deploy taxibe.misy.app
-```bash
-./deploy_taxibe.sh
-# = flutter build web --release --target lib/main_taxibe.dart
-# + sed sur build/web/index.html (title TaxiBe)
-# + rsync vers /var/www/taxibe.misy.app/
-```
+#### Routes URL (alias courts et longs)
 
-#### Routes URL (alias courts dans MyApp pour taxibe)
+| URL longue          | URL courte | Écran                    |
+|---------------------|------------|--------------------------|
+| /transport-login    | /login     | TransportLoginScreen     |
+| /transport-editor   | /editor    | EditorDashboardScreen    |
+| /transport-admin    | /admin     | AdminReviewScreen        |
+| /transport-iam      | /iam       | IamScreen                |
 
-| URL booking                | URL taxibe        | Écran                    |
-|----------------------------|-------------------|--------------------------|
-| /transport-login           | /login            | TransportLoginScreen     |
-| /transport-editor          | /editor           | EditorDashboardScreen    |
-| /transport-admin           | /admin            | AdminReviewScreen        |
-| /transport-iam             | /iam              | IamScreen                |
-
-Les deux jeux d'URLs marchent sur les 2 sites — le distinguo est la marque
-du subdomain. Les alias courts ont été ajoutés dans `MaterialApp.routes`.
+Les alias courts sont gardés pour rétrocompat avec les liens historiques
+diffusés via taxibe.misy.app (cf. historique subdomain ci-dessous).
 
 #### Vérification après deploy
 ```bash
 # Toujours grep un literal du HEAD dans le main.dart.js servi par prod —
 # Last-Modified HTTP ne prouve PAS le bon contenu (incident du 15 mai).
 curl -s "https://book.misy.app/main.dart.js?$(date +%s)" | grep -c "<literal>"
-curl -s "https://taxibe.misy.app/main.dart.js?$(date +%s)" | grep -c "BuildMode"
 ```
 
-#### Setup taxibe.misy.app (à faire une fois)
-1. DNS : `taxibe.misy.app A 51.254.141.103` (côté registrar).
-2. Sur OVH : `sudo mkdir /var/www/taxibe.misy.app && sudo chown www-data:www-data /var/www/taxibe.misy.app`.
-3. Nginx vhost (`taxibe.misy.app.conf`) avec `try_files $uri /index.html;` pour le path-routing Flutter.
-4. Let's Encrypt : `sudo certbot --nginx -d taxibe.misy.app`.
-5. Firebase Console → Authentication → Settings → Authorized domains → ajouter `taxibe.misy.app` (sinon le login KO).
+#### Historique : subdomain taxibe.misy.app (déprécié 2026-05-28)
+
+Jusqu'au 2026-05-28, un second entry point `lib/main_taxibe.dart` +
+`deploy_taxibe.sh` servait `taxibe.misy.app` comme site dédié au transport
+en commun (mode Transport forcé au boot, sans gate admin). La feature
+ayant été rendue publique sur book, le subdomain est désormais un
+**redirect 301 → book.misy.app**.
+
+Côté serveur OVH, le vhost nginx `taxibe.misy.app.conf` doit retourner :
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name taxibe.misy.app;
+    ssl_certificate /etc/letsencrypt/live/taxibe.misy.app/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/taxibe.misy.app/privkey.pem;
+    return 301 https://book.misy.app$request_uri;
+}
+server {
+    listen 80;
+    server_name taxibe.misy.app;
+    return 301 https://book.misy.app$request_uri;
+}
+```
+DNS + certbot conservés ; `/var/www/taxibe.misy.app/` peut être archivé.
 
 #### Connexion SSH au serveur
 ```bash

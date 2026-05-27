@@ -26,19 +26,19 @@ class HomeModeToggle extends StatelessWidget {
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: const Color(0xFFF1F1F4),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(11),
       ),
       child: Row(
         children: [
           _buildTab(
             label: TransitStrings.t('mode.course', locale),
-            icon: Icons.local_taxi_outlined,
+            icon: Icons.local_taxi_rounded,
             selected: current == HomeMode.course,
             onTap: () => onChanged(HomeMode.course),
           ),
           _buildTab(
             label: TransitStrings.t('mode.public', locale),
-            icon: Icons.directions_bus_outlined,
+            icon: Icons.directions_bus_rounded,
             selected: current == HomeMode.publicTransport,
             onTap: () => onChanged(HomeMode.publicTransport),
           ),
@@ -53,38 +53,41 @@ class HomeModeToggle extends StatelessWidget {
     required bool selected,
     required VoidCallback onTap,
   }) {
+    // Tab actif : fond plein coral charte Misy, texte/icône blanc.
+    // Inactif : transparent, texte navy en peu d'opacité.
     return Expanded(
       child: Material(
-        color: selected ? Colors.white : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        elevation: selected ? 1.5 : 0,
-        shadowColor: Colors.black.withOpacity(0.08),
+        color: selected ? const Color(0xFFFF5357) : Colors.transparent,
+        borderRadius: BorderRadius.circular(9),
+        elevation: selected ? 2 : 0,
+        shadowColor: const Color(0xFFFF5357).withOpacity(0.35),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(9),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 6),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
                   icon,
-                  size: 15,
+                  size: 19,
                   color: selected
-                      ? const Color(0xFF1D3557)
-                      : const Color(0xFF6B7280),
+                      ? Colors.white
+                      : const Color(0xFF1D3557).withOpacity(0.55),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 Flexible(
                   child: Text(
                     label,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.1,
                       color: selected
-                          ? const Color(0xFF1D3557)
-                          : const Color(0xFF6B7280),
+                          ? Colors.white
+                          : const Color(0xFF1D3557).withOpacity(0.65),
                     ),
                   ),
                 ),
