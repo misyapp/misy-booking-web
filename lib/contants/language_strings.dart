@@ -640,8 +640,8 @@ class MultiLangStrings {
     "Pickup Time :-": "Heure de prise en charge :",
     "Schedule Date :-": "Date de réservation :",
     "Reserver a trip": "Réserver une course",
-    "Choose your exact pickup time up to 30 days in advance":
-        "À partir d'une heure jusqu'a 30 jours",
+    "Choose your exact pickup time up to 60 days in advance":
+        "À partir d'une heure jusqu'à 60 jours",
     "Reserver": "Réserver",
     "Discount": "Réduction",
     "Tutorial": "Tutoriel",
@@ -1675,8 +1675,8 @@ class MultiLangStrings {
     "Pickup Time :-": "Ora handraisana :",
     "Schedule Date :-": "Andro famandrihana :",
     "Reserver a trip": "Hamandrika dia",
-    "Choose your exact pickup time up to 30 days in advance":
-        "Manomboka adinn'iray ka hatramin'ny 30 andro",
+    "Choose your exact pickup time up to 60 days in advance":
+        "Manomboka adinn'iray ka hatramin'ny 60 andro",
     "Reserver": "Mamandrika",
     "Discount": "Fihenam-bidy",
     "Tutorial": "Fampianarana",
@@ -2687,8 +2687,8 @@ class MultiLangStrings {
     "Pickup Time :-": "Pickup Time :",
     "Schedule Date :-": "Schedule Date :",
     "Reserver a trip": "Reserver a trip",
-    "Choose your exact pickup time up to 30 days in advance":
-        "Choose your exact pickup time up to 30 days in advance",
+    "Choose your exact pickup time up to 60 days in advance":
+        "Choose your exact pickup time up to 60 days in advance",
     "Reserver": "Reserver",
     "Discount": "Discount",
     "Tutorial": "Tutorial",
@@ -3648,7 +3648,7 @@ class MultiLangStrings {
     "Pickup Time :-": "Ora di ritiro:",
     "Schedule Date :-": "Data programmata:",
     "Reserver a trip": "Prenota un viaggio",
-    "Choose your exact pickup time up to 30 days in advance": "Scegli l'ora esatta di ritiro fino a 30 giorni in anticipo",
+    "Choose your exact pickup time up to 60 days in advance": "Scegli l'ora esatta di ritiro fino a 60 giorni in anticipo",
     "Reserver": "Prenota",
     "Discount": "Sconto",
     "Tutorial": "Tutorial",
@@ -4552,7 +4552,7 @@ class MultiLangStrings {
     "Pickup Time :-": "Czas odbioru:",
     "Schedule Date :-": "Data harmonogramu:",
     "Reserver a trip": "Zarezerwuj przejazd",
-    "Choose your exact pickup time up to 30 days in advance": "Wybierz dokładny czas odbioru do 30 dni wcześniej",
+    "Choose your exact pickup time up to 60 days in advance": "Wybierz dokładny czas odbioru do 60 dni wcześniej",
     "Reserver": "Zarezerwuj",
     "Discount": "Zniżka",
     "Tutorial": "Samouczek",

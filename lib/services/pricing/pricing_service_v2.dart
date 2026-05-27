@@ -438,8 +438,8 @@ class PricingServiceV2 implements IPricingService, ICacheablePricingService, IVa
     final now = DateTime.now();
     if (requestTime.isBefore(now.subtract(Duration(hours: 1)))) {
       errors.add('La date de demande ne peut pas être dans le passé');
-    } else if (requestTime.isAfter(now.add(Duration(days: 30)))) {
-      errors.add('La date de demande ne peut pas être si éloignée dans le futur');  
+    } else if (requestTime.isAfter(now.add(Duration(days: 60)))) {
+      errors.add('La date de demande ne peut pas être si éloignée dans le futur');
     }
     
     // Validation course programmée

@@ -3887,7 +3887,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           context: context,
           initialDate: _selectedTransportTime,
           firstDate: DateTime.now(),
-          lastDate: DateTime.now().add(const Duration(days: 30)),
+          lastDate: DateTime.now().add(const Duration(days: 60)),
           locale: const Locale('fr', 'FR'),
         );
         if (date != null) {

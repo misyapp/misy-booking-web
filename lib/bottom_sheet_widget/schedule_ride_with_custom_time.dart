@@ -122,7 +122,7 @@ class _SceduleRideWithCustomeTimeState
                           initialDateTime: DateTime.now()
                               .add(const Duration(hours: 1, minutes: 5)),
                           maximumDate:
-                              DateTime.now().add(const Duration(days: 30)),
+                              DateTime.now().add(const Duration(days: 60)),
                           minimumDate: DateTime.now(),
                           mode: CupertinoDatePickerMode.dateAndTime,
                           use24hFormat: true,
@@ -140,7 +140,7 @@ class _SceduleRideWithCustomeTimeState
                         hSizedBox,
                         Expanded(
                           child: ParagraphText(translate(
-                              "Choose your exact pickup time up to 30 days in advance")),
+                              "Choose your exact pickup time up to 60 days in advance")),
                         ),
                       ],
                     ),
