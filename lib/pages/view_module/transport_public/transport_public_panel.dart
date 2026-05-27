@@ -17,10 +17,13 @@ import 'package:rider_ride_hailing_app/widget/home_mode_toggle.dart';
 
 /// Panneau gauche en mode "Transport en commun" — Phase 1.
 ///
-/// V1 contenu : header + switcher de langue + toggle Course/Transport +
-/// liste scrollable des lignes admin-validées (numéro coloré, nom,
-/// nb d'arrêts). Tap sur une ligne → callback [onLineSelected] pour la
-/// mettre en évidence sur la carte.
+/// V1 contenu : header + switcher de langue + liste scrollable des lignes
+/// admin-validées (numéro coloré, nom, nb d'arrêts). Tap sur une ligne →
+/// callback [onLineSelected] pour la mettre en évidence sur la carte.
+///
+/// Le toggle Course/Transport vit en overlay flottant au-dessus du panel
+/// (cf. home_screen_web._buildModeToggleOverlay), partagé avec le panel
+/// Course pour une UX symétrique.
 class TransportPublicPanel extends StatefulWidget {
   final HomeMode mode;
   final ValueChanged<HomeMode> onModeChanged;
@@ -37,9 +40,12 @@ class TransportPublicPanel extends StatefulWidget {
   /// Reçoit chaque tap sur la carte (en mode public). Le calculateur
   /// d'itinéraire l'écoute pour ajuster le dernier point posé.
   final ValueListenable<LatLng?>? mapTapNotifier;
-  /// Affiche le toggle Course/Transport. False sur taxibe.misy.app où le
-  /// site ne propose QUE le transport public (pas de mode booking).
-  final bool showModeToggle;
+  /// Décalage `top` du panel. Vaut 16 par défaut, ou la hauteur du toggle
+  /// overlay quand celui-ci est visible (pour ne pas se chevaucher).
+  final double topInset;
+  /// Forwardé au [RouteCalculator] interne. Appelé quand l'utilisateur
+  /// veut remplacer un leg marche long par une course Misy.
+  final WalkLegToRideRequest? onRequestRideForWalk;
 
   const TransportPublicPanel({
     super.key,
@@ -50,7 +56,8 @@ class TransportPublicPanel extends StatefulWidget {
     this.onRouteSelected,
     this.onPointsChanged,
     this.mapTapNotifier,
-    this.showModeToggle = true,
+    this.topInset = 16,
+    this.onRequestRideForWalk,
   });
 
   @override
@@ -65,7 +72,7 @@ class _TransportPublicPanelState extends State<TransportPublicPanel> {
   @override
   Widget build(BuildContext context) {
     return Positioned(
-      top: 16,
+      top: widget.topInset,
       left: 16,
       bottom: 16,
       child: PointerInterceptor(
@@ -90,14 +97,6 @@ class _TransportPublicPanelState extends State<TransportPublicPanel> {
                   children: [
                     _buildHeader(context),
                     const Divider(height: 1, thickness: 1),
-                    if (widget.showModeToggle)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
-                        child: HomeModeToggle(
-                          current: widget.mode,
-                          onChanged: widget.onModeChanged,
-                        ),
-                      ),
                     Expanded(
                       child: SingleChildScrollView(
                         child: Column(
@@ -111,6 +110,8 @@ class _TransportPublicPanelState extends State<TransportPublicPanel> {
                                 setState(() => _hasResults = visible);
                               },
                               mapTapNotifier: widget.mapTapNotifier,
+                              onRequestRideForWalk:
+                                  widget.onRequestRideForWalk,
                             ),
                             if (!_hasResults) ...[
                               const Divider(height: 1, thickness: 1),

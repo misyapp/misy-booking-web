@@ -202,6 +202,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // le filtrage zoom-dependent des lignes/stops.
   double _publicMapZoom = 13.0;
 
+  // Dernière position connue de la caméra (target + zoom + bearing + tilt),
+  // suivie via [GoogleMap.onCameraMove] sur les deux modes. Réappliquée au
+  // switch dans [_setHomeMode] pour garantir que la carte reste figée — la
+  // carte étant unique et partagée, on ne devrait pas observer de reset,
+  // mais cette restauration agit en filet de sécurité contre toute
+  // régression future qui forcerait un recentrage au mount du panel.
+  CameraPosition? _lastKnownCamera;
+
   // Stops dédupliqués générés au dernier rebuild des couches. Permet de
   // retrouver les métadonnées à l'ouverture de la card de stop.
   Map<String, _PublicStopAggregate> _publicStopsByKey = {};
@@ -1231,6 +1239,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             },
           ),
 
+          // Toggle Course / Transport en commun, persistant au-dessus du
+          // panel. Au switch, seul le contenu du bandeau change ; le
+          // toggle reste au même endroit visuel.
+          if (_showModeToggleOverlay) _buildModeToggleOverlay(),
+
           // Bouton profil en haut à droite
           _buildProfileButton(),
 
@@ -1359,7 +1372,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         onRouteSelected: _onPublicRouteSelected,
         onPointsChanged: _onPublicPointsChanged,
         mapTapNotifier: _publicMapTapNotifier,
-        showModeToggle: !BuildModeFlag.isTaxibe,
+        topInset: _panelTopInset,
+        onRequestRideForWalk: _onRequestRideForWalk,
       );
     }
 
@@ -2636,6 +2650,100 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   // ─────────────────────── Mode public (Transport en commun) ───────────────────────
 
+  /// Le toggle overlay est visible si l'utilisateur a accès aux deux modes.
+  /// Sur taxibe.misy.app le site est mono-mode (transport uniquement) ;
+  /// sur book le toggle est gardé derrière le gate admin tant que le mode
+  /// public n'est pas exposé publiquement.
+  bool get _showModeToggleOverlay =>
+      _isPublicModeAdmin && !BuildModeFlag.isTaxibe;
+
+  /// `top` à appliquer aux panels latéraux : 76 si le toggle overlay est
+  /// visible (pour ne pas se chevaucher), 16 sinon.
+  double get _panelTopInset => _showModeToggleOverlay ? 76 : 16;
+
+  Widget _buildModeToggleOverlay() {
+    return Positioned(
+      top: 16,
+      left: 16,
+      child: PointerInterceptor(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
+            child: Container(
+              width: 320,
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.92),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.6),
+                  width: 0.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 20,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: HomeModeToggle(
+                current: _homeMode,
+                onChanged: _setHomeMode,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Pont mode Transport → mode Course : remplace un leg marche par une
+  /// course Misy. Pré-remplit pickup/dropoff avec les coords du leg,
+  /// bascule en mode Course et déclenche le flow de vehicle picker.
+  ///
+  /// Si les labels sont fournis (nom de l'arrêt taxi-be), on les utilise
+  /// tels quels ; sinon on tombe sur "Position de départ" / "Destination"
+  /// — le reverse-geocode coûteux n'est pas nécessaire à V1 (les coords
+  /// sont déjà passées au TripProvider).
+  void _onRequestRideForWalk({
+    required LatLng start,
+    required LatLng end,
+    String? startLabel,
+    String? endLabel,
+  }) {
+    final pickupAddress = (startLabel?.trim().isNotEmpty == true)
+        ? startLabel!.trim()
+        : 'Position de départ';
+    final destAddress = (endLabel?.trim().isNotEmpty == true)
+        ? endLabel!.trim()
+        : 'Destination';
+
+    setState(() {
+      _pickupLocation = {
+        'lat': start.latitude,
+        'lng': start.longitude,
+        'address': pickupAddress,
+      };
+      _destinationLocation = {
+        'lat': end.latitude,
+        'lng': end.longitude,
+        'address': destAddress,
+      };
+      _pickupController.text = pickupAddress;
+      _destinationController.text = destAddress;
+    });
+
+    _setHomeMode(HomeMode.course);
+
+    // Déclenche le flow de recherche après le switch pour aller direct
+    // au vehicle picker, comme un deep-link complet.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _onSearch();
+    });
+  }
+
   void _setHomeMode(HomeMode mode) {
     if (_homeMode == mode) return;
     if (mode == HomeMode.publicTransport && !_isPublicModeAdmin) return;
@@ -2652,6 +2760,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     });
     if (mode == HomeMode.publicTransport && !_publicTransportLoaded) {
       _loadPublicTransportLayers();
+    }
+    // Filet de sécurité : si la position caméra a été modifiée par un
+    // recentrage automatique au mount du nouveau panel, on la rétablit.
+    final last = _lastKnownCamera;
+    if (last != null && _mapController != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _mapController?.moveCamera(CameraUpdate.newCameraPosition(last));
+      });
     }
   }
 
@@ -3455,6 +3571,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// couches uniquement quand on franchit un seuil entier (évite les
   /// rebuilds frame-rate pendant le pinch).
   void _onPublicCameraMove(CameraPosition pos) {
+    // Mémorise la position connue dans les 2 modes pour pouvoir la
+    // restaurer au switch (cf. _setHomeMode).
+    _lastKnownCamera = pos;
     if (_homeMode != HomeMode.publicTransport) return;
     final newZoom = pos.zoom;
     final crossedZoomThreshold =
@@ -3633,7 +3752,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   Widget _buildSearchCard() {
     return Positioned(
-      top: 16,
+      top: _panelTopInset,
       left: 16,
       bottom: 16,
       child: _WebScrollIsolator(
@@ -3682,16 +3801,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
                 const SizedBox(height: 16),
 
-                // Toggle Course / Transport en commun. Gardé visible
-                // uniquement pour admin@misyapp.com tant que le mode public
-                // n'est pas exposé à tous les utilisateurs.
-                if (_isPublicModeAdmin) ...[
-                  HomeModeToggle(
-                    current: _homeMode,
-                    onChanged: _setHomeMode,
-                  ),
-                  const SizedBox(height: 16),
-                ],
+                // Le toggle Course/Transport vit en overlay flottant
+                // au-dessus du panel (cf. _buildModeToggleOverlay).
 
                 Expanded(
                   child: Column(

@@ -16,6 +16,22 @@ import 'package:rider_ride_hailing_app/services/nominatim_service.dart';
 import 'package:rider_ride_hailing_app/services/public_transport_service.dart';
 import 'package:rider_ride_hailing_app/services/transport_osrm_service.dart';
 
+/// Callback déclenché quand l'utilisateur veut remplacer un leg marche par
+/// une course Misy (VTC/moto). Le parent (home_screen_web) reçoit les
+/// coordonnées de départ et d'arrivée du leg, plus les labels facultatifs,
+/// puis bascule en mode Course avec pickup/dropoff pré-remplis.
+typedef WalkLegToRideRequest = void Function({
+  required LatLng start,
+  required LatLng end,
+  String? startLabel,
+  String? endLabel,
+});
+
+/// Seuil au-delà duquel un leg marche déclenche le bouton "Remplacer par
+/// une course Misy". 15 min ≈ 1,2 km à 4,8 km/h — au-delà, le confort
+/// devient marginal pour les usagers tana en heures chaudes.
+const int kLongWalkThresholdMinutes = 15;
+
 /// Calculateur d'itinéraire multimodal pour le bandeau Transport en commun.
 ///
 /// - 2 champs avec autocomplétion combinée arrêts du bundle + adresses
@@ -42,6 +58,10 @@ class RouteCalculator extends StatefulWidget {
   /// ajuster le DERNIER point posé (origin ou destination) à l'endroit
   /// où l'utilisateur clique sur la carte.
   final ValueListenable<LatLng?>? mapTapNotifier;
+  /// Appelé quand l'utilisateur tape "Remplacer par une course Misy" sur
+  /// un leg marche dépassant [kLongWalkThresholdMinutes]. Si `null`, le
+  /// bouton n'est pas affiché.
+  final WalkLegToRideRequest? onRequestRideForWalk;
 
   const RouteCalculator({
     super.key,
@@ -49,6 +69,7 @@ class RouteCalculator extends StatefulWidget {
     this.onPointsChanged,
     this.onResultsVisibilityChanged,
     this.mapTapNotifier,
+    this.onRequestRideForWalk,
   });
 
   @override
@@ -1376,6 +1397,10 @@ class _RouteCalculatorState extends State<RouteCalculator> {
     final dist = step.distanceMeters > 0
         ? ' · ${(step.distanceMeters / 1000).toStringAsFixed(1)} km'
         : '';
+    final showRideCta = widget.onRequestRideForWalk != null &&
+        step.durationMinutes > kLongWalkThresholdMinutes &&
+        _resolveWalkStart(step) != null &&
+        _resolveWalkEnd(step) != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1392,7 +1417,39 @@ class _RouteCalculatorState extends State<RouteCalculator> {
           '${step.durationMinutes} ${TransitStrings.t('route.minutes.short', locale)}$dist',
           style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280)),
         ),
+        if (showRideCta) ...[
+          const SizedBox(height: 6),
+          _ReplaceWithRideButton(
+            compact: true,
+            onTap: () => _triggerRideForWalk(step),
+            locale: locale,
+          ),
+        ],
       ],
+    );
+  }
+
+  /// Coord de départ d'un leg marche. walkStartPosition est rempli par le
+  /// route planner, mais on retombe sur startStop.position en filet.
+  LatLng? _resolveWalkStart(RouteStep step) {
+    if (step.walkStartPosition != null) return step.walkStartPosition;
+    return step.startStop?.position;
+  }
+
+  LatLng? _resolveWalkEnd(RouteStep step) {
+    if (step.walkEndPosition != null) return step.walkEndPosition;
+    return step.endStop?.position;
+  }
+
+  void _triggerRideForWalk(RouteStep step) {
+    final start = _resolveWalkStart(step);
+    final end = _resolveWalkEnd(step);
+    if (start == null || end == null) return;
+    widget.onRequestRideForWalk?.call(
+      start: start,
+      end: end,
+      startLabel: step.startStop?.name,
+      endLabel: step.endStop?.name,
     );
   }
 
@@ -1524,6 +1581,71 @@ class _TimelineDashedPainter extends CustomPainter {
   @override
   bool shouldRepaint(_TimelineDashedPainter oldDelegate) =>
       oldDelegate.color != color;
+}
+
+/// Bouton CTA "Remplacer par une course Misy" affiché sur les legs marche
+/// longs (cf. [kLongWalkThresholdMinutes]). Accent Gold #FFD166 pour
+/// signaler une action d'upgrade vers le mode payant — couleur charte Misy.
+class _ReplaceWithRideButton extends StatelessWidget {
+  final VoidCallback onTap;
+  final AppLocale locale;
+  final bool compact;
+
+  const _ReplaceWithRideButton({
+    required this.onTap,
+    required this.locale,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = compact
+        ? TransitStrings.t('route.replace.with.ride.short', locale)
+        : TransitStrings.t('route.replace.with.ride', locale);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 8 : 12,
+            vertical: compact ? 5 : 8,
+          ),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFD166).withOpacity(0.18),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: const Color(0xFFFFD166),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.local_taxi_outlined,
+                size: compact ? 12 : 14,
+                color: const Color(0xFF1D3557),
+              ),
+              SizedBox(width: compact ? 5 : 6),
+              Flexible(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: compact ? 10.5 : 12,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF1D3557),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Suggestion d'autocomplete polymorphe : soit un arrêt du bundle (isStop=true)

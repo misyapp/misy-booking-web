@@ -243,6 +243,18 @@ class TransitStrings {
       AppLocale.en: 'Get off at',
     },
 
+    // ───────── Pont vers le flow Course (legs marche longs) ─────────
+    'route.replace.with.ride': {
+      AppLocale.fr: 'Remplacer par une course Misy',
+      AppLocale.mg: 'Soloy diabe Misy',
+      AppLocale.en: 'Replace with a Misy ride',
+    },
+    'route.replace.with.ride.short': {
+      AppLocale.fr: 'Course Misy',
+      AppLocale.mg: 'Diabe Misy',
+      AppLocale.en: 'Misy ride',
+    },
+
     // ───────── Diagramme réseau ─────────
     'network.button': {
       AppLocale.fr: 'Réseau',
