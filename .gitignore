@@ -40,3 +40,6 @@ assets/json_files/service_account_credential.json
 
 # Backups locaux des rules Firestore (conservés pour rollback rapide, non versionnés)
 firestore.rules.backup-*.txt
+
+# Pointeur de sync riderapp → misy-booking-web (utilisé par /sync-riderapp)
+.last_sync_riderapp

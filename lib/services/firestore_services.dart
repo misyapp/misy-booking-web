@@ -397,25 +397,36 @@ class FirestoreServices {
         myCustomLogStatements("filterDriverIds --->>> ${chunks.length}");
         myCustomLogStatements("filterDriverIds --->>> ${chunks}");
         if (isScheduled == false && filterDriverIds.isNotEmpty) {
-          final now = Timestamp.now();
-          final oneHourLater =
-              Timestamp.fromDate(now.toDate().add(const Duration(hours: 1)));
-          for (var i = 0; i < chunks.length; i++) {
-            var driverWhoHaveBooking = await bookingRequest
-                .where('scheduleTime', isGreaterThanOrEqualTo: now)
-                .where('scheduleTime', isLessThan: oneHourLater)
-                .where('isSchedule', isEqualTo: true)
-                .where('acceptedBy',
-                    whereIn: chunks[i]) // Filter acceptedBy field
-                .get();
-            if (driverWhoHaveBooking.docs.isNotEmpty) {
-              for (var doc in driverWhoHaveBooking.docs) {
-                var removeDriverData = doc.data() as Map;
-                driverIds.removeWhere(
-                  (element) => element['id'] == removeDriverData['acceptedBy'],
-                );
+          // Query composite isSchedule+scheduleTime+acceptedBy → exige un index
+          // Firestore composite. Si l'index manque, la query throw et le
+          // try/catch global plus haut avalerait silencieusement l'exception
+          // → return [] → course annulée à tort. On isole donc dans son
+          // propre try/catch : un échec ici ne doit jamais bloquer le matching.
+          try {
+            final now = Timestamp.now();
+            final oneHourLater =
+                Timestamp.fromDate(now.toDate().add(const Duration(hours: 1)));
+            for (var i = 0; i < chunks.length; i++) {
+              var driverWhoHaveBooking = await bookingRequest
+                  .where('scheduleTime', isGreaterThanOrEqualTo: now)
+                  .where('scheduleTime', isLessThan: oneHourLater)
+                  .where('isSchedule', isEqualTo: true)
+                  .where('acceptedBy',
+                      whereIn: chunks[i]) // Filter acceptedBy field
+                  .get();
+              if (driverWhoHaveBooking.docs.isNotEmpty) {
+                for (var doc in driverWhoHaveBooking.docs) {
+                  var removeDriverData = doc.data() as Map;
+                  driverIds.removeWhere(
+                    (element) =>
+                        element['id'] == removeDriverData['acceptedBy'],
+                  );
+                }
               }
             }
+          } catch (e) {
+            myCustomLogStatements(
+                "⚠ Scheduled-busy filter failed (index?) — continuing without filter: $e");
           }
         }
         int request = (isScheduled == false)
@@ -497,6 +508,69 @@ class FirestoreServices {
     }
   }
 
+  // === NOTIFICATION POUR CHAUFFEUR PRÉ-ASSIGNÉ (Central de réservation) ===
+
+  /// Envoie une notification push à un chauffeur spécifique (pré-assigné par
+  /// le super user). Utilisé par la centrale de réservation pour assigner
+  /// directement un chauffeur sans passer par le matching séquentiel.
+  static Future<void> sendNotificationToSpecificDriver(
+    String driverId, {
+    required String bookingId,
+    bool isPreAssigned = false,
+  }) async {
+    try {
+      myCustomPrintStatement(
+          '👨‍✈️ Envoi notification au chauffeur pré-assigné: $driverId');
+
+      final driverDoc = await users.doc(driverId).get();
+      if (!driverDoc.exists) {
+        myCustomPrintStatement('⚠️ Chauffeur $driverId non trouvé');
+        return;
+      }
+
+      final driverData = driverDoc.data() as Map<String, dynamic>;
+      final List deviceIds = driverData['deviceId'] ?? [];
+      final String language = driverData['preferedLanguage'] ?? 'fr';
+      final bool isOnline = driverData['isOnline'] ?? false;
+
+      if (deviceIds.isEmpty) {
+        myCustomPrintStatement('⚠️ Aucun deviceId pour le chauffeur $driverId');
+        return;
+      }
+
+      String accessToken =
+          await FirebaseAccessToken().getFirebaseAccessToken() ?? '';
+      if (accessToken.isEmpty) {
+        myCustomPrintStatement('⚠️ Impossible d\'obtenir le token Firebase');
+        return;
+      }
+
+      await FirebasePushNotifications.sendPushNotifications(
+        deviceIds: deviceIds,
+        acessToken: accessToken,
+        data: {
+          'screen': 'scheduled_ride_request',
+          'preAssigned': 'true',
+          'bookingId': bookingId,
+        },
+        body: translateToSpecificLangaue(
+          key: isPreAssigned ? "preAssignedRideMsg" : "rideRequestMsg",
+          languageCode: language,
+        ),
+        userId: driverId,
+        isOnline: isOnline,
+        title: translateToSpecificLangaue(
+          key: isPreAssigned ? "preAssignedRide" : "rideRequest",
+          languageCode: language,
+        ),
+      );
+
+      myCustomPrintStatement('✅ Notification envoyée au chauffeur $driverId');
+    } catch (e) {
+      myCustomPrintStatement('❌ Erreur envoi notification au chauffeur: $e');
+    }
+  }
+
   // === MÉTHODES POUR LA NOTIFICATION SÉQUENTIELLE ===
 
   /// Nouvelle méthode séquentielle pour notifier les chauffeurs un par un
@@ -513,27 +587,53 @@ class FirestoreServices {
       );
       
       if (sortedDriverIds.isEmpty) {
-        myCustomPrintStatement('No drivers found for sequential notification');
+        myCustomPrintStatement(
+            '🚨 No drivers found for sequential notification — cleaning placeholder');
+        // CRITIQUE : nettoyer le placeholder showOnly et poser noDriverFound
+        // pour ne pas laisser le booking en limbo. Sans ce cleanup, le doc
+        // reste avec showOnly=[] et noDriverFound absent → course fantôme
+        // côté admin jusqu'à checkAndReset.
+        try {
+          await bookingRequest.doc(bookingId).update({
+            'showOnly': FieldValue.delete(),
+            'sequentialMode': false,
+            'noDriverFound': true,
+            'noDriverFoundAt': Timestamp.now(),
+          });
+        } catch (e) {
+          myCustomLogStatements('⚠ Cleanup placeholder failed: $e');
+        }
         return [];
       }
       
       myCustomPrintStatement('Found ${sortedDriverIds.length} drivers for sequential notification');
-      
-      // 2. Stocker la liste complète des drivers et ajouter le premier à showOnly
+
+      // 2. Notifier le premier BATCH de chauffeurs (ex: 3 les plus proches)
+      // Le batch size est configurable via sequentialBatchSize (dashboard settings).
+      // Défaut 3 pour éviter que chaque séquence ne notifie qu'un seul driver
+      // (goulot latence Firestore/FCM rend le single trop lent en pratique).
+      final int batchSize = globalSettings.sequentialBatchSize.clamp(1, 10);
+      final int firstBatchEnd = batchSize.clamp(1, sortedDriverIds.length);
+      final List<String> firstBatch = sortedDriverIds.sublist(0, firstBatchEnd);
+
       await bookingRequest.doc(bookingId).update({
         'sequentialMode': true,
-        'currentNotifiedDriverIndex': 0,
+        'currentNotifiedDriverIndex': firstBatchEnd - 1,
         'notificationStartTime': Timestamp.now(),
-        'sequentialDriversList': sortedDriverIds, // Liste complète stockée séparément
-        'showOnly': [sortedDriverIds.first], // Seulement le premier driver visible
+        'sequentialDriversList': sortedDriverIds,
+        'showOnly': firstBatch, // Tous les drivers du 1er batch sont visibles
         'lastNotificationTime': Timestamp.now(),
       });
-      
-      // 3. Notifier le premier chauffeur
-      await _notifyDriverAtIndex(sortedDriverIds, 0, isScheduled);
-      
-      myCustomPrintStatement('Sequential notification: Notified first driver ${sortedDriverIds.first}');
-      return [sortedDriverIds.first];
+
+      // 3. Notifier tous les chauffeurs du batch en parallèle
+      await Future.wait(
+        List.generate(firstBatch.length,
+            (i) => _notifyDriverAtIndex(sortedDriverIds, i, isScheduled)),
+      );
+
+      myCustomPrintStatement(
+          'Sequential notification: Notified first batch of ${firstBatch.length} driver(s): ${firstBatch.join(", ")}');
+      return firstBatch;
       
     } catch (e) {
       myCustomLogStatements("Error in sequential notifications: $e");
@@ -548,6 +648,16 @@ class FirestoreServices {
     }
   }
 
+  /// Wrapper public pour _getSortedNearbyDrivers — utilisé par TripProvider
+  /// pour rafraîchir périodiquement la liste pendant que la course est PENDING
+  /// (Fix #1 — drivers qui passent online après T=0 sont intégrés au fil du temps).
+  static Future<List<String>> refreshSortedNearbyDrivers(
+      List<String> vehicleTypeId, double pickLat, double pickLng,
+      {required bool isScheduled}) async {
+    return _getSortedNearbyDrivers(vehicleTypeId, pickLat, pickLng,
+        isScheduled: isScheduled);
+  }
+
   /// Récupère et trie les chauffeurs proches (extrait de la logique legacy)
   static Future<List<String>> _getSortedNearbyDrivers(
       List<String> vehicleTypeId, double pickLat, double pickLng,
@@ -560,42 +670,64 @@ class FirestoreServices {
           .where('vehicleType', whereIn: vehicleTypeId)
           .where('isOnline', isEqualTo: true)
           .get();
-          
+
       if (querySnapshot.docs.isEmpty) {
+        myCustomPrintStatement(
+            '🚨 _getSortedNearbyDrivers: 0 driver matching query (vehicleTypes=$vehicleTypeId)');
         return [];
       }
 
       List driverIds = [];
-      
-      // Filtrer par distance
+      int skippedNoGps = 0;
+      int skippedOutOfRange = 0;
+
+      final double distanceLimit = (isScheduled == false)
+          ? globalSettings.distanceLimitNow
+          : globalSettings.distanceLimitScheduled;
+
+      // Filtrer par distance.
+      // 🔥 Garde défensive : un chauffeur dont currentLat/currentLng est null
+      // ne doit JAMAIS faire échouer la requête entière (ex: chauffeur online
+      // mais qui n'a jamais push sa position). getDistance() retourne
+      // double.infinity dans ce cas → naturellement filtré par le test.
       for (var element in querySnapshot.docs) {
         Map user = (element.data() as Map<String, dynamic>);
-        double distance = getDistance(
-            user['currentLat'], user['currentLng'], pickLat, pickLng);
-            
-        if (distance <= ((isScheduled == false)
-            ? globalSettings.distanceLimitNow
-            : globalSettings.distanceLimitScheduled)) {
+        final lat = user['currentLat'];
+        final lng = user['currentLng'];
+
+        if (lat is! num || lng is! num) {
+          skippedNoGps++;
+          continue;
+        }
+
+        double distance = getDistance(lat, lng, pickLat, pickLng);
+
+        if (distance <= distanceLimit) {
           user['near'] = distance;
           user['id'] = element.id;
           driverIds.add(user);
+        } else {
+          skippedOutOfRange++;
         }
       }
-      
+
+      myCustomPrintStatement(
+          '🎯 _getSortedNearbyDrivers: ${driverIds.length} candidats (skip GPS-null=$skippedNoGps, out-of-range=$skippedOutOfRange)');
+
       // Trier par proximité
       driverIds.sort((a, b) {
         return a['near'].compareTo(b['near']);
       });
-      
+
       List<String> sortedDriverIds = List.generate(
         driverIds.length,
         (index) => driverIds[index]['id'],
       );
-      
+
       return sortedDriverIds;
-      
-    } catch (e) {
-      myCustomLogStatements("Error getting sorted drivers: $e");
+
+    } catch (e, st) {
+      myCustomLogStatements("Error getting sorted drivers: $e\n$st");
       return [];
     }
   }
@@ -681,20 +813,33 @@ class FirestoreServices {
         myCustomPrintStatement('Sequential notification: No more drivers available for booking $bookingId');
         return;
       }
-      
-      myCustomPrintStatement('Sequential notification: Moving to next driver (index $nextIndex) for booking $bookingId');
-      
-      // Ajouter le nouveau driver à showOnly et mettre à jour l'index
-      List<String> currentShowOnly = List<String>.from(bookingData['showOnly'] ?? []);
-      currentShowOnly.add(allDriverIds[nextIndex]);
-      
+
+      // Batch : notifier les N prochains drivers d'un coup (configurable via sequentialBatchSize)
+      final int batchSize = globalSettings.sequentialBatchSize.clamp(1, 10);
+      final int batchEnd =
+          (nextIndex + batchSize).clamp(nextIndex + 1, allDriverIds.length);
+      final List<String> nextBatch = allDriverIds.sublist(nextIndex, batchEnd);
+      final int lastNotifiedIndex = batchEnd - 1;
+
+      myCustomPrintStatement(
+          'Sequential notification: Moving to next batch (indices $nextIndex → ${batchEnd - 1}) for booking $bookingId');
+
+      // Ajouter le batch entier à showOnly et mettre à jour l'index
+      List<String> currentShowOnly =
+          List<String>.from(bookingData['showOnly'] ?? []);
+      currentShowOnly.addAll(nextBatch);
+
       await bookingRequest.doc(bookingId).update({
-        'currentNotifiedDriverIndex': nextIndex,
+        'currentNotifiedDriverIndex': lastNotifiedIndex,
         'showOnly': currentShowOnly,
         'lastNotificationTime': Timestamp.now(),
       });
-      
-      await _notifyDriverAtIndex(allDriverIds, nextIndex, bookingData['isSchedule'] ?? false);
+
+      final bool isScheduled = bookingData['isSchedule'] ?? false;
+      await Future.wait(
+        List.generate(nextBatch.length,
+            (i) => _notifyDriverAtIndex(allDriverIds, nextIndex + i, isScheduled)),
+      );
       
     } catch (e) {
       myCustomLogStatements("Error in notifyNextDriverInSequence: $e");

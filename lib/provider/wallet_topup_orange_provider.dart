@@ -3,6 +3,7 @@ import 'dart:convert' as convert;
 import 'package:http/http.dart' as http;
 import 'package:rider_ride_hailing_app/contants/global_data.dart';
 import 'package:rider_ride_hailing_app/contants/global_keys.dart';
+import 'package:rider_ride_hailing_app/contants/language_strings.dart';
 import 'package:rider_ride_hailing_app/extenstions/payment_type_etxtenstion.dart';
 import 'package:rider_ride_hailing_app/functions/navigation_functions.dart';
 import 'package:rider_ride_hailing_app/functions/print_function.dart';
@@ -63,7 +64,7 @@ class WalletTopUpOrangeProvider with ChangeNotifier {
       }
     } catch (error) {
       myCustomPrintStatement('Error generating Orange access token: $error');
-      showSnackbar("Erreur d'API Orange: $error");
+      showSnackbar("${translate("orangeApiError")}: $error");
       return null;
     }
   }
@@ -79,7 +80,7 @@ class WalletTopUpOrangeProvider with ChangeNotifier {
       myCustomPrintStatement('WalletTopUpOrangeProvider: Initiating top-up for $amount MGA');
       
       if (isProcessingPayment) {
-        showSnackbar('Une transaction est déjà en cours');
+        showSnackbar(translate("transactionInProgress"));
         return false;
       }
       
@@ -176,7 +177,7 @@ class WalletTopUpOrangeProvider with ChangeNotifier {
       throw Exception('HTTP ${response.statusCode}: ${response.body}');
     } catch (error) {
       myCustomPrintStatement('Error initiating Orange top-up: $error');
-      showSnackbar("Erreur lors du démarrage du paiement: $error");
+      showSnackbar("${translate("startPaymentError")}: $error");
       isProcessingPayment = false;
       notifyListeners();
       return false;
@@ -203,7 +204,7 @@ class WalletTopUpOrangeProvider with ChangeNotifier {
       _startStatusChecking();
     } catch (error) {
       myCustomPrintStatement('Error opening Orange payment WebView: $error');
-      showSnackbar('Erreur lors de l\'ouverture du navigateur de paiement');
+      showSnackbar(translate("browserOpenError"));
     }
   }
 
@@ -328,7 +329,7 @@ class WalletTopUpOrangeProvider with ChangeNotifier {
       
     } catch (error) {
       myCustomPrintStatement('Error handling Orange payment success: $error');
-      showSnackbar('Erreur lors du traitement du paiement réussi');
+      showSnackbar(translate('paymentProcessingError'));
     }
   }
 
@@ -356,7 +357,7 @@ class WalletTopUpOrangeProvider with ChangeNotifier {
       // Réinitialiser le contexte
       currentContext = null;
       
-      showSnackbar('Paiement Orange échoué: $errorMessage');
+      showSnackbar('${translate("orangePaymentFailed")}: $errorMessage');
       
     } catch (error) {
       myCustomPrintStatement('Error handling Orange payment failure: $error');
@@ -381,7 +382,7 @@ class WalletTopUpOrangeProvider with ChangeNotifier {
       currentContext = null;
     }
     
-    showSnackbar('Transaction annulée');
+    showSnackbar(translate('transactionCancelled'));
   }
 
   /// Nettoie le processus de paiement

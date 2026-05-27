@@ -1,10 +1,19 @@
+import 'package:flutter/foundation.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:rider_ride_hailing_app/contants/vehicle_categories.dart';
 import 'package:rider_ride_hailing_app/functions/print_function.dart';
 
 class AnalyticsService {
   static FirebaseAnalytics? _analytics;
   static FirebaseAnalyticsObserver? _observer;
-  
+
+  /// Anti-doublon par session. Réinitialisé à chaque cold-start de l'app.
+  /// Trade-off : si l'app crash pendant une course acceptée et redémarre,
+  /// on pourrait logger l'event une 2e fois. Acceptable pour analytics
+  /// (vs coût d'un write Firestore par booking).
+  static final Set<String> _loggedBookingIds = <String>{};
+
+
   // Initialisation
   static Future<void> initialize() async {
     try {
@@ -152,20 +161,160 @@ class AnalyticsService {
     required String rideId,
     required double price,
     required String paymentMethod,
+    double? distanceKm,
+    String? pickupZone,
+    int? waitTimeSeconds,
   }) async {
     await logEvent('ride_booked', parameters: {
       'ride_id': rideId,
       'price': price,
       'payment_method': paymentMethod,
       'currency': 'MGA',
+      if (distanceKm != null) 'distance_km': distanceKm,
+      if (pickupZone != null && pickupZone.isNotEmpty) 'pickup_zone': pickupZone,
+      if (waitTimeSeconds != null) 'wait_time_seconds': waitTimeSeconds,
     });
-    
+
     // Event standard e-commerce Firebase
     await _analytics?.logPurchase(
       currency: 'MGA',
       value: price,
       transactionId: rideId,
     );
+  }
+
+  /// Logue qu'un chauffeur a accepté une course (event courant + catégorisé
+  /// moto/vtc). Source unique pour les conversions Meta Ads — appelé au
+  /// passage `acceptedBy: null → non-null` côté trip_provider.
+  ///
+  /// Anti-doublon : un même `bookingId` est ignoré aux appels suivants
+  /// dans la même session (Set en mémoire).
+  static Future<void> logBookingConfirmedByDriver({
+    required Map<String, dynamic> booking,
+  }) async {
+    final String rideId = (booking['id'] ?? '').toString();
+    if (rideId.isEmpty) {
+      myCustomPrintStatement(
+          '⚠️ logBookingConfirmedByDriver: rideId vide, skip');
+      return;
+    }
+    if (_loggedBookingIds.contains(rideId)) {
+      if (kDebugMode) {
+        debugPrint(
+            '[Analytics] booking $rideId déjà loggé, skip (anti-doublon)');
+      }
+      return;
+    }
+    _loggedBookingIds.add(rideId);
+
+    // Extraction des champs (tolérante au schéma — booking est un Map Firestore)
+    final double priceAr = _toDouble(booking['total_ride_price']) ??
+        _toDouble(booking['ride_price_to_pay']) ??
+        0.0;
+    final String paymentMethod = (booking['paymentMethod'] ?? '').toString();
+    final double? distanceKm = _toDouble(booking['distance_in_km_approx']);
+    final String pickupZone = (booking['commission_zone_name'] ?? '').toString();
+    final int? waitTimeSeconds = _computeWaitSeconds(
+      booking['requestTime'],
+      booking['acceptedTime'],
+    );
+
+    // 1) Générique
+    await logRideBooked(
+      rideId: rideId,
+      price: priceAr,
+      paymentMethod: paymentMethod,
+      distanceKm: distanceKm,
+      pickupZone: pickupZone,
+      waitTimeSeconds: waitTimeSeconds,
+    );
+    if (kDebugMode) {
+      debugPrint(
+          '[Analytics] ride_booked logged | bookingId=$rideId | price=$priceAr MGA');
+    }
+
+    // 2) Catégorisation moto/VTC
+    final Map<String, dynamic>? selectedVehicle = booking['selectedVehicle'] is Map
+        ? Map<String, dynamic>.from(booking['selectedVehicle'] as Map)
+        : null;
+    final String vehicleId = (selectedVehicle?['id'] ?? '').toString();
+    final String vehicleName = (selectedVehicle?['name'] ?? '').toString();
+
+    if (vehicleId.isEmpty && vehicleName.isEmpty) {
+      return;
+    }
+
+    final bool isMoto =
+        VehicleCategories.isMoto(id: vehicleId, name: vehicleName);
+    // Exclusion explicite des livraisons (Colis) — pas de catégorie VTC pour ça.
+    final bool isDelivery = vehicleName.toLowerCase().contains('colis');
+    if (!isMoto && isDelivery) {
+      return;
+    }
+
+    final String category = isMoto ? 'moto' : 'vtc';
+    final String firebaseEventName =
+        isMoto ? 'moto_ride_booked' : 'vtc_ride_booked';
+
+    await logEvent(firebaseEventName, parameters: {
+      'ride_id': rideId,
+      'price_ar': priceAr,
+      'currency': 'MGA',
+      if (distanceKm != null) 'distance_km': distanceKm,
+      if (pickupZone.isNotEmpty) 'pickup_zone': pickupZone,
+      'payment_method': paymentMethod,
+      if (waitTimeSeconds != null) 'wait_time_seconds': waitTimeSeconds,
+      'vehicle_id': vehicleId,
+      'vehicle_name': vehicleName,
+    });
+    if (kDebugMode) {
+      debugPrint(
+          '[Analytics] $firebaseEventName logged | bookingId=$rideId | category=$category | vehicle=$vehicleName');
+    }
+  }
+
+  /// Logue le premier ouvrage de l'app — Firebase uniquement côté web
+  /// (le SDK Meta App Events n'a pas de support web stable).
+  static Future<void> logFirstOpen() async {
+    try {
+      await logEvent('first_open');
+      myCustomPrintStatement('First open tracked (Firebase web)');
+    } catch (e) {
+      myCustomPrintStatement('Error tracking first open: $e');
+    }
+  }
+
+  // Helpers privés pour logBookingConfirmedByDriver
+  static double? _toDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is double) return v;
+    if (v is int) return v.toDouble();
+    if (v is String) {
+      return double.tryParse(v);
+    }
+    return null;
+  }
+
+  static int? _computeWaitSeconds(dynamic requestTime, dynamic acceptedTime) {
+    final DateTime? req = _toDateTime(requestTime);
+    final DateTime? acc = _toDateTime(acceptedTime);
+    if (req == null || acc == null) return null;
+    final diff = acc.difference(req).inSeconds;
+    return diff >= 0 ? diff : null;
+  }
+
+  static DateTime? _toDateTime(dynamic v) {
+    if (v == null) return null;
+    // Firestore Timestamp côté Flutter
+    try {
+      final dyn = v as dynamic;
+      final dt = dyn.toDate();
+      if (dt is DateTime) return dt;
+    } catch (_) {}
+    if (v is DateTime) return v;
+    if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
+    if (v is String) return DateTime.tryParse(v);
+    return null;
   }
   
   static Future<void> logRideCancelled({

@@ -24,6 +24,8 @@ class DevFestPreferences {
   static const DEFAULT_APP_SETTINGS = "DEFAULT_APP_SETTINGS";
   static const ACTIVE_BOOKING_DATA = "ACTIVE_BOOKING_DATA";
   static const ACTIVE_BOOKING_ID = "ACTIVE_BOOKING_ID";
+  static const CACHED_PAST_BOOKINGS = "CACHED_PAST_BOOKINGS";
+  static const CACHED_CANCELLED_BOOKINGS = "CACHED_CANCELLED_BOOKINGS";
 
   static updateLocation(LatLng latLng) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -230,5 +232,87 @@ class DevFestPreferences {
   Future<String?> getActiveBookingId() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     return prefs.getString(ACTIVE_BOOKING_ID);
+  }
+
+  // --- Méthodes pour le cache des courses passées (pagination) ---
+
+  /// Sauvegarde les courses passées en cache local
+  Future<void> cachePastBookings(List<Map<String, dynamic>> bookings) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      List<Map<String, dynamic>> serializableList = bookings
+          .map((b) =>
+              _convertTimestampsToSerializable(Map<String, dynamic>.from(b)))
+          .toList();
+      await prefs.setString(CACHED_PAST_BOOKINGS, jsonEncode(serializableList));
+      myCustomPrintStatement(
+          'Courses passees mises en cache: ${bookings.length}');
+    } catch (e) {
+      myCustomPrintStatement('Erreur cache courses passees: $e');
+    }
+  }
+
+  /// Récupère les courses passées depuis le cache local
+  Future<List<Map<String, dynamic>>> getCachedPastBookings() async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      String? data = prefs.getString(CACHED_PAST_BOOKINGS);
+      if (data != null && data.isNotEmpty) {
+        List decoded = jsonDecode(data);
+        myCustomPrintStatement(
+            'Courses passees restaurees du cache: ${decoded.length}');
+        return decoded.cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      myCustomPrintStatement('Erreur lecture cache courses passees: $e');
+    }
+    return [];
+  }
+
+  /// Sauvegarde les courses annulées en cache local
+  Future<void> cacheCancelledBookings(
+      List<Map<String, dynamic>> bookings) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      List<Map<String, dynamic>> serializableList = bookings
+          .map((b) =>
+              _convertTimestampsToSerializable(Map<String, dynamic>.from(b)))
+          .toList();
+      await prefs.setString(
+          CACHED_CANCELLED_BOOKINGS, jsonEncode(serializableList));
+      myCustomPrintStatement(
+          'Courses annulees mises en cache: ${bookings.length}');
+    } catch (e) {
+      myCustomPrintStatement('Erreur cache courses annulees: $e');
+    }
+  }
+
+  /// Récupère les courses annulées depuis le cache local
+  Future<List<Map<String, dynamic>>> getCachedCancelledBookings() async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      String? data = prefs.getString(CACHED_CANCELLED_BOOKINGS);
+      if (data != null && data.isNotEmpty) {
+        List decoded = jsonDecode(data);
+        myCustomPrintStatement(
+            'Courses annulees restaurees du cache: ${decoded.length}');
+        return decoded.cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      myCustomPrintStatement('Erreur lecture cache courses annulees: $e');
+    }
+    return [];
+  }
+
+  /// Efface le cache des courses
+  Future<void> clearBookingsCache() async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.remove(CACHED_PAST_BOOKINGS);
+      await prefs.remove(CACHED_CANCELLED_BOOKINGS);
+      myCustomPrintStatement('Cache des courses efface');
+    } catch (e) {
+      myCustomPrintStatement('Erreur effacement cache courses: $e');
+    }
   }
 }

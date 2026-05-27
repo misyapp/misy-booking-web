@@ -246,6 +246,14 @@ class _MyBookingScreenState extends State<MyBookingScreen> {
     );
   }
 
+  /// Extrait un DateTime à partir d'un champ qui peut être un Timestamp ou un int (millisecondes)
+  DateTime? _extractDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value.toDate();
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    return null;
+  }
+
   pastBooking(TripProvider bookingProvider) {
     // Combiner les courses terminées et annulées
     final List allPastBookings = [
@@ -256,24 +264,13 @@ class _MyBookingScreenState extends State<MyBookingScreen> {
     // Trier par date (les plus récentes en premier)
     allPastBookings.sort((a, b) {
       // Utiliser endTime pour les terminées, cancelledAt pour les annulées
-      DateTime? timeA;
-      DateTime? timeB;
+      DateTime? timeA = _extractDateTime(a['endTime']) ??
+          _extractDateTime(a['cancelledAt']) ??
+          _extractDateTime(a['scheduleTime']);
 
-      if (a['endTime'] != null) {
-        timeA = (a['endTime'] as Timestamp).toDate();
-      } else if (a['cancelledAt'] != null) {
-        timeA = (a['cancelledAt'] as Timestamp).toDate();
-      } else if (a['scheduleTime'] != null) {
-        timeA = (a['scheduleTime'] as Timestamp).toDate();
-      }
-
-      if (b['endTime'] != null) {
-        timeB = (b['endTime'] as Timestamp).toDate();
-      } else if (b['cancelledAt'] != null) {
-        timeB = (b['cancelledAt'] as Timestamp).toDate();
-      } else if (b['scheduleTime'] != null) {
-        timeB = (b['scheduleTime'] as Timestamp).toDate();
-      }
+      DateTime? timeB = _extractDateTime(b['endTime']) ??
+          _extractDateTime(b['cancelledAt']) ??
+          _extractDateTime(b['scheduleTime']);
 
       if (timeA == null && timeB == null) return 0;
       if (timeA == null) return 1;
@@ -282,11 +279,16 @@ class _MyBookingScreenState extends State<MyBookingScreen> {
       return timeB.compareTo(timeA); // Plus récentes en premier
     });
 
+    final bool hasMore = bookingProvider.hasMorePastBookings ||
+        bookingProvider.hasMoreCancelledBookings;
+    final bool isLoadingMore = bookingProvider.isLoadingMorePastBookings ||
+        bookingProvider.isLoadingMoreCancelledBookings;
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        allPastBookings.isEmpty
+        allPastBookings.isEmpty && !bookingProvider.bookingsLoading
             ? Center(
                 child: SubHeadingText(
                   translate('noDataFound'),
@@ -296,10 +298,50 @@ class _MyBookingScreenState extends State<MyBookingScreen> {
               )
             : Expanded(
                 child: ListView.builder(
-                    itemCount: allPastBookings.length,
+                    itemCount: allPastBookings.length + (hasMore ? 1 : 0),
                     padding: const EdgeInsets.symmetric(
                         horizontal: globalHorizontalPadding, vertical: 20),
                     itemBuilder: (context, index) {
+                      // Dernier élément : bouton "Charger plus"
+                      if (index == allPastBookings.length) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16.0),
+                          child: Center(
+                            child: isLoadingMore
+                                ? const SizedBox(
+                                    height: 32,
+                                    width: 32,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : TextButton(
+                                    onPressed: () async {
+                                      await bookingProvider
+                                          .loadMorePastBookings();
+                                      await bookingProvider
+                                          .loadMoreCancelledBookings();
+                                    },
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 24, vertical: 12),
+                                      backgroundColor: MyColors
+                                          .blackThemeColorWithOpacity(0.05),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      translate("loadMore"),
+                                      style: TextStyle(
+                                        color: MyColors.blackThemeColor(),
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                        );
+                      }
                       var booking = allPastBookings[index];
                       return RideTile(booking: booking, isPast: true);
                     }),

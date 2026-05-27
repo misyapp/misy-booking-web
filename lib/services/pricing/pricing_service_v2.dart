@@ -264,15 +264,18 @@ class PricingServiceV2 implements IPricingService, ICacheablePricingService, IVa
   }
   
   /// Arrondit le prix selon la configuration
-  /// 
-  /// Par défaut, arrondit au multiple de 500 MGA le plus proche
+  ///
+  /// Règle unifiée riderapp ↔ driverapp ↔ web : ceil au multiple de
+  /// roundingStep (default 500 MGA). Garantit la cohérence : le rider voit le
+  /// même prix que le driver propose, jamais 500 Ar de plus.
   double _roundPrice(double price, PricingConfigV2 config) {
     if (!config.enableRounding) {
       return price;
     }
-    
+    if (price <= 0) return 0;
+
     final step = config.roundingStep.toDouble();
-    return (price / step).round() * step;
+    return (price / step).ceil() * step;
   }
   
   /// Détermine le type de formule utilisé selon la distance
@@ -438,7 +441,7 @@ class PricingServiceV2 implements IPricingService, ICacheablePricingService, IVa
     final now = DateTime.now();
     if (requestTime.isBefore(now.subtract(Duration(hours: 1)))) {
       errors.add('La date de demande ne peut pas être dans le passé');
-    } else if (requestTime.isAfter(now.add(Duration(days: 30)))) {
+    } else if (requestTime.isAfter(now.add(Duration(days: 60)))) {
       errors.add('La date de demande ne peut pas être si éloignée dans le futur');  
     }
     

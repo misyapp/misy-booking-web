@@ -1,3 +1,5 @@
+import 'package:rider_ride_hailing_app/contants/language_strings.dart';
+
 /// Service de détection d'aéroports dans les adresses
 ///
 /// Détecte si une adresse correspond à un aéroport en utilisant
@@ -74,7 +76,7 @@ class AirportDetectionService {
     }
 
     // Retourner un nom générique si pas de correspondance exacte
-    return 'Aéroport';
+    return translate('airport');
   }
 
   /// Valide le format d'un numéro de vol

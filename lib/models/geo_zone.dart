@@ -14,6 +14,9 @@ class GeoZone {
   final GeoZonePricing? pricing; // Configuration des tarifs (null = tarifs par défaut)
   final GeoZoneCategoryConfig? categoryConfig; // Configuration des catégories
   final GeoZoneCommissionConfig? commissionConfig; // Configuration des commissions
+  final bool allowPriceNegotiation; // Autoriser la négociation de prix par les chauffeurs
+  final List<String> negotiationDisabledCategories; // Catégories exclues de la négociation
+  final bool enableOtpVerification; // Vérification OTP au signup dans cette zone
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -27,6 +30,9 @@ class GeoZone {
     this.pricing,
     this.categoryConfig,
     this.commissionConfig,
+    this.allowPriceNegotiation = false,
+    this.negotiationDisabledCategories = const [],
+    this.enableOtpVerification = false,
     this.createdAt,
     this.updatedAt,
   });
@@ -95,6 +101,10 @@ class GeoZone {
       commissionConfig: data['commissionConfig'] != null
           ? GeoZoneCommissionConfig.fromMap(data['commissionConfig'])
           : null,
+      allowPriceNegotiation: data['allowPriceNegotiation'] ?? false,
+      negotiationDisabledCategories:
+          List<String>.from(data['negotiationDisabledCategories'] ?? []),
+      enableOtpVerification: data['enableOtpVerification'] ?? false,
       createdAt: data['createdAt'] != null
           ? (data['createdAt'] as Timestamp).toDate()
           : null,
@@ -116,6 +126,9 @@ class GeoZone {
       'pricing': pricing?.toMap(),
       'categoryConfig': categoryConfig?.toMap(),
       'commissionConfig': commissionConfig?.toMap(),
+      'allowPriceNegotiation': allowPriceNegotiation,
+      'negotiationDisabledCategories': negotiationDisabledCategories,
+      'enableOtpVerification': enableOtpVerification,
       'createdAt': createdAt ?? FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -180,6 +193,9 @@ class GeoZone {
     GeoZonePricing? pricing,
     GeoZoneCategoryConfig? categoryConfig,
     GeoZoneCommissionConfig? commissionConfig,
+    bool? allowPriceNegotiation,
+    List<String>? negotiationDisabledCategories,
+    bool? enableOtpVerification,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -193,6 +209,12 @@ class GeoZone {
       pricing: pricing ?? this.pricing,
       categoryConfig: categoryConfig ?? this.categoryConfig,
       commissionConfig: commissionConfig ?? this.commissionConfig,
+      allowPriceNegotiation:
+          allowPriceNegotiation ?? this.allowPriceNegotiation,
+      negotiationDisabledCategories:
+          negotiationDisabledCategories ?? this.negotiationDisabledCategories,
+      enableOtpVerification:
+          enableOtpVerification ?? this.enableOtpVerification,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

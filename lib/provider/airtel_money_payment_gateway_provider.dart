@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:rider_ride_hailing_app/contants/language_strings.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/global_data.dart';
@@ -79,11 +80,11 @@ class AirtelMoneyPaymentGatewayProvider with ChangeNotifier {
       }
       if (response.statusCode == 400) {
         showSnackbar(
-            "Requête invalide : ${jsonResponse['error_description'] ?? jsonResponse['error'] ?? 'Erreur inconnue'}");
+            "${translate("invalidRequest")} : ${jsonResponse['error_description'] ?? jsonResponse['error'] ?? ''}");
       }
     } catch (error) {
       myCustomPrintStatement('inside double catch block $error');
-      showSnackbar("Erreur API : $error");
+      showSnackbar("${translate("apiErrorAirtel")} : $error");
     }
   }
 
@@ -157,53 +158,18 @@ class AirtelMoneyPaymentGatewayProvider with ChangeNotifier {
               "createAt": Timestamp.now(),
             }
           });
-          showSnackbar(
-              "Payment request has been send to you. Please check and confirm");
+          showSnackbar(translate("paymentSentConfirmPhone"));
           Future.delayed(const Duration(seconds: 3), () async {
             checkPaymentStatus = true;
             await checkTranscationStatus();
           });
         } else if (jsonResponse['status']['result_code'] == "ESB000001") {
-          showSnackbar(
-              "[${jsonResponse['status']['result_code']}]  Something went wrong. The request can be in ambiguous state please do a transaction enquiry.");
-        } else if (jsonResponse['status']['result_code'] == "ESB000004") {
-          showSnackbar(
-              "[${jsonResponse['status']['result_code']}]  An error occurred while initiating the payment. The request can be in ambiguous state please do a transaction enquiry.");
-        } else if (jsonResponse['status']['result_code'] == "ESB000011") {
-          showSnackbar(
-              "[${jsonResponse['status']['result_code']}] Request was Failed.");
-        } else if (jsonResponse['status']['result_code'] == "ESB000014") {
-          showSnackbar(
-              "[${jsonResponse['status']['result_code']}]  An error occurred while fetching the transaction status. The request can be in ambiguous state please do a transaction enquiry after some time.");
-        } else if (jsonResponse['status']['result_code'] == "ESB000033") {
-          showSnackbar(
-              "[${jsonResponse['status']['result_code']}]  The request has been failed due to Invalid MSISDN Length. Please try again with correct request.	");
-        } else if (jsonResponse['status']['result_code'] == "ESB000034") {
-          showSnackbar(
-              "[${jsonResponse['status']['result_code']}]  The request has been failed due to Invalid Country Name. Please try again with correct request.");
-        } else if (jsonResponse['status']['result_code'] == "ESB000035") {
-          showSnackbar(
-              "[${jsonResponse['status']['result_code']}]  The request has been failed due to Invalid Currency Code. Please try again with correct request.");
-        } else if (jsonResponse['status']['result_code'] == "ESB000036") {
-          showSnackbar(
-              "[${jsonResponse['status']['result_code']}] The request has been failed due to either it is Invalid MSISDN Length or it doesn't starts with 0. Please try again with correct request");
-        } else if (jsonResponse['status']['result_code'] == "ESB000039") {
-          showSnackbar(
-              "[${jsonResponse['status']['result_code']}] Vendor is not configured to do transaction in the provided country. Please try again with correct request.");
-        } else if (jsonResponse['status']['result_code'] == "ESB000041") {
-          showSnackbar(
-              "[${jsonResponse['status']['result_code']}] Transaction with External Transaction ID already exists. Please try again with correct request.");
-        } else if (jsonResponse['status']['result_code'] == "ESB000045") {
-          showSnackbar(
-              "[${jsonResponse['status']['result_code']}] No Transaction Found With Provided Transaction Id.");
-        } else if (jsonResponse['status']['result_code'] == "0000900") {
-          showSnackbar(
-              "[${jsonResponse['status']['result_code']}] Transaction might be in ambigous state. Please try again.");
+          _handleAirtelErrorCode(jsonResponse['status']['result_code']);
         }
       }
     } catch (error) {
       myCustomPrintStatement('inside double catch block $error');
-      showSnackbar("Erreur API : $error");
+      showSnackbar("${translate("apiErrorAirtel")} : $error");
     }
   }
 
@@ -312,7 +278,7 @@ class AirtelMoneyPaymentGatewayProvider with ChangeNotifier {
             }
           }
         } else if (response.statusCode == 400) {
-          showSnackbar("Une erreur s'est produite !");
+          showSnackbar(translate("errorOccurred"));
         } else {}
       } catch (error) {
         myCustomPrintStatement('inside double catch block $error');
@@ -351,6 +317,26 @@ class AirtelMoneyPaymentGatewayProvider with ChangeNotifier {
         .join();
 
     return id;
+  }
+
+  void _handleAirtelErrorCode(String resultCode) {
+    Map<String, String> errorKeys = {
+      "ESB000001": "airtelGenericError",
+      "ESB000004": "airtelGenericError",
+      "ESB000011": "airtelTransactionRefused",
+      "ESB000014": "airtelGenericError",
+      "ESB000033": "airtelPayerNotFound",
+      "ESB000034": "airtelGenericError",
+      "ESB000035": "airtelGenericError",
+      "ESB000036": "airtelPayerNotFound",
+      "ESB000039": "airtelServiceUnavailable",
+      "ESB000041": "airtelGenericError",
+      "ESB000045": "airtelGenericError",
+      "0000900": "airtelTransactionTimeout",
+    };
+
+    String key = errorKeys[resultCode] ?? "airtelGenericError";
+    showSnackbar("[$resultCode] ${translate(key)}");
   }
 
   commonApiResponseCode(http.Response response) {

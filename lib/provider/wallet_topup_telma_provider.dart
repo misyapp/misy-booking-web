@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:rider_ride_hailing_app/contants/global_data.dart';
+import 'package:rider_ride_hailing_app/contants/language_strings.dart';
 import 'package:rider_ride_hailing_app/extenstions/payment_type_etxtenstion.dart';
 import 'package:rider_ride_hailing_app/functions/ammount_show_function.dart';
 import 'dart:convert' as convert;
@@ -74,12 +75,12 @@ class WalletTopUpTelmaProvider with ChangeNotifier {
         accessToken = jsonResponse['access_token'];
         return jsonResponse;
       } else {
-        showSnackbar("Erreur d'authentification Telma MVola");
+        showSnackbar(translate("authErrorTelma"));
         return null;
       }
     } catch (error) {
       myCustomPrintStatement('Error generating Telma access token: $error');
-      showSnackbar("Erreur d'API Telma: $error");
+      showSnackbar("${translate("apiErrorTelma")}: $error");
       return null;
     }
   }
@@ -96,7 +97,7 @@ class WalletTopUpTelmaProvider with ChangeNotifier {
       myCustomPrintStatement('WalletTopUpTelmaProvider: Initiating top-up for $amount MGA');
       
       if (isProcessingPayment) {
-        showSnackbar('Une transaction est déjà en cours');
+        showSnackbar(translate('transactionAlreadyInProgress'));
         return false;
       }
       
@@ -185,7 +186,7 @@ class WalletTopUpTelmaProvider with ChangeNotifier {
       var jsonResponse = convert.jsonDecode(response.body);
       
       if (response.statusCode == 200) {
-        showSnackbar("Demande de paiement créée avec succès");
+        showSnackbar(translate("paymentRequestCreated"));
         return true;
       } else if (response.statusCode == 202) {
         myCustomPrintStatement(
@@ -205,8 +206,7 @@ class WalletTopUpTelmaProvider with ChangeNotifier {
           objectReferenceId: objectReferenceId,
         );
         
-        showSnackbar(
-            "Demande de paiement envoyée. Veuillez confirmer sur votre téléphone MVola.");
+        showSnackbar(translate("paymentRequestSent"));
         
         // Commencer la vérification du statut
         Future.delayed(const Duration(seconds: 5), () async {
@@ -219,14 +219,14 @@ class WalletTopUpTelmaProvider with ChangeNotifier {
         _handleTelmaErrorResponse(jsonResponse);
         return false;
       } else if (response.statusCode == 403) {
-        showSnackbar("Accès refusé. Vérifiez vos identifiants MVola.");
+        showSnackbar(translate("accessDeniedMVola"));
         return false;
       } else {
         throw Exception('HTTP ${response.statusCode}: ${response.body}');
       }
     } catch (error) {
       myCustomPrintStatement('Error initiating Telma top-up: $error');
-      showSnackbar("Erreur lors du démarrage du paiement: $error");
+      showSnackbar("${translate("paymentStartError")}: $error");
       isProcessingPayment = false;
       notifyListeners();
       return false;
@@ -314,7 +314,7 @@ class WalletTopUpTelmaProvider with ChangeNotifier {
       }
     } catch (error) {
       myCustomPrintStatement('Error checking Telma transaction status: $error');
-      await _handlePaymentFailure("Erreur de vérification: $error");
+      await _handlePaymentFailure("${translate("verificationError")}: $error");
     }
   }
 
@@ -348,7 +348,7 @@ class WalletTopUpTelmaProvider with ChangeNotifier {
       
     } catch (error) {
       myCustomPrintStatement('Error handling Telma payment success: $error');
-      showSnackbar('Erreur lors du traitement du paiement réussi');
+      showSnackbar(translate('paymentProcessingError'));
     }
   }
 
@@ -377,7 +377,7 @@ class WalletTopUpTelmaProvider with ChangeNotifier {
       // Réinitialiser le contexte
       currentContext = null;
       
-      showSnackbar('Paiement MVola échoué: $errorMessage');
+      showSnackbar('${translate("mvolaPaymentFailed")}: $errorMessage');
       
     } catch (error) {
       myCustomPrintStatement('Error handling Telma payment failure: $error');
@@ -396,7 +396,7 @@ class WalletTopUpTelmaProvider with ChangeNotifier {
       currentContext = null;
     }
     
-    showSnackbar('Transaction annulée');
+    showSnackbar(translate('transactionCancelled'));
   }
 
   /// Nettoie le processus de paiement
@@ -419,7 +419,7 @@ class WalletTopUpTelmaProvider with ChangeNotifier {
       
       showSnackbar("[$errorCode] $errorDescription");
     } else {
-      showSnackbar("Erreur de validation de la demande MVola");
+      showSnackbar(translate("mvolaValidationError"));
     }
   }
 

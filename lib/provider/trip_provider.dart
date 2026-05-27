@@ -23,6 +23,7 @@ import 'package:rider_ride_hailing_app/extenstions/payment_type_etxtenstion.dart
 import 'package:rider_ride_hailing_app/functions/loading_functions.dart';
 import 'package:rider_ride_hailing_app/functions/navigation_functions.dart';
 import 'package:rider_ride_hailing_app/functions/print_function.dart';
+import 'package:rider_ride_hailing_app/utils/price_rounding.dart';
 import 'package:rider_ride_hailing_app/services/analytics/analytics_service.dart';
 import 'package:rider_ride_hailing_app/modal/driver_modal.dart';
 import 'package:rider_ride_hailing_app/modal/promocodes_modal.dart';
@@ -1913,71 +1914,230 @@ class TripProvider extends ChangeNotifier {
   List myCurrentBookings = [];
   List scheduledBookingsList = [];
 
-  getMyBookingList() async {
+  // Pagination state pour les courses passées
+  DocumentSnapshot? _lastPastBookingDoc;
+  bool hasMorePastBookings = true;
+  bool isLoadingMorePastBookings = false;
+
+  // Pagination state pour les courses annulées
+  DocumentSnapshot? _lastCancelledBookingDoc;
+  bool hasMoreCancelledBookings = true;
+  bool isLoadingMoreCancelledBookings = false;
+
+  static const int _bookingsPageSize = 10;
+
+  getMyBookingList({int limit = 10}) async {
     // Guard contre userData null
     if (userData.value == null) {
-      myCustomPrintStatement('⚠️ getMyBookingList: userData null, skip');
+      myCustomPrintStatement('getMyBookingList: userData null, skip');
       return;
     }
 
     bookingsLoading = true;
     notifyListeners();
 
-    // Récupérer les courses terminées
-    var res = await FirestoreServices.bookingHistory
-        .where('requestBy', isEqualTo: userData.value!.id)
-        .orderBy('endTime', descending: true)
-        .get();
+    // Charger le cache local d'abord pour un affichage instantané
+    final prefs = DevFestPreferences();
+    final cachedPast = await prefs.getCachedPastBookings();
+    if (cachedPast.isNotEmpty && myPastBookings.isEmpty) {
+      myPastBookings = cachedPast;
+      notifyListeners();
+    }
 
-    myPastBookings = List.generate(
-        res.docs.length, (index) => (res.docs[index].data() as Map)).toList();
+    // Réinitialiser la pagination
+    _lastPastBookingDoc = null;
+    hasMorePastBookings = true;
+
+    try {
+      // Récupérer les premières courses terminées depuis Firestore
+      var res = await FirestoreServices.bookingHistory
+          .where('requestBy', isEqualTo: userData.value!.id)
+          .orderBy('endTime', descending: true)
+          .limit(limit)
+          .get();
+
+      myPastBookings = List.generate(
+          res.docs.length, (index) => (res.docs[index].data() as Map)).toList();
+
+      if (res.docs.isNotEmpty) {
+        _lastPastBookingDoc = res.docs.last;
+      }
+      hasMorePastBookings = res.docs.length >= limit;
+
+      // Mettre en cache
+      await prefs.cachePastBookings(
+        myPastBookings.map((b) => Map<String, dynamic>.from(b)).toList(),
+      );
+    } catch (e) {
+      myCustomPrintStatement('Erreur recuperation courses passees: $e');
+      // Garder le cache pré-chargé en cas d'échec Firestore
+    }
 
     // Récupérer les courses annulées
-    await getMyCancelledBookings();
+    await getMyCancelledBookings(limit: limit);
 
     bookingsLoading = false;
     notifyListeners();
   }
 
+  /// Charge plus de courses passées (pagination)
+  Future<void> loadMorePastBookings() async {
+    if (!hasMorePastBookings || isLoadingMorePastBookings) return;
+    if (userData.value == null || _lastPastBookingDoc == null) return;
+
+    isLoadingMorePastBookings = true;
+    notifyListeners();
+
+    try {
+      var res = await FirestoreServices.bookingHistory
+          .where('requestBy', isEqualTo: userData.value!.id)
+          .orderBy('endTime', descending: true)
+          .startAfterDocument(_lastPastBookingDoc!)
+          .limit(_bookingsPageSize)
+          .get();
+
+      List newBookings = List.generate(
+          res.docs.length, (index) => (res.docs[index].data() as Map)).toList();
+
+      myPastBookings.addAll(newBookings);
+
+      if (res.docs.isNotEmpty) {
+        _lastPastBookingDoc = res.docs.last;
+      }
+      hasMorePastBookings = res.docs.length >= _bookingsPageSize;
+
+      // Mettre à jour le cache
+      final prefs = DevFestPreferences();
+      await prefs.cachePastBookings(
+        myPastBookings.map((b) => Map<String, dynamic>.from(b)).toList(),
+      );
+
+      myCustomPrintStatement(
+          'Courses passees chargees: ${newBookings.length}, total: ${myPastBookings.length}');
+    } catch (e) {
+      myCustomPrintStatement('Erreur chargement courses passees: $e');
+    }
+
+    isLoadingMorePastBookings = false;
+    notifyListeners();
+  }
+
   /// Récupère les courses annulées de l'utilisateur
-  Future<void> getMyCancelledBookings() async {
+  Future<void> getMyCancelledBookings({int limit = 10}) async {
     // Guard contre userData null
     if (userData.value == null) {
-      myCustomPrintStatement('⚠️ getMyCancelledBookings: userData null, skip');
+      myCustomPrintStatement('getMyCancelledBookings: userData null, skip');
       return;
     }
+
+    // Charger le cache local d'abord
+    final prefs = DevFestPreferences();
+    final cachedCancelled = await prefs.getCachedCancelledBookings();
+    if (cachedCancelled.isNotEmpty && myCancelledBookings.isEmpty) {
+      myCancelledBookings = cachedCancelled;
+    }
+
+    // Réinitialiser la pagination
+    _lastCancelledBookingDoc = null;
+    hasMoreCancelledBookings = true;
 
     try {
       var res = await FirestoreServices.cancelledBooking
           .where('requestBy', isEqualTo: userData.value!.id)
           .orderBy('cancelledAt', descending: true)
+          .limit(limit)
           .get();
 
       myCancelledBookings = List.generate(
-          res.docs.length, (index) => (res.docs[index].data() as Map))
+              res.docs.length, (index) => (res.docs[index].data() as Map))
           .where(_isValidBooking)
           .toList();
 
-      myCustomPrintStatement('📋 Courses annulées récupérées: ${myCancelledBookings.length}');
+      if (res.docs.isNotEmpty) {
+        _lastCancelledBookingDoc = res.docs.last;
+      }
+      hasMoreCancelledBookings = res.docs.length >= limit;
+
+      // Mettre en cache
+      await prefs.cacheCancelledBookings(
+        myCancelledBookings.map((b) => Map<String, dynamic>.from(b)).toList(),
+      );
+
+      myCustomPrintStatement(
+          'Courses annulees recuperees: ${myCancelledBookings.length}');
     } catch (e) {
-      myCustomPrintStatement('⚠️ Erreur récupération courses annulées: $e');
+      myCustomPrintStatement('Erreur recuperation courses annulees: $e');
       // Si l'index n'existe pas, essayer sans orderBy
       try {
         var res = await FirestoreServices.cancelledBooking
             .where('requestBy', isEqualTo: userData.value!.id)
+            .limit(limit)
             .get();
 
         myCancelledBookings = List.generate(
-            res.docs.length, (index) => (res.docs[index].data() as Map))
+                res.docs.length, (index) => (res.docs[index].data() as Map))
             .where(_isValidBooking)
             .toList();
 
-        myCustomPrintStatement('📋 Courses annulées récupérées (sans tri): ${myCancelledBookings.length}');
+        if (res.docs.isNotEmpty) {
+          _lastCancelledBookingDoc = res.docs.last;
+        }
+        hasMoreCancelledBookings = res.docs.length >= limit;
+
+        await prefs.cacheCancelledBookings(
+          myCancelledBookings.map((b) => Map<String, dynamic>.from(b)).toList(),
+        );
+
+        myCustomPrintStatement(
+            'Courses annulees recuperees (sans tri): ${myCancelledBookings.length}');
       } catch (e2) {
-        myCustomPrintStatement('❌ Erreur récupération courses annulées: $e2');
-        myCancelledBookings = [];
+        myCustomPrintStatement('❌ Erreur recuperation courses annulees: $e2');
+        // Garder le cache pré-chargé en cas d'échec total
       }
     }
+  }
+
+  /// Charge plus de courses annulées (pagination)
+  Future<void> loadMoreCancelledBookings() async {
+    if (!hasMoreCancelledBookings || isLoadingMoreCancelledBookings) return;
+    if (userData.value == null || _lastCancelledBookingDoc == null) return;
+
+    isLoadingMoreCancelledBookings = true;
+    notifyListeners();
+
+    try {
+      var res = await FirestoreServices.cancelledBooking
+          .where('requestBy', isEqualTo: userData.value!.id)
+          .orderBy('cancelledAt', descending: true)
+          .startAfterDocument(_lastCancelledBookingDoc!)
+          .limit(_bookingsPageSize)
+          .get();
+
+      List newBookings = List.generate(
+              res.docs.length, (index) => (res.docs[index].data() as Map))
+          .where(_isValidBooking)
+          .toList();
+
+      myCancelledBookings.addAll(newBookings);
+
+      if (res.docs.isNotEmpty) {
+        _lastCancelledBookingDoc = res.docs.last;
+      }
+      hasMoreCancelledBookings = res.docs.length >= _bookingsPageSize;
+
+      final prefs = DevFestPreferences();
+      await prefs.cacheCancelledBookings(
+        myCancelledBookings.map((b) => Map<String, dynamic>.from(b)).toList(),
+      );
+
+      myCustomPrintStatement(
+          'Courses annulees chargees: ${newBookings.length}, total: ${myCancelledBookings.length}');
+    } catch (e) {
+      myCustomPrintStatement('Erreur chargement courses annulees: $e');
+    }
+
+    isLoadingMoreCancelledBookings = false;
+    notifyListeners();
   }
 
   /// Vérifie si une course a les données essentielles pour être affichée
@@ -2479,8 +2639,10 @@ class TripProvider extends ChangeNotifier {
     selectedVehicle = previousVehicle;
     rideScheduledTime = previousScheduleTime;
 
-    // 🛫 Ajouter le supplément aéroport si applicable (pickup ou drop = aéroport)
-    return price + _airportSurchargeForCurrentTrip;
+    // 🛫 Ajouter le supplément aéroport si applicable (pickup ou drop = aéroport).
+    // Le supplément peut casser l'arrondi appliqué par PricingServiceV2,
+    // on re-arrondit ceil 500 pour garantir la cohérence avec la driverapp.
+    return PriceRounding.up(price + _airportSurchargeForCurrentTrip);
   }
 
   /// Calcule le prix avec le nouveau système de tarification V2 (synchrone)
@@ -2615,9 +2777,9 @@ class TripProvider extends ChangeNotifier {
         basePrice = zonePricing.minimumFare!;
       }
 
-      // 6. Arrondi
-      if (config.enableRounding) {
-        basePrice = (basePrice / config.roundingStep).round() *
+      // 6. Arrondi — règle unifiée : ceil au multiple de roundingStep (500 MGA)
+      if (config.enableRounding && basePrice > 0) {
+        basePrice = (basePrice / config.roundingStep).ceil() *
             config.roundingStep.toDouble();
       }
 
@@ -2962,9 +3124,11 @@ class TripProvider extends ChangeNotifier {
             : 0;
     // vehicle discount and extar discount (During the first signup, the client wants a function to provide customers with a special discount. Below is the work.)
     // 100000 - 100000*0.4 = 60000
-    data["ride_price_to_pay"] = (double.parse(data['total_ride_price']) -
-            (double.parse(data['total_ride_price']) *
-                (vehicleDetails.discount / 100)))
+    // Arrondi ceil 500 après application du discount pour cohérence affichage.
+    data["ride_price_to_pay"] = PriceRounding.up(
+            double.parse(data['total_ride_price']) -
+                (double.parse(data['total_ride_price']) *
+                    (vehicleDetails.discount / 100)))
         .toStringAsFixed(2);
     // 60000 * commission% = commission amount
     data["ride_price_commission"] = ((double.parse(data['ride_price_to_pay']) *
@@ -7244,6 +7408,52 @@ class TripProvider extends ChangeNotifier {
         int currentIndex = bookingData['currentNotifiedDriverIndex'] ?? 0;
         int nextIndex = currentIndex + 1;
 
+        // === Fix #1 — Ré-évaluation périodique de sortedDriverIds ===
+        // À chaque tick (sauf en phase 2), refresh la liste des drivers nearby
+        // online actuels et ajoute ceux qui ne sont pas encore dans la liste.
+        // Permet d'intégrer les drivers qui passent online APRÈS le calcul
+        // initial à T=0. Cap à 50 pour éviter croissance infinie + skip si déjà
+        // en phase 2 pour économiser les reads.
+        const int _kMaxDriversListSize = 50;
+        if (bookingData['allDriversNotified'] != true &&
+            allDriverIds.length < _kMaxDriversListSize) {
+          try {
+            final pickLat = (bookingData['pickLat'] as num?)?.toDouble();
+            final pickLng = (bookingData['pickLng'] as num?)?.toDouble();
+            final vehicleTypes =
+                List<String>.from(bookingData['otherVehicleCanRecive'] ?? []);
+            final isScheduled = bookingData['isSchedule'] == true;
+
+            if (pickLat != null && pickLng != null && vehicleTypes.isNotEmpty) {
+              final freshList =
+                  await FirestoreServices.refreshSortedNearbyDrivers(
+                vehicleTypes,
+                pickLat,
+                pickLng,
+                isScheduled: isScheduled,
+              );
+              final existingSet = allDriverIds.toSet();
+              final newcomers =
+                  freshList.where((id) => !existingSet.contains(id)).toList();
+
+              if (newcomers.isNotEmpty) {
+                final remainingSlots =
+                    _kMaxDriversListSize - allDriverIds.length;
+                final added = newcomers.take(remainingSlots).toList();
+                allDriverIds.addAll(added);
+                await FirestoreServices.bookingRequest.doc(bookingId).update({
+                  'sequentialDriversList': allDriverIds,
+                });
+                myCustomPrintStatement(
+                    '🔄 Refresh sortedDriverIds: +${added.length} new drivers (total: ${allDriverIds.length})');
+              }
+            }
+          } catch (e) {
+            myCustomPrintStatement('⚠️ Error refreshing sortedDriverIds: $e');
+          }
+        }
+        // === Fin Fix #1 ===
+
         if (nextIndex >= allDriverIds.length) {
           // Tous les chauffeurs ont été notifiés dans ce cycle
           myCustomPrintStatement(
@@ -7276,11 +7486,14 @@ class TripProvider extends ChangeNotifier {
           myCustomPrintStatement(
               '🔄 Waiting period complete - restarting notification cycle from first driver');
 
-          // Réinitialiser l'index et le flag d'attente pour recommencer
+          // Réinitialiser l'index et le flag d'attente pour recommencer.
+          // On clear AUSSI clientNotifiedNoDriver pour que le driverapp ré-affiche
+          // cette course (le filtre côté driver l'ignore tant que ce flag est true).
           await FirestoreServices.bookingRequest.doc(bookingId).update({
             'currentNotifiedDriverIndex': 0,
             'allDriversNotifiedWaiting': false,
             'notificationCycleCount': (bookingData['notificationCycleCount'] ?? 0) + 1,
+            'clientNotifiedNoDriver': false,
           });
 
           // Notifier le premier chauffeur à nouveau

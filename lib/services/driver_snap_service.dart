@@ -45,6 +45,16 @@ class DriverSnapService {
     LatLng? previousPosition,
   }) async {
     try {
+      // ⚡ Optimisation : si la position n'a pas changé significativement, réutiliser le cache
+      final cached = _cache[driverId];
+      if (cached != null) {
+        final movedMeters =
+            _calculateDistanceMeters(cached.rawPosition, currentPosition);
+        if (movedMeters < 5.0) {
+          return cached; // Pas de mouvement significatif, pas besoin d'appel réseau
+        }
+      }
+
       // Appel OSRM Nearest API avec number=3 pour obtenir plusieurs nodes
       final path = '/nearest/v1/driving/${currentPosition.longitude},${currentPosition.latitude}';
       final response = await OsrmSecureClient.secureGet(

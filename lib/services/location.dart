@@ -410,12 +410,32 @@ Future<Map> getAddressByLatLongFromApi(String lat, String long) async {
   }
 }
 
-double getDistance(double lat1, double lon1, double lat2, double lon2) {
+/// Calcule la distance haversine en km entre 2 points.
+///
+/// Signature défensive : accepte `num?` (lat/lng peuvent venir de Firestore
+/// dynamic non typé). Si une coordonnée est null/non-numérique, retourne
+/// `double.infinity` au lieu de throw — ce qui exclut naturellement le
+/// chauffeur du matching sans casser toute la query.
+///
+/// Critique : avant ce fix, getDistance(null, ...) throw TypeError →
+/// catch silencieux dans _getSortedNearbyDrivers → return [] → 0 notif →
+/// course fantôme (placeholder __sequential_pending__ jamais nettoyé).
+double getDistance(num? lat1, num? lon1, num? lat2, num? lon2) {
+  if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) {
+    return double.infinity;
+  }
+  final dLat1 = lat1.toDouble();
+  final dLon1 = lon1.toDouble();
+  final dLat2 = lat2.toDouble();
+  final dLon2 = lon2.toDouble();
+  if (dLat1.isNaN || dLon1.isNaN || dLat2.isNaN || dLon2.isNaN) {
+    return double.infinity;
+  }
   var p = 0.017453292519943295;
   var c = math.cos;
   var a = 0.5 -
-      c((lat2 - lat1) * p) / 2 +
-      c(lat1 * p) * c(lat2 * p) * (1 - c((lon2 - lon1) * p)) / 2;
+      c((dLat2 - dLat1) * p) / 2 +
+      c(dLat1 * p) * c(dLat2 * p) * (1 - c((dLon2 - dLon1) * p)) / 2;
   return 12742 * math.asin(math.sqrt(a));
 }
 

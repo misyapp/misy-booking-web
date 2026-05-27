@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:rider_ride_hailing_app/contants/global_data.dart';
+import 'package:rider_ride_hailing_app/contants/language_strings.dart';
 import 'package:rider_ride_hailing_app/functions/loading_functions.dart';
 import 'package:rider_ride_hailing_app/functions/print_function.dart';
 import 'package:rider_ride_hailing_app/modal/promocodes_modal.dart';
@@ -11,22 +12,41 @@ import 'package:rider_ride_hailing_app/widget/show_snackbar.dart';
 class PromocodesProvider with ChangeNotifier {
   List<PromoCodeModal> promocodes = [];
   List<PromoCodeModal> filteredPromocodes = [];
-  getPromoCodes() async {
-    var result = await FirestoreServices.promocodesCollection
-        .where("availableForUsers", arrayContains: userData.value!.id)
-        .where("usedByUsers", whereNotIn: [userData.value!.id]).get();
 
-    myCustomLogStatements("promocode ===== ${result.docs.length}");
-    promocodes = List.generate(
-      result.docs.length,
-      (index) => PromoCodeModal.fromFirestore(result.docs[index]),
-    );
+  getPromoCodes() async {
+    final userId = userData.value!.id;
+    var result = await FirestoreServices.promocodesCollection
+        .where("availableForUsers", arrayContains: userId)
+        .where("status", isEqualTo: 1)
+        .get();
+
+    myCustomLogStatements(
+        "promocode query returned ${result.docs.length} docs for user $userId");
+    for (var doc in result.docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      myCustomLogStatements(
+          "  → code: ${data['code']}, status: ${data['status']}, usedBy: ${data['usedByUsers'] ?? data['usedBy']}, minRideAmount: ${data['minRideAmount']}, vehicleCategory: ${data['vehicleCategory']}");
+    }
+
+    // Filtrer côté client : exclure les codes déjà utilisés par l'user
+    // (Firestore ne supporte pas arrayNotContains)
+    promocodes = result.docs
+        .map((doc) => PromoCodeModal.fromFirestore(doc))
+        .where((promo) => !promo.usedBy.contains(userId))
+        .toList();
+
+    myCustomLogStatements(
+        "promocode after usedBy filter: ${promocodes.length}");
     notifyListeners();
   }
 
-  filterPromocodes(VehicleModal vehicleDetails,double rideAmount ) {
+  filterPromocodes(VehicleModal vehicleDetails, double rideAmount) {
+    myCustomLogStatements(
+        "filterPromocodes: vehicleId=${vehicleDetails.id}, rideAmount=$rideAmount, total promos=${promocodes.length}");
     filteredPromocodes = [];
     for (var i = 0; i < promocodes.length; i++) {
+      myCustomLogStatements(
+          "  → promo ${promocodes[i].code}: vehicleCategory=${promocodes[i].vehicleCategory}, minRideAmount=${promocodes[i].minRideAmount}, match=${(promocodes[i].vehicleCategory.isEmpty || promocodes[i].vehicleCategory.contains(vehicleDetails.id)) && rideAmount >= promocodes[i].minRideAmount}");
       if ((promocodes[i].vehicleCategory.isEmpty ||
               promocodes[i].vehicleCategory.contains(vehicleDetails.id)) &&
           rideAmount >= promocodes[i].minRideAmount) {
@@ -44,20 +64,18 @@ class PromocodesProvider with ChangeNotifier {
       promocodes.removeWhere(
         (element) => element.id == promoCodeId,
       );
-      
+
       // Retirer l'utilisateur de availableForUsers dans Firebase
-      await FirestoreServices.promocodesCollection
-          .doc(promoCodeId)
-          .update({
+      await FirestoreServices.promocodesCollection.doc(promoCodeId).update({
         "availableForUsers": FieldValue.arrayRemove([userData.value!.id]),
       });
-      
+
       hideLoading();
-      showSnackbar("Code promo supprimé avec succès");
+      showSnackbar(translate("promoCodeDeleted"));
       notifyListeners();
     } catch (e) {
       hideLoading();
-      showSnackbar("Erreur lors de la suppression du code promo");
+      showSnackbar(translate("promoCodeDeleteError"));
       // Recharger les codes promos en cas d'erreur
       getPromoCodes();
     }
@@ -65,39 +83,57 @@ class PromocodesProvider with ChangeNotifier {
 
   applyForPromocode({required String code}) async {
     showLoading();
-    var checlAlreadyredemed = await FirestoreServices.promocodesCollection
+
+    // 1. Chercher le code promo par son code
+    var promoQuery = await FirestoreServices.promocodesCollection
         .where("code", isEqualTo: code)
-        .where("status", isEqualTo: 1)
-        .where("availableForUsers", arrayContains: userData.value!.id)
         .limit(1)
         .get();
-    if (checlAlreadyredemed.docs.isEmpty) {
-      var idThat = await FirestoreServices.promocodesCollection
-          .where("code", isEqualTo: code)
-          .limit(1)
-          .get();
-      if (idThat.docs.isNotEmpty) {
-        await FirestoreServices.promocodesCollection
-            .doc(idThat.docs.first.id)
-            .update({
-          "availableForUsers": FieldValue.arrayUnion([userData.value!.id]),
-          "usedByUsers": FieldValue.arrayUnion([])
-        });
-        hideLoading();
-        getPromoCodes();
-      } else {
-        hideLoading();
-        showSnackbar("Code invalide");
-      }
-    } else {
+
+    if (promoQuery.docs.isEmpty) {
       hideLoading();
-      var data = checlAlreadyredemed.docs.first.data() as Map;
-      if (data['availableForUsers'] != null &&
-          data['availableForUsers'].contains(userData.value!.id)) {
-        showSnackbar("Vous avez déjà utilisé ce code");
-      } else {
-        showSnackbar("Code expiré ou désactivé par l'administrateur");
-      }
+      showSnackbar(translate("invalidCode"));
+      return;
     }
+
+    final promoDoc = promoQuery.docs.first;
+    final promoData = promoDoc.data() as Map<String, dynamic>;
+    final promoId = promoDoc.id;
+    final userId = userData.value!.id;
+
+    // 2. Vérifier si le code est actif
+    if (promoData['status'] != 1) {
+      hideLoading();
+      showSnackbar(translate("codeExpiredOrDisabled"));
+      return;
+    }
+
+    // 3. Vérifier si l'utilisateur a déjà utilisé ce code
+    final List usedByUsers =
+        promoData['usedBy'] ?? promoData['usedByUsers'] ?? [];
+    if (usedByUsers.contains(userId)) {
+      hideLoading();
+      showSnackbar(translate("codeAlreadyUsed"));
+      return;
+    }
+
+    // 4. Vérifier si le code est déjà dans la liste disponible
+    final List availableForUsers = promoData['availableForUsers'] ?? [];
+    if (availableForUsers.contains(userId)) {
+      hideLoading();
+      showSnackbar(translate("codeAlreadyActive"));
+      // Recharger la liste au cas où elle n'est pas à jour
+      getPromoCodes();
+      return;
+    }
+
+    // 5. Ajouter le code à l'utilisateur
+    await FirestoreServices.promocodesCollection.doc(promoId).update({
+      "availableForUsers": FieldValue.arrayUnion([userId]),
+    });
+
+    hideLoading();
+    showSnackbar(translate("promoCodeActivated"));
+    getPromoCodes();
   }
 }

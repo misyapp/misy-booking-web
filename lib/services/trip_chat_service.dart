@@ -47,10 +47,12 @@ class TripChatService {
     required String message,
     bool isQuickMessage = false,
     String? quickMessageKey,
+    String? mediaUrl,
+    String? mediaType,
+    int? mediaDurationMs,
   }) async {
     try {
-      // Utiliser serverTimestamp pour garantir un ordre cohérent des messages
-      final messageData = {
+      final messageData = <String, dynamic>{
         'senderId': senderId,
         'senderType': senderType,
         'message': message,
@@ -59,6 +61,10 @@ class TripChatService {
         'timestamp': FieldValue.serverTimestamp(),
         'read': false,
       };
+
+      if (mediaUrl != null) messageData['mediaUrl'] = mediaUrl;
+      if (mediaType != null) messageData['mediaType'] = mediaType;
+      if (mediaDurationMs != null) messageData['mediaDurationMs'] = mediaDurationMs;
 
       await _messagesCollection(bookingId).add(messageData);
       myCustomPrintStatement('💬 Message envoyé: $message');
@@ -80,6 +86,9 @@ class TripChatService {
     bool isQuickMessage = false,
     String? quickMessageKey,
     bool isRecipientOnline = true,
+    String? mediaUrl,
+    String? mediaType,
+    int? mediaDurationMs,
   }) async {
     // Envoyer le message dans Firestore
     await sendMessage(
@@ -89,6 +98,9 @@ class TripChatService {
       message: message,
       isQuickMessage: isQuickMessage,
       quickMessageKey: quickMessageKey,
+      mediaUrl: mediaUrl,
+      mediaType: mediaType,
+      mediaDurationMs: mediaDurationMs,
     );
 
     // Envoyer la notification push

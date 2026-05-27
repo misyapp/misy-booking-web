@@ -21,7 +21,31 @@ Future<Uint8List> generateCustomerInvoice(
     
     final pw.Document doc = pw.Document();
     print('🔶 PDF_DEBUG: PDF document created');
-    
+
+    // Custom biller override
+    Map<String, dynamic>? customBiller;
+    if (bookingDetails['customBiller'] != null) {
+      customBiller = Map<String, dynamic>.from(bookingDetails['customBiller'] as Map);
+      print('🔶 PDF_DEBUG: customBiller found: $customBiller');
+    } else {
+      print('🔶 PDF_DEBUG: No customBiller in booking');
+    }
+    final String billerName = (customBiller != null && customBiller['name'] != null && customBiller['name'].toString().isNotEmpty)
+        ? customBiller['name'].toString()
+        : driverData.fullName;
+    final String billerNif = (customBiller != null && customBiller['nif'] != null && customBiller['nif'].toString().isNotEmpty)
+        ? customBiller['nif'].toString()
+        : driverData.nifNumber;
+    final String billerStat = (customBiller != null && customBiller['stat'] != null && customBiller['stat'].toString().isNotEmpty)
+        ? customBiller['stat'].toString()
+        : driverData.statisticNumber;
+    final String billerAddress = (customBiller != null && customBiller['address'] != null && customBiller['address'].toString().isNotEmpty)
+        ? customBiller['address'].toString()
+        : (customBiller != null ? '' : driverData.companyAddress);
+    final String billerEmail = customBiller != null ? '' : driverData.email;
+    final String billerPhone = customBiller != null ? '' : "${driverData.countryCode}${driverData.phone.startsWith("0", 0) ? driverData.phone.substring(1) : driverData.phone}";
+    print('🔶 PDF_DEBUG: billerName: $billerName, billerNif: $billerNif, billerStat: $billerStat');
+
     // Table data
     print('🔶 PDF_DEBUG: Calculating prices...');
     double totalRidePrice;
@@ -67,7 +91,7 @@ Future<Uint8List> generateCustomerInvoice(
 
     [
       formattedDate,
-      'Frais de reservation (${(commissionRate * 100).toStringAsFixed(0)}%)',
+      'Frais de réservation (${(commissionRate * 100).toStringAsFixed(0)}%)',
       '1',
       "${(commissionRate * totalHt).toStringAsFixed(2)} ${globalSettings.currency}"
     ],
@@ -85,7 +109,7 @@ Future<Uint8List> generateCustomerInvoice(
               children: [
                 pw.Paragraph(
                     text:
-                        "Facture établie au nom et pour le compte de ${driverData.fullName} par:\nSARLU Misy Technology / Ambohimamory AB 739/III, ANTANETY, BEMASOANDRO, ANTANANARIVO ATSIMONDRANO / RCS Antananarivo 2024 B 00089 / NIF : 3 018 428 139 / STAT : 49292-11-2024-0-10090",
+                        "Facture établie au nom et pour le compte de $billerName par:\nSARLU Misy Technology / Ambohimamory AB 739/III, ANTANETY, BEMASOANDRO, ANTANANARIVO ATSIMONDRANO / RCS Antananarivo 2024 B 00089 / NIF : 3 018 428 139 / STAT : 49292-11-2024-0-10090",
                     style: pw.Theme.of(context).defaultTextStyle.copyWith(
                         color: PdfColors.black,
                         fontSize: 8,
@@ -107,7 +131,7 @@ Future<Uint8List> generateCustomerInvoice(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Paragraph(
-                  text: "Facture émise par Misy Technology pour:",
+                  text: "Facture émise par Misy Technology pour :",
                   style: pw.Theme.of(context).defaultTextStyle.copyWith(
                       color: PdfColors.black,
                       fontSize: 8,
@@ -119,7 +143,7 @@ Future<Uint8List> generateCustomerInvoice(
                     children: [
                       pw.Expanded(
                         child: pw.Text(
-                          driverData.fullName,
+                          billerName,
                           style: pw.Theme.of(context).defaultTextStyle.copyWith(
                               fontSize: 18, fontWeight: pw.FontWeight.bold),
                           textAlign: pw.TextAlign.start,
@@ -143,36 +167,41 @@ Future<Uint8List> generateCustomerInvoice(
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text(
-                      driverData.companyAddress,
-                      style: pw.Theme.of(context).defaultTextStyle.copyWith(
-                          fontSize: 14, fontWeight: pw.FontWeight.normal),
-                      textAlign: pw.TextAlign.end,
-                    ),
-                    pw.Text(
-                      driverData.nifNumber,
-                      style: pw.Theme.of(context).defaultTextStyle.copyWith(
-                          fontSize: 14, fontWeight: pw.FontWeight.normal),
-                      textAlign: pw.TextAlign.end,
-                    ),
-                    pw.Text(
-                      driverData.statisticNumber,
-                      style: pw.Theme.of(context).defaultTextStyle.copyWith(
-                          fontSize: 14, fontWeight: pw.FontWeight.normal),
-                      textAlign: pw.TextAlign.end,
-                    ),
-                    pw.Text(
-                      driverData.email,
-                      style: pw.Theme.of(context).defaultTextStyle.copyWith(
-                          fontSize: 14, fontWeight: pw.FontWeight.normal),
-                      textAlign: pw.TextAlign.end,
-                    ),
-                    pw.Text(
-                      "${driverData.countryCode}${driverData.phone.startsWith("0", 0) ? driverData.phone.substring(1) : driverData.phone}",
-                      style: pw.Theme.of(context).defaultTextStyle.copyWith(
-                          fontSize: 14, fontWeight: pw.FontWeight.normal),
-                      textAlign: pw.TextAlign.end,
-                    ),
+                    if (billerAddress.isNotEmpty)
+                      pw.Text(
+                        billerAddress,
+                        style: pw.Theme.of(context).defaultTextStyle.copyWith(
+                            fontSize: 14, fontWeight: pw.FontWeight.normal),
+                        textAlign: pw.TextAlign.end,
+                      ),
+                    if (billerNif.isNotEmpty)
+                      pw.Text(
+                        billerNif,
+                        style: pw.Theme.of(context).defaultTextStyle.copyWith(
+                            fontSize: 14, fontWeight: pw.FontWeight.normal),
+                        textAlign: pw.TextAlign.end,
+                      ),
+                    if (billerStat.isNotEmpty)
+                      pw.Text(
+                        billerStat,
+                        style: pw.Theme.of(context).defaultTextStyle.copyWith(
+                            fontSize: 14, fontWeight: pw.FontWeight.normal),
+                        textAlign: pw.TextAlign.end,
+                      ),
+                    if (billerEmail.isNotEmpty)
+                      pw.Text(
+                        billerEmail,
+                        style: pw.Theme.of(context).defaultTextStyle.copyWith(
+                            fontSize: 14, fontWeight: pw.FontWeight.normal),
+                        textAlign: pw.TextAlign.end,
+                      ),
+                    if (billerPhone.isNotEmpty)
+                      pw.Text(
+                        billerPhone,
+                        style: pw.Theme.of(context).defaultTextStyle.copyWith(
+                            fontSize: 14, fontWeight: pw.FontWeight.normal),
+                        textAlign: pw.TextAlign.end,
+                      ),
                   ],
                 ),
                 pw.SizedBox(height: 10),
@@ -251,6 +280,57 @@ Future<Uint8List> generateCustomerInvoice(
                                         .toUtc()
                                         .add(const Duration(hours: 3))),
                                 formateString: 'dd-MM-yyyy'),
+                            style: pw.Theme.of(context)
+                                .defaultTextStyle
+                                .copyWith(
+                                    color: PdfColors.black,
+                                    fontSize: 14,
+                                    fontWeight: pw.FontWeight.normal),
+                          ),
+                        ]),
+                        if (bookingDetails['startedTime'] is Timestamp)
+                          pw.Row(children: [
+                            pw.Text(
+                              'Prise en charge : ',
+                              style: pw.Theme.of(context)
+                                  .defaultTextStyle
+                                  .copyWith(
+                                      color: PdfColors.black,
+                                      fontSize: 15,
+                                      fontWeight: pw.FontWeight.bold),
+                            ),
+                            pw.Text(
+                              formatTimestamp(
+                                  Timestamp.fromDate((bookingDetails['startedTime'] as Timestamp)
+                                      .toDate()
+                                      .toUtc()
+                                      .add(const Duration(hours: 3))),
+                                  formateString: 'dd-MM-yyyy HH:mm'),
+                              style: pw.Theme.of(context)
+                                  .defaultTextStyle
+                                  .copyWith(
+                                      color: PdfColors.black,
+                                      fontSize: 14,
+                                      fontWeight: pw.FontWeight.normal),
+                            ),
+                          ]),
+                        pw.Row(children: [
+                          pw.Text(
+                            'Dépose : ',
+                            style: pw.Theme.of(context)
+                                .defaultTextStyle
+                                .copyWith(
+                                    color: PdfColors.black,
+                                    fontSize: 15,
+                                    fontWeight: pw.FontWeight.bold),
+                          ),
+                          pw.Text(
+                            formatTimestamp(
+                                Timestamp.fromDate((bookingDetails['endTime'] as Timestamp)
+                                    .toDate()
+                                    .toUtc()
+                                    .add(const Duration(hours: 3))),
+                                formateString: 'dd-MM-yyyy HH:mm'),
                             style: pw.Theme.of(context)
                                 .defaultTextStyle
                                 .copyWith(
@@ -366,8 +446,8 @@ Future<Uint8List> generateDriverInvoice(
   final Uint8List splashImage = await getImageBytes(MyImagesUrl.splashLogo);
   double totalCommision = double.parse(
       formatNearest(double.parse(bookingDetails['ride_price_commission'])));
-  double totalTVA = 0;  // Entreprise non assujettie à la TVA (impôt synthétique)
-  double totalHT = totalCommision;  // HT = TTC car pas de TVA
+  double totalTVA18 = totalCommision * 0.20;
+  double totalHT = totalCommision - totalTVA18;
 
   // Obtenir le taux de commission pour affichage (fallback 15%)
   double commissionPercent = ((bookingDetails['admin_commission_in_per'] ?? 15.0) as num).toDouble();
@@ -389,7 +469,7 @@ Future<Uint8List> generateDriverInvoice(
   doc.addPage(pw.MultiPage(
       footer: (context) => pw.Paragraph(
             text:
-                "Exonéré de TVA - Régime de l'impôt synthétique\nSARLU Misy Technology / Ambohimamory AB 739/III, ANTANETY, BEMASOANDRO, ANTANANARIVO ATSIMONDRANO / RCS Antananarivo 2024 B 00089 / NIF : 3 018 428 139 / STAT : 49292-11-2024-0-10090",
+                "SARLU Misy Technology / Ambohimamory AB 739/III, ANTANETY, BEMASOANDRO, ANTANANARIVO ATSIMONDRANO / RCS Antananarivo 2024 B 00089 / NIF : 3 018 428 139 / STAT : 49292-11-2024-0-10090",
             style: pw.Theme.of(context).defaultTextStyle.copyWith(
                 color: PdfColors.black,
                 fontSize: 8,
@@ -649,7 +729,7 @@ Future<Uint8List> generateDriverInvoice(
                   alignment: pw.Alignment.centerRight,
                   child: pw.Text(
                       style: const pw.TextStyle(lineSpacing: 0),
-                      "Total TVA 0% : "),
+                      "Total TVA 20% : "),
                 ),
               ),
               pw.Expanded(
@@ -657,7 +737,7 @@ Future<Uint8List> generateDriverInvoice(
                 child: pw.Align(
                   alignment: pw.Alignment.centerRight,
                   child: pw.Text(
-                    "${totalTVA.toStringAsFixed(2)} ${globalSettings.currency}",
+                    "${totalTVA18.toStringAsFixed(2)} ${globalSettings.currency}",
                     style: const pw.TextStyle(lineSpacing: 0),
                   ),
                 ),

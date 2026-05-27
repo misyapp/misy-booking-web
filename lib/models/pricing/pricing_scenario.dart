@@ -140,7 +140,7 @@ class PricingScenario {
     // Vérifier que la date n'est pas trop ancienne ou future
     final now = DateTime.now();
     final maxPastDays = 1; // Maximum 1 jour dans le passé
-    final maxFutureDays = 30; // Maximum 30 jours dans le futur
+    final maxFutureDays = 60; // Maximum 60 jours dans le futur
     
     if (requestTime.isBefore(now.subtract(Duration(days: maxPastDays))) ||
         requestTime.isAfter(now.add(Duration(days: maxFutureDays)))) {

@@ -59,48 +59,66 @@ class _BookingDetailsState extends State<BookingDetails> {
 
   // Détermine si cette course peut être annulée
   bool get canBeCancelled {
-    // Une course peut être annulée si :
-    // 1. Elle est programmée (isSchedule == true) OU c'est une réservation courante
-    // 2. Son statut est inférieur à RIDE_STARTED (course pas encore commencée)
-    // 3. Elle n'est pas terminée ou annulée
-    
     final status = booking['status'] ?? BookingStatusType.PENDING_REQUEST.value;
-    
-    return (booking['isSchedule'] == true || booking['acceptedBy'] != null) && 
-           status < BookingStatusType.RIDE_STARTED.value &&
-           status != BookingStatusType.RIDE_COMPLETE.value;
+
+    // Jamais annulable si terminée, annulée, ou en cours/après démarrage
+    if (status >= BookingStatusType.RIDE_STARTED.value) return false;
+
+    // Doit être soit programmée, soit acceptée par un chauffeur
+    return booking['isSchedule'] == true || booking['acceptedBy'] != null;
   }
 
   getdata() async {
-    if (booking['status'] != BookingStatusType.RIDE_COMPLETE.value) {
-      var b = await FirestoreServices.bookingRequest.doc(booking['id']).get();
-      if (b.exists) {
-        booking = b.data() as Map;
+    try {
+      if (booking['status'] != BookingStatusType.RIDE_COMPLETE.value) {
+        var b = await FirestoreServices.bookingRequest.doc(booking['id']).get();
+        if (b.exists) {
+          booking = b.data() as Map;
+        }
+      } else {
+        // Pour les courses terminées, les données sont déjà dans le booking
+        // passé à l'écran. On tente de rafraîchir depuis Firestore mais
+        // on ne bloque pas l'affichage si ça échoue.
+        try {
+          var b =
+              await FirestoreServices.bookingHistory.doc(booking['id']).get();
+          if (b.exists) {
+            booking = b.data() as Map;
+          }
+        } catch (e) {
+          myCustomPrintStatement(
+              'Erreur rafraichissement booking history, utilisation des donnees locales: $e');
+        }
       }
-    } else {
-      var b = await FirestoreServices.bookingHistory.doc(booking['id']).get();
-      if (b.exists) {
-        booking = b.data() as Map;
-      }
+    } catch (e) {
+      myCustomPrintStatement('Erreur getdata booking: $e');
     }
 
-    // 🔒 Debug limité - ne pas exposer les données sensibles (téléphone, etc.)
+    // Debug limité - ne pas exposer les données sensibles (téléphone, etc.)
     if (kDebugMode) {
-      myCustomPrintStatement('📋 Booking ${booking['id']} - status: ${booking['status']}, isSchedule: ${booking['isSchedule']}');
+      myCustomPrintStatement(
+          'Booking ${booking['id']} - status: ${booking['status']}, isSchedule: ${booking['isSchedule']}');
     }
 
     // Charger les détails du chauffeur seulement s'il y en a un
     if (booking['acceptedBy'] != null) {
-      var d = await FirestoreServices.users.doc(booking['acceptedBy']).get();
-      if (d.exists) {
-        driver = DriverModal.fromJson(d.data() as Map);
-        if (kDebugMode) {
-          myCustomPrintStatement('👤 Driver loaded: ${driver?.firstName ?? "N/A"}');
+      try {
+        var d = await FirestoreServices.users.doc(booking['acceptedBy']).get();
+        if (d.exists) {
+          driver = DriverModal.fromJson(d.data() as Map);
+          if (kDebugMode) {
+            myCustomPrintStatement(
+                'Driver loaded: ${driver?.firstName ?? "N/A"}');
+          }
         }
+      } catch (e) {
+        myCustomPrintStatement('Erreur chargement chauffeur: $e');
       }
     }
-    
-    setState(() {});
+
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   // Affiche le dialog de confirmation d'annulation
@@ -947,7 +965,9 @@ class _BookingDetailsState extends State<BookingDetails> {
                         ),
                       if (booking['rating_by_driver'] != null) vSizedBox,
                       if (booking['status'] ==
-                          BookingStatusType.RIDE_COMPLETE.value)
+                              BookingStatusType.RIDE_COMPLETE.value &&
+                          booking['suggestPath'] != null &&
+                          (booking['suggestPath'] as List).isNotEmpty)
                         SizedBox(
                           height: 250,
                           width: double.infinity,
@@ -967,8 +987,9 @@ class _BookingDetailsState extends State<BookingDetails> {
                                 rotateGesturesEnabled: false,
                                 scrollGesturesEnabled: false,
                                 initialCameraPosition: CameraPosition(
-                                    target: LatLng(currentPosition!.latitude,
-                                        currentPosition!.longitude),
+                                    target: LatLng(
+                                        booking['suggestPath'][0]['latitude'],
+                                        booking['suggestPath'][0]['longitude']),
                                     zoom: 12.80),
                                 gestureRecognizers: Set()
                                   ..add(Factory<PanGestureRecognizer>(

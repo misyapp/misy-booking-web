@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:rider_ride_hailing_app/functions/print_function.dart';
+import 'package:rider_ride_hailing_app/contants/global_data.dart';
 import 'package:rider_ride_hailing_app/models/geo_zone.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -12,7 +13,7 @@ class GeoZoneService {
 
   // 🔧 DEBUG: Mettre à true pour bypasser tous les caches pendant le debug
   // À REMETTRE À FALSE EN PRODUCTION!
-  static const bool _debugBypassCache = true;
+  static const bool _debugBypassCache = false;
 
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static const String _collectionName = 'geo_zones';
@@ -363,6 +364,19 @@ class GeoZoneService {
       myCustomPrintStatement("Erreur lors du rafraîchissement des GeoZones: $e");
       return await _getCachedZones();
     }
+  }
+
+  /// Vérifie si la vérification OTP est activée pour le contexte actuel.
+  /// Priorité : zone courante > globalSettings (fallback).
+  static bool isOtpVerificationEnabled() {
+    if (_currentZone != null) {
+      myCustomPrintStatement(
+          '📱 OTP check: zone "${_currentZone!.name}" -> enableOtpVerification=${_currentZone!.enableOtpVerification}');
+      return _currentZone!.enableOtpVerification;
+    }
+    myCustomPrintStatement(
+        '📱 OTP check: no zone -> globalSettings.enableOTPVerification=${globalSettings.enableOTPVerification}');
+    return globalSettings.enableOTPVerification;
   }
 
   /// Vide complètement le cache

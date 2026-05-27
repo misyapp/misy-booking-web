@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:rider_ride_hailing_app/contants/global_data.dart';
+import 'package:rider_ride_hailing_app/contants/language_strings.dart';
 import 'package:rider_ride_hailing_app/extenstions/payment_type_etxtenstion.dart';
 import 'package:rider_ride_hailing_app/functions/print_function.dart';
 import 'package:rider_ride_hailing_app/services/wallet_payment_integration_service.dart';
@@ -55,12 +56,12 @@ class WalletTopUpAirtelProvider with ChangeNotifier {
 
       if (response.statusCode == 400) {
         showSnackbar(
-            "Erreur d'authentification Airtel: ${jsonResponse['error_description'] ?? jsonResponse['error'] ?? 'Erreur inconnue'}");
+            "${translate("authErrorAirtel")}: ${jsonResponse['error_description'] ?? jsonResponse['error'] ?? ''}");
       }
       return null;
     } catch (error) {
       myCustomPrintStatement('Error generating Airtel access token: $error');
-      showSnackbar("Erreur d'API Airtel: $error");
+      showSnackbar("${translate("apiErrorAirtel")}: $error");
       return null;
     }
   }
@@ -132,8 +133,7 @@ class WalletTopUpAirtelProvider with ChangeNotifier {
         if (jsonResponse['status']['result_code'] == "ESB000010" &&
             jsonResponse['status']['success'] == true) {
           
-          showSnackbar(
-              "Demande de paiement envoyée. Veuillez confirmer sur votre téléphone.");
+          showSnackbar(translate("paymentSentConfirmPhone"));
           
           // Commencer la vérification du statut
           Future.delayed(const Duration(seconds: 3), () async {
@@ -151,7 +151,7 @@ class WalletTopUpAirtelProvider with ChangeNotifier {
       }
     } catch (error) {
       myCustomPrintStatement('Error initiating Airtel top-up: $error');
-      showSnackbar("Erreur lors du démarrage du paiement: $error");
+      showSnackbar("${translate("paymentStartError")}: $error");
       return false;
     }
   }
@@ -254,7 +254,7 @@ class WalletTopUpAirtelProvider with ChangeNotifier {
       
     } catch (error) {
       myCustomPrintStatement('Error handling Airtel payment success: $error');
-      showSnackbar('Erreur lors du traitement du paiement réussi');
+      showSnackbar(translate('paymentProcessingError'));
     }
   }
 
@@ -299,7 +299,7 @@ class WalletTopUpAirtelProvider with ChangeNotifier {
       currentContext = null;
     }
     
-    showSnackbar('Transaction annulée');
+    showSnackbar(translate('transactionCancelled'));
   }
 
   /// Nettoie le processus de paiement
@@ -314,23 +314,23 @@ class WalletTopUpAirtelProvider with ChangeNotifier {
 
   /// Gère les codes d'erreur spécifiques à Airtel
   void _handleAirtelErrorCode(String resultCode) {
-    Map<String, String> errorMessages = {
-      "ESB000001": "Une erreur s'est produite. Veuillez faire une enquête de transaction.",
-      "ESB000004": "Erreur lors de l'initiation du paiement.",
-      "ESB000011": "La demande a échoué.",
-      "ESB000014": "Erreur lors de la récupération du statut de transaction.",
-      "ESB000033": "Longueur MSISDN invalide.",
-      "ESB000034": "Nom de pays invalide.",
-      "ESB000035": "Code de devise invalide.",
-      "ESB000036": "MSISDN invalide ou ne commence pas par 0.",
-      "ESB000039": "Vendeur non configuré pour ce pays.",
-      "ESB000041": "Transaction avec cet ID externe existe déjà.",
-      "ESB000045": "Aucune transaction trouvée avec cet ID.",
-      "0000900": "Transaction dans un état ambigu. Veuillez réessayer.",
+    Map<String, String> errorKeys = {
+      "ESB000001": "airtelGenericError",
+      "ESB000004": "airtelGenericError",
+      "ESB000011": "airtelTransactionRefused",
+      "ESB000014": "airtelGenericError",
+      "ESB000033": "airtelPayerNotFound",
+      "ESB000034": "airtelGenericError",
+      "ESB000035": "airtelGenericError",
+      "ESB000036": "airtelPayerNotFound",
+      "ESB000039": "airtelServiceUnavailable",
+      "ESB000041": "airtelGenericError",
+      "ESB000045": "airtelGenericError",
+      "0000900": "airtelTransactionTimeout",
     };
-    
-    String message = errorMessages[resultCode] ?? "Erreur inconnue: $resultCode";
-    showSnackbar("[$resultCode] $message");
+
+    String key = errorKeys[resultCode] ?? "airtelGenericError";
+    showSnackbar("[$resultCode] ${translate(key)}");
   }
 
   /// Génère un UUID unique

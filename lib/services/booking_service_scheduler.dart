@@ -3,10 +3,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:googleapis/cloudscheduler/v1.dart';
 import 'package:googleapis_auth/auth_io.dart';
+import 'cloud_functions_config.dart';
 
 class BookingServiceScheduler {
   final String _projectId = "misy-95336";
-  final String _location = "us-central1";
+
+  /// Région pour les jobs Cloud Scheduler ET l'URL HTTP de `mainFunction`.
+  /// Lue dynamiquement via [CloudFunctionsConfig] (flag Firestore, TTL 60s).
+  /// Permet une bascule us-central1 → asia-east1 sans rebuild app.
+  Future<String> _mainFunctionRegion() =>
+      CloudFunctionsConfig.regionFor('mainFunction');
 
   /// Crée un job Cloud Scheduler pour un booking planifié.
   /// Retry x3 avec backoff. Si échec total → triggerMainFunctionImmediately.
@@ -18,8 +24,9 @@ class BookingServiceScheduler {
         final client = await _getAuthClient();
         try {
           final cloudSchedulerApi = CloudSchedulerApi(client);
-          final job = _buildJob(bookingId, timestamp);
-          final parent = 'projects/$_projectId/locations/$_location';
+          final region = await _mainFunctionRegion();
+          final job = await _buildJob(bookingId, timestamp);
+          final parent = 'projects/$_projectId/locations/$region';
 
           print('📅 SCHEDULER: Creating job with schedule: '
               '${formatCronExpression(timestamp)} (attempt $attempt)');
@@ -76,8 +83,9 @@ class BookingServiceScheduler {
         final client = await _getAuthClient();
         try {
           final cloudSchedulerApi = CloudSchedulerApi(client);
+          final region = await _mainFunctionRegion();
           final jobName =
-              'projects/$_projectId/locations/$_location/jobs/$bookingId';
+              'projects/$_projectId/locations/$region/jobs/$bookingId';
           await cloudSchedulerApi.projects.locations.jobs.delete(jobName);
           print('✅ SCHEDULER: Job deleted: $jobName');
           return true;
@@ -117,8 +125,9 @@ class BookingServiceScheduler {
         final client = await _getAuthClient();
         try {
           final cloudSchedulerApi = CloudSchedulerApi(client);
+          final region = await _mainFunctionRegion();
           final jobName =
-              'projects/$_projectId/locations/$_location/jobs/$bookingId';
+              'projects/$_projectId/locations/$region/jobs/$bookingId';
 
           final existingJob =
               await cloudSchedulerApi.projects.locations.jobs.get(jobName);
@@ -181,8 +190,8 @@ class BookingServiceScheduler {
 
         final client = await _getAuthClient();
         try {
-          final uri = Uri.parse(
-              'https://$_location-$_projectId.cloudfunctions.net/mainFunction');
+          final uri =
+              Uri.parse(await CloudFunctionsConfig.urlFor('mainFunction'));
           final response = await client.post(
             uri,
             body: jsonEncode({'bookingId': bookingId}),
@@ -228,12 +237,13 @@ class BookingServiceScheduler {
 
   // ─── Helpers ──────────────────────────────────────────────
 
-  Job _buildJob(String bookingId, DateTime timestamp) {
+  Future<Job> _buildJob(String bookingId, DateTime timestamp) async {
+    final region = await _mainFunctionRegion();
     return Job()
-      ..name = 'projects/$_projectId/locations/$_location/jobs/$bookingId'
+      ..name = 'projects/$_projectId/locations/$region/jobs/$bookingId'
       ..httpTarget = (HttpTarget()
         ..uri =
-            'https://$_location-$_projectId.cloudfunctions.net/mainFunction'
+            'https://$region-$_projectId.cloudfunctions.net/mainFunction'
         ..httpMethod = 'POST'
         ..body = base64Encode(
             utf8.encode(encodeRequestBody(bookingId: bookingId))))

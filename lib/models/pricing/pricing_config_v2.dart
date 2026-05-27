@@ -180,7 +180,7 @@ class PricingConfigV2 {
       trafficMultiplier: _parseDouble(json['trafficMultiplier'], defaultConfig.trafficMultiplier),
       trafficPeriods: _parseTrafficPeriods(json['trafficPeriods'], defaultConfig.trafficPeriods),
       longTripThreshold: _parseDouble(json['longTripThreshold'], defaultConfig.longTripThreshold),
-      longTripMultiplier: _parseDouble(json['longTripMultiplier'], defaultConfig.longTripMultiplier),
+      longTripMultiplier: _parsePositiveDouble(json['longTripMultiplier'], 1.0),
       reservationSurcharge: _parseDoubleMap(json['reservationSurcharge'], defaultConfig.reservationSurcharge),
       reservationAdvanceMinutes: _parseInt(json['reservationAdvanceMinutes'], defaultConfig.reservationAdvanceMinutes),
       enableRounding: json['enableRounding'] ?? defaultConfig.enableRounding,
@@ -217,7 +217,16 @@ class PricingConfigV2 {
     }
     return fallback;
   }
-  
+
+  /// Helper pour parser un double strictement positif (> 0) avec fallback.
+  /// Utilisé pour les multiplicateurs qui doivent être > 0 mais peuvent être < 1.
+  static double _parsePositiveDouble(dynamic value, double fallback) {
+    if (value is num && value > 0) {
+      return value.toDouble();
+    }
+    return fallback;
+  }
+
   /// Helper pour parser un int avec fallback
   static int _parseInt(dynamic value, int fallback) {
     if (value is num) {

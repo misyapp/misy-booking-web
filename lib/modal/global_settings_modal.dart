@@ -21,6 +21,7 @@ class GlobalSettingsModal {
   bool enableScheduledBooking;
   bool enableSequentialNotification;
   int sequentialNotificationTimeout;
+  int sequentialBatchSize;
   bool sequentialFallbackToLegacy;
   double airportSurcharge;
 
@@ -45,6 +46,7 @@ class GlobalSettingsModal {
       required this.maxWaitingTimeInMin,
       required this.enableSequentialNotification,
       required this.sequentialNotificationTimeout,
+      required this.sequentialBatchSize,
       required this.sequentialFallbackToLegacy,
       required this.airportSurcharge});
   factory GlobalSettingsModal.fromJson(Map json) {
@@ -82,6 +84,7 @@ class GlobalSettingsModal {
                 .first),
         enableSequentialNotification: json['enableSequentialNotification'] ?? false,
         sequentialNotificationTimeout: json['sequentialNotificationTimeout'] ?? 30,
+        sequentialBatchSize: int.parse((json['sequentialBatchSize'] ?? 3).toString().split(".").first),
         sequentialFallbackToLegacy: json['sequentialFallbackToLegacy'] ?? true,
         airportSurcharge: double.parse((json['airport_surcharge'] ?? 5000).toString()));
   }
