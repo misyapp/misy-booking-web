@@ -234,6 +234,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// la sélection en cours.
   List<_PublicStopAggregate> _baseClusters = const [];
 
+  /// Découpe de chaque (ligne, sens) en "runs" pour la consolidation en tronc
+  /// commun. Clé '${lineNumber}_${dir}'. Un run est soit individuel (couleur de
+  /// la ligne), soit tronc (gris, > 3 lignes co-localisées). Précalculé une
+  /// fois par [_precomputeTrunks]. Vide → fallback sur le tracé brut entier.
+  Map<String, List<_LineRun>> _lineRuns = const {};
+
   // Cache des coordonnées écran de chaque stop visible. Recalculé à chaque
   // onCameraIdle via une interpolation linéaire depuis getVisibleRegion
   // (rapide, sync sur N stops). Utilisé par la détection de hover pour
@@ -2970,12 +2976,193 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     try {
       await PublicTransportService.instance.ensureLoaded();
       if (!mounted) return;
+      _precomputeTrunks();
       _precomputeBaseClusters();
       await _rebuildPublicTransportLayers();
       setState(() => _publicTransportLoaded = true);
     } catch (e) {
       myCustomPrintStatement('PublicTransportLayers: erreur chargement $e');
     }
+  }
+
+  // ───────── Tronc commun (consolidation des corridors > 3 lignes) ─────────
+  static const int _trunkMinLines = 4; // tronc si > 3 lignes (réglable)
+  static const double _trunkSampleStepM = 10.0;
+  static const double _trunkMergeRadiusM = 12.0;
+  static const double _trunkBearingTolDeg = 25.0;
+
+  /// Densifie un tracé à pas ~constant en gardant le cap local.
+  List<_TrunkSample> _densifyTrunk(List<LatLng> pts) {
+    final out = <_TrunkSample>[];
+    for (var i = 0; i < pts.length - 1; i++) {
+      final a = pts[i], b = pts[i + 1];
+      final segLen = _metersBetween(a, b);
+      if (segLen <= 0) continue;
+      final brg =
+          _bearingBetween(a.latitude, a.longitude, b.latitude, b.longitude);
+      final steps = (segLen / _trunkSampleStepM).ceil().clamp(1, 100000);
+      for (var s = 0; s < steps; s++) {
+        final t = s / steps;
+        out.add(_TrunkSample(
+          LatLng(a.latitude + (b.latitude - a.latitude) * t,
+              a.longitude + (b.longitude - a.longitude) * t),
+          brg,
+        ));
+      }
+    }
+    if (pts.length >= 2) {
+      final last = pts.last, prev = pts[pts.length - 2];
+      out.add(_TrunkSample(
+          last,
+          _bearingBetween(
+              prev.latitude, prev.longitude, last.latitude, last.longitude)));
+    }
+    return out;
+  }
+
+  double _bearingDiffMod180Trunk(double a, double b) {
+    var d = (a - b).abs() % 360.0;
+    if (d > 180.0) d = 360.0 - d;
+    if (d > 90.0) d = 180.0 - d;
+    return d;
+  }
+
+  /// Détecte les tronçons partagés par > 3 lignes → un seul trait "tronc"
+  /// (gris, porté par la ligne la plus importante) ; ailleurs, traits
+  /// individuels colorés. Dédup aller/retour d'une même ligne. Pas d'offset
+  /// (aucun gribouilli). Découpe chaque (ligne, sens) en runs prêts à tracer.
+  void _precomputeTrunks() {
+    final svc = PublicTransportService.instance;
+    final byImportance = svc.linesByImportance;
+    final rank = <String, int>{
+      for (var i = 0; i < byImportance.length; i++) byImportance[i]: i,
+    };
+
+    final samples = <String, List<_TrunkSample>>{};
+    for (final ln in byImportance) {
+      final g = svc.getLineGroup(ln);
+      if (g == null) continue;
+      final a = g.aller, r = g.retour;
+      if (a != null && a.coordinates.length >= 2) {
+        samples['${ln}_aller'] = _densifyTrunk(a.coordinates);
+      }
+      if (r != null && r.coordinates.length >= 2) {
+        samples['${ln}_retour'] = _densifyTrunk(r.coordinates);
+      }
+    }
+    if (samples.isEmpty) {
+      _lineRuns = const {};
+      return;
+    }
+
+    const cell = _trunkMergeRadiusM;
+    final grid = <String, List<_TrunkGridEntry>>{};
+    List<int> cellOf(LatLng p) => [
+          (p.longitude * 111320.0 * cos(p.latitude * pi / 180) / cell).floor(),
+          (p.latitude * 111320.0 / cell).floor(),
+        ];
+    samples.forEach((key, list) {
+      for (final s in list) {
+        final c = cellOf(s.pos);
+        grid
+            .putIfAbsent('${c[0]}_${c[1]}', () => [])
+            .add(_TrunkGridEntry(key, s.bearing, s.pos));
+      }
+    });
+
+    String lineOf(String key) => key.endsWith('_aller')
+        ? key.substring(0, key.length - 6)
+        : key.substring(0, key.length - 7);
+
+    final result = <String, List<_LineRun>>{};
+    samples.forEach((key, list) {
+      final selfLine = lineOf(key);
+      final isRetour = key.endsWith('_retour');
+      final allerKey = '${selfLine}_aller';
+
+      // Passe 1 : comptage + représentant + chevauchement propre aller.
+      final cnt = List<int>.filled(list.length, 1);
+      final isRep = List<bool>.filled(list.length, true);
+      final dupAller = List<bool>.filled(list.length, false);
+      for (var i = 0; i < list.length; i++) {
+        final s = list[i];
+        final c = cellOf(s.pos);
+        final coLines = <String>{selfLine};
+        var rep = selfLine;
+        var repRank = rank[selfLine] ?? (1 << 30);
+        for (var dx = -1; dx <= 1; dx++) {
+          for (var dy = -1; dy <= 1; dy++) {
+            final bucket = grid['${c[0] + dx}_${c[1] + dy}'];
+            if (bucket == null) continue;
+            for (final e in bucket) {
+              if (_metersBetween(s.pos, e.pos) > _trunkMergeRadiusM) continue;
+              if (_bearingDiffMod180Trunk(s.bearing, e.bearing) >
+                  _trunkBearingTolDeg) {
+                continue;
+              }
+              if (isRetour && e.key == allerKey) dupAller[i] = true;
+              final el = lineOf(e.key);
+              coLines.add(el);
+              final er = rank[el] ?? (1 << 30);
+              if (er < repRank) {
+                repRank = er;
+                rep = el;
+              }
+            }
+          }
+        }
+        cnt[i] = coLines.length;
+        isRep[i] = rep == selfLine;
+      }
+
+      // Passe 2 : comptage lissé (hystérésis ±2) pour des runs propres.
+      final cntS = List<int>.filled(list.length, 1);
+      for (var i = 0; i < list.length; i++) {
+        var sum = 0, c = 0;
+        for (var j = i - 2; j <= i + 2; j++) {
+          if (j < 0 || j >= list.length) continue;
+          sum += cnt[j];
+          c++;
+        }
+        cntS[i] = (sum / c).round();
+      }
+
+      // État par échantillon : 0=skip, 1=individuel, 2=tronc.
+      final state = List<int>.filled(list.length, 1);
+      for (var i = 0; i < list.length; i++) {
+        if (isRetour && dupAller[i]) {
+          state[i] = 0; // aller+retour superposés → un seul trait
+        } else if (cntS[i] >= _trunkMinLines) {
+          state[i] = isRep[i] ? 2 : 0; // seul le représentant porte le tronc
+        } else {
+          state[i] = 1;
+        }
+      }
+
+      // Découpe en runs (segments consécutifs de même état non-skip).
+      final runs = <_LineRun>[];
+      var i = 0;
+      while (i < list.length) {
+        if (state[i] == 0) {
+          i++;
+          continue;
+        }
+        final st = state[i];
+        var j = i, maxc = cnt[i];
+        while (j + 1 < list.length && state[j + 1] == st) {
+          j++;
+          if (cnt[j] > maxc) maxc = cnt[j];
+        }
+        final pts = <LatLng>[for (var k = i; k <= j; k++) list[k].pos];
+        // Raccord : prolonge d'un point vers le run suivant pour éviter un trou.
+        if (j + 1 < list.length && state[j + 1] != 0) pts.add(list[j + 1].pos);
+        if (pts.length >= 2) runs.add(_LineRun(pts, st == 2, maxc));
+        i = j + 1;
+      }
+      result[key] = runs;
+    });
+
+    _lineRuns = result;
   }
 
   /// Pré-calcule UNE FOIS la liste des clusters d'arrêts (dédup name +
@@ -3202,12 +3389,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // sinon les corridors partagés noircissent ("boue").
       final bool drawCasing = isSelected || isTier1;
 
-      void addPolyline(TransportLine? line, String dir) {
-        if (line == null || line.coordinates.length < 2) return;
-        final pts = line.coordinates;
+      void addColored(String id, List<LatLng> pts) {
+        if (pts.length < 2) return;
         if (drawCasing) {
           polylines.add(Polyline(
-            polylineId: PolylineId('pt_${lineNumber}_${dir}_casing'),
+            polylineId: PolylineId('pt_${lineNumber}_${id}_casing'),
             points: pts,
             color: Colors.white,
             width: width + 3,
@@ -3215,15 +3401,46 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             consumeTapEvents: false,
           ));
         }
-        // Trait coloré 100% opaque → couleurs nettes même superposées.
         polylines.add(Polyline(
-          polylineId: PolylineId('pt_${lineNumber}_$dir'),
+          polylineId: PolylineId('pt_${lineNumber}_$id'),
           points: pts,
           color: color,
           width: width,
           zIndex: baseZ,
           consumeTapEvents: false,
         ));
+      }
+
+      void addPolyline(TransportLine? line, String dir) {
+        if (line == null || line.coordinates.length < 2) return;
+        // Sélection : tracé brut plein, inchangé.
+        if (isSelected) {
+          addColored(dir, line.coordinates);
+          return;
+        }
+        // Vue réseau : consolidation en tronc commun via les runs précalculés.
+        final runs = _lineRuns['${lineNumber}_$dir'];
+        if (runs == null) {
+          addColored(dir, line.coordinates);
+          return;
+        }
+        for (var ri = 0; ri < runs.length; ri++) {
+          final run = runs[ri];
+          if (run.trunk) {
+            // Un seul trait "corridor" gris-bleu, épaisseur ∝ nb de lignes.
+            final tw = (4 + run.count * 1.2).clamp(5, 14).toDouble();
+            polylines.add(Polyline(
+              polylineId: PolylineId('pt_${lineNumber}_${dir}_t$ri'),
+              points: run.pts,
+              color: const Color(0xFF607D8B),
+              width: tw.toInt(),
+              zIndex: 1,
+              consumeTapEvents: false,
+            ));
+          } else {
+            addColored('${dir}_$ri', run.pts);
+          }
+        }
       }
 
       addPolyline(group.aller, 'aller');
@@ -5137,6 +5354,30 @@ class _SchedulePickerDialogState extends State<_SchedulePickerDialog> {
       ],
     );
   }
+}
+
+/// Point densifié d'un tracé + cap local (consolidation tronc commun).
+class _TrunkSample {
+  final LatLng pos;
+  final double bearing;
+  const _TrunkSample(this.pos, this.bearing);
+}
+
+/// Entrée de l'index grille pour la détection des tronçons partagés.
+class _TrunkGridEntry {
+  final String key; // '${lineNumber}_${dir}'
+  final double bearing;
+  final LatLng pos;
+  const _TrunkGridEntry(this.key, this.bearing, this.pos);
+}
+
+/// Sous-tracé d'une ligne : soit individuel (couleur), soit tronc commun
+/// (gris, [count] lignes co-localisées).
+class _LineRun {
+  final List<LatLng> pts;
+  final bool trunk;
+  final int count;
+  const _LineRun(this.pts, this.trunk, this.count);
 }
 
 /// Stop "brut" en sortie d'un GeoJSON, avant clustering par proximité.
