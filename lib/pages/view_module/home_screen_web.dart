@@ -2990,7 +2990,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   // ───────── Corridors multicolores (consolidation > 3 lignes) ─────────
-  static const int _corridorMinLines = 4; // corridor si > 3 lignes (réglable)
+  static const int _corridorMinLines = 2; // arc-en-ciel dès 2 lignes (réglable)
   static const double _corridorSampleStepM = 10.0;
   static const double _corridorMergeRadiusM = 25.0; // englobe un terre-plein
   static const double _corridorBearingTolDeg = 25.0;
@@ -3029,6 +3029,28 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     if (d > 180.0) d = 360.0 - d;
     if (d > 90.0) d = 180.0 - d;
     return d;
+  }
+
+  /// Décale une polyligne perpendiculairement de [offM] mètres (cap local
+  /// fenêtré ±2 points → lisse). Sert à étaler une épine en bandes parallèles
+  /// (arc-en-ciel sur la largeur). Une seule épine à direction cohérente →
+  /// pas de flip, bandes propres.
+  List<LatLng> _offsetPolyline(List<LatLng> pts, double offM) {
+    final out = <LatLng>[];
+    for (var i = 0; i < pts.length; i++) {
+      final a = pts[i - 2 < 0 ? 0 : i - 2];
+      final b = pts[i + 2 >= pts.length ? pts.length - 1 : i + 2];
+      final perp =
+          (_bearingBetween(a.latitude, a.longitude, b.latitude, b.longitude) +
+                  90.0) *
+              pi /
+              180.0;
+      final dLat = (offM * cos(perp)) / 111320.0;
+      final dLng =
+          (offM * sin(perp)) / (111320.0 * cos(pts[i].latitude * pi / 180));
+      out.add(LatLng(pts[i].latitude + dLat, pts[i].longitude + dLng));
+    }
+    return out;
   }
 
   /// Corridors > 3 lignes → une ÉPINE unique (géométrie réelle d'une ligne,
@@ -3499,35 +3521,35 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       }
     }
 
-    // Épines de corridor (> 3 lignes) : rayures multicolores des couleurs des
-    // lignes, légèrement fondues. Largeur ∝ nb de lignes. Vue réseau seulement.
-    if (selected == null) {
-      const stripeLenM = 16.0;
+    // Épines de corridor (> 3 lignes) : ARC-EN-CIEL sur la LARGEUR. Chaque
+    // ligne = une bande fine parallèle décalée perpendiculairement → largeur
+    // totale ∝ nb de lignes. Une seule épine lisse décalée N fois = propre
+    // (pas de gribouilli). Bandes adjacentes en pixels (offset = largeur de
+    // bande convertie en mètres au zoom courant). Vue réseau seulement.
+    if (selected == null && _corridorSpines.isNotEmpty) {
+      const bandPx = 3; // largeur d'une bande (px)
+      // mètres par pixel au zoom courant (lat Antananarivo ≈ -18.9).
+      final mpp = 156543.03392 *
+          cos(-18.9 * pi / 180) /
+          pow(2, _publicMapZoom).toDouble();
+      final bandM = bandPx * mpp;
       for (var ci = 0; ci < _corridorSpines.length; ci++) {
         final cor = _corridorSpines[ci];
         final colors = cor.colors;
-        if (colors.isEmpty || cor.pts.length < 2) continue;
-        final w = (3 + cor.count * 0.8).clamp(4.0, 10.0).toInt();
-        var dist = 0.0;
-        for (var i = 0; i < cor.pts.length - 1; i++) {
-          final a = cor.pts[i], b = cor.pts[i + 1];
-          final pos = dist / stripeLenM;
-          final idx = pos.floor();
-          final frac = pos - idx;
-          final c0 = colors[idx % colors.length];
-          final c1 = colors[(idx + 1) % colors.length];
-          // Fondu léger : interpolation seulement sur les 30 % de fin de rayure.
-          final t = frac < 0.7 ? 0.0 : (frac - 0.7) / 0.3;
-          final col = Color.lerp(c0, c1, t) ?? c0;
+        final n = colors.length;
+        if (n == 0 || cor.pts.length < 2) continue;
+        for (var k = 0; k < n; k++) {
+          final off = (k - (n - 1) / 2.0) * bandM;
+          final band =
+              off.abs() < 0.01 ? cor.pts : _offsetPolyline(cor.pts, off);
           polylines.add(Polyline(
-            polylineId: PolylineId('cor_${ci}_$i'),
-            points: [a, b],
-            color: col,
-            width: w,
+            polylineId: PolylineId('cor_${ci}_$k'),
+            points: band,
+            color: colors[k],
+            width: bandPx,
             zIndex: 1,
             consumeTapEvents: false,
           ));
-          dist += _metersBetween(a, b);
         }
       }
     }
