@@ -21,9 +21,8 @@ import 'package:rider_ride_hailing_app/widget/home_mode_toggle.dart';
 /// admin-validées (numéro coloré, nom, nb d'arrêts). Tap sur une ligne →
 /// callback [onLineSelected] pour la mettre en évidence sur la carte.
 ///
-/// Le toggle Course/Transport vit en overlay flottant au-dessus du panel
-/// (cf. home_screen_web._buildModeToggleOverlay), partagé avec le panel
-/// Course pour une UX symétrique.
+/// Le toggle Course/Transport est intégré en tête du panel (plus d'overlay
+/// flottant), symétrique avec le panel Course.
 class TransportPublicPanel extends StatefulWidget {
   final HomeMode mode;
   final ValueChanged<HomeMode> onModeChanged;
@@ -95,6 +94,13 @@ class _TransportPublicPanelState extends State<TransportPublicPanel> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                      child: HomeModeToggle(
+                        current: widget.mode,
+                        onChanged: widget.onModeChanged,
+                      ),
+                    ),
                     _buildHeader(context),
                     const Divider(height: 1, thickness: 1),
                     Expanded(

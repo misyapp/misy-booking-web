@@ -1198,11 +1198,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             },
           ),
 
-          // Toggle Course / Transport en commun, persistant au-dessus du
-          // panel. Au switch, seul le contenu du bandeau change ; le
-          // toggle reste au même endroit visuel.
-          if (_showModeToggleOverlay) _buildModeToggleOverlay(),
-
           // Bouton profil en haut à droite
           _buildProfileButton(),
 
@@ -1329,7 +1324,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         onRouteSelected: _onPublicRouteSelected,
         onPointsChanged: _onPublicPointsChanged,
         mapTapNotifier: _publicMapTapNotifier,
-        topInset: _panelTopInset,
         onRequestRideForWalk: _onRequestRideForWalk,
       );
     }
@@ -2607,52 +2601,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   // ─────────────────────── Mode public (Transport en commun) ───────────────────────
 
-  /// Le toggle overlay est visible pour tous les utilisateurs (depuis
-  /// 2026-05-28, après la migration de la feature transport vers book).
-  static const bool _showModeToggleOverlay = true;
-
-  /// `top` à appliquer aux panels latéraux : 76 pour ne pas chevaucher
-  /// l'overlay du toggle.
-  static const double _panelTopInset = 76;
-
-  Widget _buildModeToggleOverlay() {
-    return Positioned(
-      top: 16,
-      left: 16,
-      child: PointerInterceptor(
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
-            child: Container(
-              width: 360,
-              padding: const EdgeInsets.all(5),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.95),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.7),
-                  width: 0.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.12),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: HomeModeToggle(
-                current: _homeMode,
-                onChanged: _setHomeMode,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   /// Pont mode Transport → mode Course : remplace un leg marche par une
   /// course Misy. Pré-remplit pickup/dropoff avec les coords du leg,
   /// bascule en mode Course et déclenche le flow de vehicle picker.
@@ -3704,7 +3652,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   Widget _buildSearchCard() {
     return Positioned(
-      top: _panelTopInset,
+      top: 16,
       left: 16,
       bottom: 16,
       child: _WebScrollIsolator(
@@ -3753,8 +3701,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
                 const SizedBox(height: 16),
 
-                // Le toggle Course/Transport vit en overlay flottant
-                // au-dessus du panel (cf. _buildModeToggleOverlay).
+                // Toggle Course / Transport en commun, intégré dans la
+                // sidebar (plus d'overlay flottant).
+                HomeModeToggle(
+                  current: _homeMode,
+                  onChanged: _setHomeMode,
+                ),
+
+                const SizedBox(height: 16),
 
                 Expanded(
                   child: Column(
