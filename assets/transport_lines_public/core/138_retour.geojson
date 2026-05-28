@@ -4,9 +4,9 @@
     "line": "138",
     "direction": "retour",
     "source": "misy-editor-build-flow",
-    "num_stops": 11,
+    "num_stops": 13,
     "num_waypoints": 1,
-    "generated_at": "2026-04-29T09:59:53.270Z"
+    "generated_at": "2026-05-15T21:29:36.973Z"
   },
   "features": [
     {
@@ -15,12 +15,112 @@
         "type": "LineString",
         "coordinates": [
           [
-            47.496696,
-            -18.928903
+            47.499482,
+            -18.937362
+          ],
+          [
+            47.49942,
+            -18.93733
+          ],
+          [
+            47.499234,
+            -18.937262
+          ],
+          [
+            47.499112,
+            -18.937203
+          ],
+          [
+            47.499011,
+            -18.93693
+          ],
+          [
+            47.497784,
+            -18.933814
+          ],
+          [
+            47.497486,
+            -18.933172
+          ],
+          [
+            47.496848,
+            -18.93214
+          ],
+          [
+            47.496349,
+            -18.931252
+          ],
+          [
+            47.496269,
+            -18.931159
+          ],
+          [
+            47.496173,
+            -18.931048
+          ],
+          [
+            47.495957,
+            -18.930903
+          ],
+          [
+            47.495798,
+            -18.930845
+          ],
+          [
+            47.495754,
+            -18.930829
+          ],
+          [
+            47.495836,
+            -18.930659
+          ],
+          [
+            47.496019,
+            -18.9305
+          ],
+          [
+            47.496198,
+            -18.930354
+          ],
+          [
+            47.496544,
+            -18.930076
+          ],
+          [
+            47.496649,
+            -18.929988
+          ],
+          [
+            47.496747,
+            -18.929892
+          ],
+          [
+            47.496799,
+            -18.929768
+          ],
+          [
+            47.4968,
+            -18.92969
+          ],
+          [
+            47.496761,
+            -18.929491
+          ],
+          [
+            47.496668,
+            -18.929157
+          ],
+          [
+            47.496666,
+            -18.928997
           ],
           [
             47.496705,
             -18.928876
+          ],
+          [
+            47.496737,
+            -18.928847
           ],
           [
             47.496914,
@@ -187,6 +287,10 @@
             -18.91895
           ],
           [
+            47.507078,
+            -18.918871
+          ],
+          [
             47.507117,
             -18.918854
           ],
@@ -237,6 +341,10 @@
           [
             47.508492,
             -18.917939
+          ],
+          [
+            47.508529,
+            -18.917414
           ],
           [
             47.508557,
@@ -615,8 +723,8 @@
             -18.905431
           ],
           [
-            47.52085,
-            -18.904541
+            47.520949,
+            -18.904654
           ]
         ]
       },
@@ -630,15 +738,46 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          47.49674095254745,
-          -18.9289163857369
+          47.49952,
+          -18.937296
         ]
       },
       "properties": {
         "type": "stop",
-        "name": "Anosipatrana Terminus 138",
+        "name": "Anosizato Sicam",
         "order": 0,
         "role": "origin"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.49581224009937,
+          -18.930809559207038
+        ]
+      },
+      "properties": {
+        "type": "stop",
+        "name": "Anosipatrana",
+        "order": 1,
+        "osm_id": "node/316889736"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.49677260969546,
+          -18.928883064324456
+        ]
+      },
+      "properties": {
+        "type": "stop",
+        "name": "Anosipatrana 2",
+        "order": 2
       }
     },
     {
@@ -653,7 +792,7 @@
       "properties": {
         "type": "stop",
         "name": "Arrêt Masera",
-        "order": 1,
+        "order": 3,
         "osm_id": "node/11847283850"
       }
     },
@@ -669,7 +808,7 @@
       "properties": {
         "type": "stop",
         "name": "Andavamamba",
-        "order": 2,
+        "order": 4,
         "osm_id": "node/10302284209"
       }
     },
@@ -685,7 +824,7 @@
       "properties": {
         "type": "stop",
         "name": "Fiangonana Arapilazantsara, Tetezana",
-        "order": 3,
+        "order": 5,
         "osm_id": "node/5592316974"
       }
     },
@@ -701,7 +840,7 @@
       "properties": {
         "type": "stop",
         "name": "Andavamamba",
-        "order": 4,
+        "order": 6,
         "osm_id": "node/5450676008"
       }
     },
@@ -717,7 +856,7 @@
       "properties": {
         "type": "stop",
         "name": "Ampefiloha Complexe",
-        "order": 5,
+        "order": 7,
         "osm_id": "node/4052896294"
       }
     },
@@ -733,7 +872,7 @@
       "properties": {
         "type": "stop",
         "name": "Ampefiloha Fiaro",
-        "order": 6,
+        "order": 8,
         "osm_id": "node/4052896297"
       }
     },
@@ -749,7 +888,7 @@
       "properties": {
         "type": "stop",
         "name": "Ampefiloha CNaPS",
-        "order": 7,
+        "order": 9,
         "osm_id": "node/5436845079"
       }
     },
@@ -765,7 +904,7 @@
       "properties": {
         "type": "stop",
         "name": "Ambalavao Isotry MAMA",
-        "order": 8,
+        "order": 10,
         "osm_id": "node/5436845078"
       }
     },
@@ -781,7 +920,7 @@
       "properties": {
         "type": "stop",
         "name": "Isotry COTONA",
-        "order": 9,
+        "order": 11,
         "osm_id": "node/5436845075"
       }
     },
@@ -790,14 +929,14 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          47.52086010024136,
-          -18.904533254354014
+          47.52093940833608,
+          -18.904662070379246
         ]
       },
       "properties": {
         "type": "stop",
-        "name": "Tsaralalàna",
-        "order": 10,
+        "name": "Analakely/Tsaralalàna",
+        "order": 12,
         "role": "destination"
       }
     },
@@ -812,7 +951,7 @@
       },
       "properties": {
         "type": "waypoint",
-        "after_stop": 2
+        "after_stop": 4
       }
     }
   ]

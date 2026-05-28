@@ -4,9 +4,9 @@
     "line": "199",
     "direction": "aller",
     "source": "misy-editor-build-flow",
-    "num_stops": 25,
+    "num_stops": 29,
     "num_waypoints": 0,
-    "generated_at": "2026-04-27T17:45:33.825Z"
+    "generated_at": "2026-05-15T22:03:17.348Z"
   },
   "features": [
     {
@@ -15,12 +15,108 @@
         "type": "LineString",
         "coordinates": [
           [
-            47.515799,
-            -18.954099
+            47.511108,
+            -18.962094
           ],
           [
-            47.51579,
-            -18.954127
+            47.511155,
+            -18.962026
+          ],
+          [
+            47.511294,
+            -18.961878
+          ],
+          [
+            47.511344,
+            -18.961796
+          ],
+          [
+            47.511361,
+            -18.961723
+          ],
+          [
+            47.511347,
+            -18.961662
+          ],
+          [
+            47.511317,
+            -18.961589
+          ],
+          [
+            47.511111,
+            -18.96134
+          ],
+          [
+            47.510909,
+            -18.961066
+          ],
+          [
+            47.510772,
+            -18.96084
+          ],
+          [
+            47.510658,
+            -18.960617
+          ],
+          [
+            47.51061,
+            -18.96051
+          ],
+          [
+            47.510577,
+            -18.960421
+          ],
+          [
+            47.510491,
+            -18.960205
+          ],
+          [
+            47.510457,
+            -18.959776
+          ],
+          [
+            47.510426,
+            -18.959621
+          ],
+          [
+            47.510426,
+            -18.959621
+          ],
+          [
+            47.510394,
+            -18.959559
+          ],
+          [
+            47.510372,
+            -18.959536
+          ],
+          [
+            47.510788,
+            -18.959136
+          ],
+          [
+            47.510906,
+            -18.959028
+          ],
+          [
+            47.511072,
+            -18.958868
+          ],
+          [
+            47.513538,
+            -18.956477
+          ],
+          [
+            47.515579,
+            -18.954502
+          ],
+          [
+            47.515667,
+            -18.954403
+          ],
+          [
+            47.515696,
+            -18.954368
           ],
           [
             47.515714,
@@ -29,6 +125,14 @@
           [
             47.515867,
             -18.954398
+          ],
+          [
+            47.515911,
+            -18.954411
+          ],
+          [
+            47.518006,
+            -18.955046
           ],
           [
             47.518006,
@@ -101,6 +205,10 @@
           [
             47.520816,
             -18.955115
+          ],
+          [
+            47.522082,
+            -18.955497
           ],
           [
             47.522091,
@@ -2470,15 +2578,63 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          47.51584172900599,
-          -18.954112083616113
+          47.51114745065848,
+          -18.96211782368404
         ]
       },
       "properties": {
         "type": "stop",
-        "name": "Tanjombato Forello",
+        "name": "Soavina Primus 199",
         "order": 0,
         "role": "origin"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.51045842576026,
+          -18.95961396942036
+        ]
+      },
+      "properties": {
+        "type": "stop",
+        "name": "Soavina Tetezana",
+        "order": 1,
+        "osm_id": "node/5539981176"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.51589583374692,
+          -18.954456825574876
+        ]
+      },
+      "properties": {
+        "type": "stop",
+        "name": "Tanjombato Forello Karina",
+        "order": 2,
+        "osm_id": "node/5416457544"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.517992,
+          -18.955073
+        ]
+      },
+      "properties": {
+        "type": "stop",
+        "name": "Tanjombato Forello TNT",
+        "order": 3,
+        "osm_id": "node/5540040225"
       }
     },
     {
@@ -2493,8 +2649,24 @@
       "properties": {
         "type": "stop",
         "name": "Tanjombato Hazovato",
-        "order": 1,
+        "order": 4,
         "osm_id": "node/5450919098"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          47.522052555222395,
+          -18.95558244468355
+        ]
+      },
+      "properties": {
+        "type": "stop",
+        "name": "Tanjombato Forello Vavahady Manga",
+        "order": 5,
+        "osm_id": "node/5540040227"
       }
     },
     {
@@ -2509,7 +2681,7 @@
       "properties": {
         "type": "stop",
         "name": "Tanjombato Tour",
-        "order": 2,
+        "order": 6,
         "osm_id": "node/5450919099"
       }
     },
@@ -2525,7 +2697,7 @@
       "properties": {
         "type": "stop",
         "name": "Andohavato (OSTIE)",
-        "order": 3,
+        "order": 7,
         "osm_id": "node/5416244373"
       }
     },
@@ -2541,7 +2713,7 @@
       "properties": {
         "type": "stop",
         "name": "Arrêt 35 Tanjombato Tetezana",
-        "order": 4,
+        "order": 8,
         "osm_id": "node/5530870621"
       }
     },
@@ -2557,7 +2729,7 @@
       "properties": {
         "type": "stop",
         "name": "Tanjombato Barrage",
-        "order": 5,
+        "order": 9,
         "osm_id": "node/5540040229"
       }
     },
@@ -2573,7 +2745,7 @@
       "properties": {
         "type": "stop",
         "name": "Tanjombato Fasika",
-        "order": 6,
+        "order": 10,
         "osm_id": "node/5450919101"
       }
     },
@@ -2589,7 +2761,7 @@
       "properties": {
         "type": "stop",
         "name": "Ankadimbahoaka",
-        "order": 7,
+        "order": 11,
         "osm_id": "node/5530870622"
       }
     },
@@ -2605,7 +2777,7 @@
       "properties": {
         "type": "stop",
         "name": "Soanierana Descourt",
-        "order": 8,
+        "order": 12,
         "osm_id": "node/5540040233"
       }
     },
@@ -2621,7 +2793,7 @@
       "properties": {
         "type": "stop",
         "name": "Andrefan'Ambohijanahary Paraky",
-        "order": 9,
+        "order": 13,
         "osm_id": "node/5540040235"
       }
     },
@@ -2637,7 +2809,7 @@
       "properties": {
         "type": "stop",
         "name": "Andrefan'Ambohijanahary JIRAMA",
-        "order": 10,
+        "order": 14,
         "osm_id": "node/5556352654"
       }
     },
@@ -2653,7 +2825,7 @@
       "properties": {
         "type": "stop",
         "name": "Andrefan'Ambohijanahary Toby",
-        "order": 11,
+        "order": 15,
         "osm_id": "node/5540072827"
       }
     },
@@ -2669,7 +2841,7 @@
       "properties": {
         "type": "stop",
         "name": "Anosy",
-        "order": 12
+        "order": 16
       }
     },
     {
@@ -2684,7 +2856,7 @@
       "properties": {
         "type": "stop",
         "name": "Tavoahangy",
-        "order": 13
+        "order": 17
       }
     },
     {
@@ -2699,7 +2871,7 @@
       "properties": {
         "type": "stop",
         "name": "Soarano Saint Pierre",
-        "order": 14,
+        "order": 18,
         "osm_id": "node/5447676151"
       }
     },
@@ -2715,7 +2887,7 @@
       "properties": {
         "type": "stop",
         "name": "Behoririka SODIAT",
-        "order": 15,
+        "order": 19,
         "osm_id": "node/1498470209"
       }
     },
@@ -2731,7 +2903,7 @@
       "properties": {
         "type": "stop",
         "name": "Antanimena",
-        "order": 16,
+        "order": 20,
         "osm_id": "node/1498458896"
       }
     },
@@ -2747,7 +2919,7 @@
       "properties": {
         "type": "stop",
         "name": "Ankorondrano Fraise/Jesosy Mamonjy",
-        "order": 17,
+        "order": 21,
         "osm_id": "node/5642637999"
       }
     },
@@ -2763,7 +2935,7 @@
       "properties": {
         "type": "stop",
         "name": "Ankorondrano Fokontany",
-        "order": 18,
+        "order": 22,
         "osm_id": "node/5128761358"
       }
     },
@@ -2779,7 +2951,7 @@
       "properties": {
         "type": "stop",
         "name": "Ankorondrano CORA",
-        "order": 19,
+        "order": 23,
         "osm_id": "node/5642476524"
       }
     },
@@ -2795,7 +2967,7 @@
       "properties": {
         "type": "stop",
         "name": "Ivandry/Voninkazo",
-        "order": 20,
+        "order": 24,
         "osm_id": "node/4773275223"
       }
     },
@@ -2811,7 +2983,7 @@
       "properties": {
         "type": "stop",
         "name": "Ivandry Travaux",
-        "order": 21,
+        "order": 25,
         "osm_id": "node/4201652200"
       }
     },
@@ -2827,7 +2999,7 @@
       "properties": {
         "type": "stop",
         "name": "Alarobia Tennis",
-        "order": 22,
+        "order": 26,
         "osm_id": "node/5648260030"
       }
     },
@@ -2843,7 +3015,7 @@
       "properties": {
         "type": "stop",
         "name": "Ivandry Pullman",
-        "order": 23,
+        "order": 27,
         "osm_id": "node/4201666689"
       }
     },
@@ -2859,7 +3031,7 @@
       "properties": {
         "type": "stop",
         "name": "Alarobia Fiangonana",
-        "order": 24,
+        "order": 28,
         "role": "destination"
       }
     }

@@ -1,9 +1,26 @@
 {
   "version": "1.0",
-  "last_updated": "2026-04-30",
-  "total_lines": 41,
+  "last_updated": "2026-05-28",
+  "total_lines": 84,
   "source": "transport_lines_published Firestore (admin-approved only)",
   "lines": [
+    {
+      "line_number": "009",
+      "display_name": "Ligne 009",
+      "transport_type": "bus",
+      "color": "0xFF00897B",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 16,
+        "asset_path": "assets/transport_lines_public/core/009_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 16,
+        "asset_path": "assets/transport_lines_public/core/009_retour.geojson"
+      }
+    },
     {
       "line_number": "015",
       "display_name": "Ligne 015",
@@ -22,8 +39,25 @@
       }
     },
     {
+      "line_number": "104",
+      "display_name": "Ligne 104",
+      "transport_type": "bus",
+      "color": "0xFF880E4F",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 12,
+        "asset_path": "assets/transport_lines_public/core/104_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 9,
+        "asset_path": "assets/transport_lines_public/core/104_retour.geojson"
+      }
+    },
+    {
       "line_number": "105",
-      "display_name": "Ligne 105",
+      "display_name": "Ligne 105 Bleu-Jaune",
       "transport_type": "bus",
       "color": "0xFFD32F2F",
       "is_bundled": true,
@@ -36,6 +70,23 @@
         "direction": "retour",
         "num_stops": 17,
         "asset_path": "assets/transport_lines_public/core/105_retour.geojson"
+      }
+    },
+    {
+      "line_number": "105 Vert",
+      "display_name": "Ligne 105 Vert",
+      "transport_type": "bus",
+      "color": "0xFF1565C0",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 26,
+        "asset_path": "assets/transport_lines_public/core/105 Vert_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 20,
+        "asset_path": "assets/transport_lines_public/core/105 Vert_retour.geojson"
       }
     },
     {
@@ -57,9 +108,9 @@
     },
     {
       "line_number": "109",
-      "display_name": "Ligne 109",
+      "display_name": "Ligne 109 Rouge",
       "transport_type": "bus",
-      "color": "0xFF1976D2",
+      "color": "0xFF1565C0",
       "is_bundled": true,
       "aller": {
         "direction": "aller",
@@ -90,6 +141,91 @@
       }
     },
     {
+      "line_number": "112",
+      "display_name": "Ligne 112",
+      "transport_type": "bus",
+      "color": "0xFF1565C0",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 30,
+        "asset_path": "assets/transport_lines_public/core/112_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 31,
+        "asset_path": "assets/transport_lines_public/core/112_retour.geojson"
+      }
+    },
+    {
+      "line_number": "113",
+      "display_name": "Ligne 113",
+      "transport_type": "bus",
+      "color": "0xFFD84315",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 22,
+        "asset_path": "assets/transport_lines_public/core/113_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 18,
+        "asset_path": "assets/transport_lines_public/core/113_retour.geojson"
+      }
+    },
+    {
+      "line_number": "114",
+      "display_name": "Ligne 114 Vert",
+      "transport_type": "bus",
+      "color": "0xFF43A047",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 29,
+        "asset_path": "assets/transport_lines_public/core/114_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 30,
+        "asset_path": "assets/transport_lines_public/core/114_retour.geojson"
+      }
+    },
+    {
+      "line_number": "114 Bleu-Rouge",
+      "display_name": "Ligne 114",
+      "transport_type": "bus",
+      "color": "0xFF1565C0",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 28,
+        "asset_path": "assets/transport_lines_public/core/114 Bleu-Rouge_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 29,
+        "asset_path": "assets/transport_lines_public/core/114 Bleu-Rouge_retour.geojson"
+      }
+    },
+    {
+      "line_number": "114 Vert-Jaune",
+      "display_name": "Ligne 114 Vert-Jaune",
+      "transport_type": "bus",
+      "color": "0xFF1565C0",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 22,
+        "asset_path": "assets/transport_lines_public/core/114 Vert-Jaune_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 22,
+        "asset_path": "assets/transport_lines_public/core/114 Vert-Jaune_retour.geojson"
+      }
+    },
+    {
       "line_number": "117",
       "display_name": "Ligne 117",
       "transport_type": "bus",
@@ -97,12 +233,12 @@
       "is_bundled": true,
       "aller": {
         "direction": "aller",
-        "num_stops": 11,
+        "num_stops": 13,
         "asset_path": "assets/transport_lines_public/core/117_aller.geojson"
       },
       "retour": {
         "direction": "retour",
-        "num_stops": 11,
+        "num_stops": 13,
         "asset_path": "assets/transport_lines_public/core/117_retour.geojson"
       }
     },
@@ -158,6 +294,57 @@
       }
     },
     {
+      "line_number": "126",
+      "display_name": "Ligne 126",
+      "transport_type": "bus",
+      "color": "0xFF00796B",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 29,
+        "asset_path": "assets/transport_lines_public/core/126_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 24,
+        "asset_path": "assets/transport_lines_public/core/126_retour.geojson"
+      }
+    },
+    {
+      "line_number": "127A",
+      "display_name": "Ligne 127A",
+      "transport_type": "bus",
+      "color": "0xFFE53935",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 13,
+        "asset_path": "assets/transport_lines_public/core/127A_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 15,
+        "asset_path": "assets/transport_lines_public/core/127A_retour.geojson"
+      }
+    },
+    {
+      "line_number": "127B",
+      "display_name": "Ligne 127B",
+      "transport_type": "bus",
+      "color": "0xFF1565C0",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 16,
+        "asset_path": "assets/transport_lines_public/core/127B_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 11,
+        "asset_path": "assets/transport_lines_public/core/127B_retour.geojson"
+      }
+    },
+    {
       "line_number": "128",
       "display_name": "Ligne 128",
       "transport_type": "bus",
@@ -192,8 +379,93 @@
       }
     },
     {
+      "line_number": "133",
+      "display_name": "Ligne 133",
+      "transport_type": "bus",
+      "color": "0xFFFB8C00",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 23,
+        "asset_path": "assets/transport_lines_public/core/133_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 24,
+        "asset_path": "assets/transport_lines_public/core/133_retour.geojson"
+      }
+    },
+    {
+      "line_number": "133A",
+      "display_name": "Ligne 133A",
+      "transport_type": "bus",
+      "color": "0xFFFB8C00",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 25,
+        "asset_path": "assets/transport_lines_public/core/133A_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 27,
+        "asset_path": "assets/transport_lines_public/core/133A_retour.geojson"
+      }
+    },
+    {
+      "line_number": "133B",
+      "display_name": "Ligne 133B",
+      "transport_type": "bus",
+      "color": "0xFFFB8C00",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 24,
+        "asset_path": "assets/transport_lines_public/core/133B_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 25,
+        "asset_path": "assets/transport_lines_public/core/133B_retour.geojson"
+      }
+    },
+    {
+      "line_number": "133C",
+      "display_name": "Ligne 133C",
+      "transport_type": "bus",
+      "color": "0xFFFB8C00",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 27,
+        "asset_path": "assets/transport_lines_public/core/133C_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 30,
+        "asset_path": "assets/transport_lines_public/core/133C_retour.geojson"
+      }
+    },
+    {
+      "line_number": "134",
+      "display_name": "Ligne 134",
+      "transport_type": "bus",
+      "color": "0xFFAD1457",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 12,
+        "asset_path": "assets/transport_lines_public/core/134_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 8,
+        "asset_path": "assets/transport_lines_public/core/134_retour.geojson"
+      }
+    },
+    {
       "line_number": "135",
-      "display_name": "Ligne 135",
+      "display_name": "Ligne 135 Blanc",
       "transport_type": "bus",
       "color": "0xFFE53935",
       "is_bundled": true,
@@ -209,8 +481,25 @@
       }
     },
     {
+      "line_number": "135A",
+      "display_name": "Ligne 135 Rouge",
+      "transport_type": "bus",
+      "color": "0xFFC62838",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 21,
+        "asset_path": "assets/transport_lines_public/core/135A_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 22,
+        "asset_path": "assets/transport_lines_public/core/135A_retour.geojson"
+      }
+    },
+    {
       "line_number": "135_",
-      "display_name": "Ligne 135_",
+      "display_name": "Ligne 135",
       "transport_type": "bus",
       "color": "0xFFEF5350",
       "is_bundled": true,
@@ -250,20 +539,37 @@
       "is_bundled": true,
       "aller": {
         "direction": "aller",
-        "num_stops": 13,
+        "num_stops": 16,
         "asset_path": "assets/transport_lines_public/core/138_aller.geojson"
       },
       "retour": {
         "direction": "retour",
-        "num_stops": 12,
+        "num_stops": 14,
         "asset_path": "assets/transport_lines_public/core/138_retour.geojson"
       }
     },
     {
-      "line_number": "140",
-      "display_name": "Ligne 140",
+      "line_number": "139",
+      "display_name": "Ligne 139",
       "transport_type": "bus",
-      "color": "0xFF546E7A",
+      "color": "0xFFE53935",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 18,
+        "asset_path": "assets/transport_lines_public/core/139_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 22,
+        "asset_path": "assets/transport_lines_public/core/139_retour.geojson"
+      }
+    },
+    {
+      "line_number": "140",
+      "display_name": "Ligne 140 Rouge",
+      "transport_type": "bus",
+      "color": "0xFFFB8C00",
       "is_bundled": true,
       "aller": {
         "direction": "aller",
@@ -291,6 +597,23 @@
         "direction": "retour",
         "num_stops": 19,
         "asset_path": "assets/transport_lines_public/core/141_retour.geojson"
+      }
+    },
+    {
+      "line_number": "143",
+      "display_name": "Ligne 143",
+      "transport_type": "bus",
+      "color": "0xFFEF6C00",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 23,
+        "asset_path": "assets/transport_lines_public/core/143_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 22,
+        "asset_path": "assets/transport_lines_public/core/143_retour.geojson"
       }
     },
     {
@@ -328,37 +651,343 @@
       }
     },
     {
-      "line_number": "147",
-      "display_name": "Ligne 147",
+      "line_number": "146 Rouge",
+      "display_name": "Ligne 146 Rouge",
       "transport_type": "bus",
-      "color": "0xFF0D47A9",
+      "color": "0xFFE53935",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 22,
+        "asset_path": "assets/transport_lines_public/core/146 Rouge_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 18,
+        "asset_path": "assets/transport_lines_public/core/146 Rouge_retour.geojson"
+      }
+    },
+    {
+      "line_number": "147 Bleu",
+      "display_name": "Ligne 147 Bleu",
+      "transport_type": "bus",
+      "color": "0xFF1565C0",
       "is_bundled": true,
       "aller": {
         "direction": "aller",
         "num_stops": 21,
-        "asset_path": "assets/transport_lines_public/core/147_aller.geojson"
+        "asset_path": "assets/transport_lines_public/core/147 Bleu_aller.geojson"
       },
       "retour": {
         "direction": "retour",
         "num_stops": 26,
-        "asset_path": "assets/transport_lines_public/core/147_retour.geojson"
+        "asset_path": "assets/transport_lines_public/core/147 Bleu_retour.geojson"
+      }
+    },
+    {
+      "line_number": "147 Rouge",
+      "display_name": "Ligne 147 Rouge",
+      "transport_type": "bus",
+      "color": "0xFF1565C0",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 25,
+        "asset_path": "assets/transport_lines_public/core/147 Rouge_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 21,
+        "asset_path": "assets/transport_lines_public/core/147 Rouge_retour.geojson"
       }
     },
     {
       "line_number": "147BIS",
-      "display_name": "Ligne 147BIS",
+      "display_name": "Ligne 147BIS Rouge",
       "transport_type": "bus",
       "color": "0xFF1A5FC7",
       "is_bundled": true,
       "aller": {
         "direction": "aller",
-        "num_stops": 29,
+        "num_stops": 34,
         "asset_path": "assets/transport_lines_public/core/147BIS_aller.geojson"
       },
       "retour": {
         "direction": "retour",
-        "num_stops": 34,
+        "num_stops": 30,
         "asset_path": "assets/transport_lines_public/core/147BIS_retour.geojson"
+      }
+    },
+    {
+      "line_number": "147BIS Bleu",
+      "display_name": "Ligne 147BIS Bleu",
+      "transport_type": "bus",
+      "color": "0xFF1565C0",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 29,
+        "asset_path": "assets/transport_lines_public/core/147BIS Bleu_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 34,
+        "asset_path": "assets/transport_lines_public/core/147BIS Bleu_retour.geojson"
+      }
+    },
+    {
+      "line_number": "147D Bleu",
+      "display_name": "Ligne 147D Bleu",
+      "transport_type": "bus",
+      "color": "0xFF0D47A9",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 25,
+        "asset_path": "assets/transport_lines_public/core/147D Bleu_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 31,
+        "asset_path": "assets/transport_lines_public/core/147D Bleu_retour.geojson"
+      }
+    },
+    {
+      "line_number": "147D Rouge",
+      "display_name": "Ligne 147D Rouge",
+      "transport_type": "bus",
+      "color": "0xFFE53935",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 30,
+        "asset_path": "assets/transport_lines_public/core/147D Rouge_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 26,
+        "asset_path": "assets/transport_lines_public/core/147D Rouge_retour.geojson"
+      }
+    },
+    {
+      "line_number": "150",
+      "display_name": "Ligne 150 Vert - Tsimbazaza",
+      "transport_type": "bus",
+      "color": "0xFF00838F",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 30,
+        "asset_path": "assets/transport_lines_public/core/150_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 33,
+        "asset_path": "assets/transport_lines_public/core/150_retour.geojson"
+      }
+    },
+    {
+      "line_number": "150 Vert",
+      "display_name": "Ligne 150 Vert - Anosibe",
+      "transport_type": "bus",
+      "color": "0xFFF06292",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 27,
+        "asset_path": "assets/transport_lines_public/core/150 Vert_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 27,
+        "asset_path": "assets/transport_lines_public/core/150 Vert_retour.geojson"
+      }
+    },
+    {
+      "line_number": "150B",
+      "display_name": "Ligne 150 Rouge",
+      "transport_type": "bus",
+      "color": "0xFFE53935",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 29,
+        "asset_path": "assets/transport_lines_public/core/150B_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 26,
+        "asset_path": "assets/transport_lines_public/core/150B_retour.geojson"
+      }
+    },
+    {
+      "line_number": "151",
+      "display_name": "Ligne 151",
+      "transport_type": "bus",
+      "color": "0xFFE53935",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 21,
+        "asset_path": "assets/transport_lines_public/core/151_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 23,
+        "asset_path": "assets/transport_lines_public/core/151_retour.geojson"
+      }
+    },
+    {
+      "line_number": "154",
+      "display_name": "Ligne 154",
+      "transport_type": "bus",
+      "color": "0xFF00ACC1",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 29,
+        "asset_path": "assets/transport_lines_public/core/154_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 26,
+        "asset_path": "assets/transport_lines_public/core/154_retour.geojson"
+      }
+    },
+    {
+      "line_number": "154A",
+      "display_name": "Ligne 154A",
+      "transport_type": "bus",
+      "color": "0xFF00869B",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 38,
+        "asset_path": "assets/transport_lines_public/core/154A_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 40,
+        "asset_path": "assets/transport_lines_public/core/154A_retour.geojson"
+      }
+    },
+    {
+      "line_number": "154B",
+      "display_name": "Ligne 154B",
+      "transport_type": "bus",
+      "color": "0xFFFB8C00",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 40,
+        "asset_path": "assets/transport_lines_public/core/154B_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 37,
+        "asset_path": "assets/transport_lines_public/core/154B_retour.geojson"
+      }
+    },
+    {
+      "line_number": "154C",
+      "display_name": "Ligne 154C",
+      "transport_type": "bus",
+      "color": "0xFFFB8C00",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 47,
+        "asset_path": "assets/transport_lines_public/core/154C_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 45,
+        "asset_path": "assets/transport_lines_public/core/154C_retour.geojson"
+      }
+    },
+    {
+      "line_number": "157A",
+      "display_name": "Ligne 157A",
+      "transport_type": "bus",
+      "color": "0xFFAB47BC",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 21,
+        "asset_path": "assets/transport_lines_public/core/157A_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 18,
+        "asset_path": "assets/transport_lines_public/core/157A_retour.geojson"
+      }
+    },
+    {
+      "line_number": "157B",
+      "display_name": "Ligne 157B",
+      "transport_type": "bus",
+      "color": "0xFF9B30A8",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 21,
+        "asset_path": "assets/transport_lines_public/core/157B_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 20,
+        "asset_path": "assets/transport_lines_public/core/157B_retour.geojson"
+      }
+    },
+    {
+      "line_number": "159",
+      "display_name": "Ligne 159B",
+      "transport_type": "bus",
+      "color": "0xFFEF6C00",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 35,
+        "asset_path": "assets/transport_lines_public/core/159_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 35,
+        "asset_path": "assets/transport_lines_public/core/159_retour.geojson"
+      }
+    },
+    {
+      "line_number": "159A",
+      "display_name": "Ligne 159A",
+      "transport_type": "bus",
+      "color": "0xFFEF6C00",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 33,
+        "asset_path": "assets/transport_lines_public/core/159A_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 34,
+        "asset_path": "assets/transport_lines_public/core/159A_retour.geojson"
+      }
+    },
+    {
+      "line_number": "160",
+      "display_name": "Ligne 160",
+      "transport_type": "bus",
+      "color": "0xFF37474F",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 18,
+        "asset_path": "assets/transport_lines_public/core/160_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 15,
+        "asset_path": "assets/transport_lines_public/core/160_retour.geojson"
       }
     },
     {
@@ -414,9 +1043,9 @@
     },
     {
       "line_number": "165",
-      "display_name": "Ligne 165",
+      "display_name": "Ligne 165 Jaune",
       "transport_type": "bus",
-      "color": "0xFF8D6E63",
+      "color": "0xFFFB8C00",
       "is_bundled": true,
       "aller": {
         "direction": "aller",
@@ -450,7 +1079,7 @@
       "line_number": "17",
       "display_name": "Ligne 17",
       "transport_type": "bus",
-      "color": "0xFF7B1FA2",
+      "color": "0xFFFB8C00",
       "is_bundled": true,
       "aller": {
         "direction": "aller",
@@ -481,20 +1110,20 @@
       }
     },
     {
-      "line_number": "178",
-      "display_name": "Ligne 178",
+      "line_number": "178 Bleu",
+      "display_name": "Ligne 178 Bleu",
       "transport_type": "bus",
-      "color": "0xFF2979FF",
+      "color": "0xFF1565C0",
       "is_bundled": true,
       "aller": {
         "direction": "aller",
         "num_stops": 22,
-        "asset_path": "assets/transport_lines_public/core/178_aller.geojson"
+        "asset_path": "assets/transport_lines_public/core/178 Bleu_aller.geojson"
       },
       "retour": {
         "direction": "retour",
         "num_stops": 32,
-        "asset_path": "assets/transport_lines_public/core/178_retour.geojson"
+        "asset_path": "assets/transport_lines_public/core/178 Bleu_retour.geojson"
       }
     },
     {
@@ -556,12 +1185,12 @@
       "is_bundled": true,
       "aller": {
         "direction": "aller",
-        "num_stops": 19,
+        "num_stops": 20,
         "asset_path": "assets/transport_lines_public/core/183A_aller.geojson"
       },
       "retour": {
         "direction": "retour",
-        "num_stops": 22,
+        "num_stops": 23,
         "asset_path": "assets/transport_lines_public/core/183A_retour.geojson"
       }
     },
@@ -573,12 +1202,12 @@
       "is_bundled": true,
       "aller": {
         "direction": "aller",
-        "num_stops": 25,
+        "num_stops": 26,
         "asset_path": "assets/transport_lines_public/core/183B_aller.geojson"
       },
       "retour": {
         "direction": "retour",
-        "num_stops": 21,
+        "num_stops": 22,
         "asset_path": "assets/transport_lines_public/core/183B_retour.geojson"
       }
     },
@@ -634,6 +1263,57 @@
       }
     },
     {
+      "line_number": "190",
+      "display_name": "Ligne 190",
+      "transport_type": "bus",
+      "color": "0xFF3E2723",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 11,
+        "asset_path": "assets/transport_lines_public/core/190_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 10,
+        "asset_path": "assets/transport_lines_public/core/190_retour.geojson"
+      }
+    },
+    {
+      "line_number": "191",
+      "display_name": "Ligne 191",
+      "transport_type": "bus",
+      "color": "0xFF6A1B9A",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 26,
+        "asset_path": "assets/transport_lines_public/core/191_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 21,
+        "asset_path": "assets/transport_lines_public/core/191_retour.geojson"
+      }
+    },
+    {
+      "line_number": "193A",
+      "display_name": "Ligne 193A",
+      "transport_type": "bus",
+      "color": "0xFF66BB6A",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 34,
+        "asset_path": "assets/transport_lines_public/core/193A_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 31,
+        "asset_path": "assets/transport_lines_public/core/193A_retour.geojson"
+      }
+    },
+    {
       "line_number": "194",
       "display_name": "Ligne 194 Bleu",
       "transport_type": "bus",
@@ -648,6 +1328,40 @@
         "direction": "retour",
         "num_stops": 37,
         "asset_path": "assets/transport_lines_public/core/194_retour.geojson"
+      }
+    },
+    {
+      "line_number": "194 Rouge",
+      "display_name": "Ligne 194 Rouge",
+      "transport_type": "bus",
+      "color": "0xFFE53935",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 33,
+        "asset_path": "assets/transport_lines_public/core/194 Rouge_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 33,
+        "asset_path": "assets/transport_lines_public/core/194 Rouge_retour.geojson"
+      }
+    },
+    {
+      "line_number": "194 Vert Ambanidia",
+      "display_name": "Ligne 194 Vert Ambanidia",
+      "transport_type": "bus",
+      "color": "0xFF43A047",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 40,
+        "asset_path": "assets/transport_lines_public/core/194 Vert Ambanidia_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 42,
+        "asset_path": "assets/transport_lines_public/core/194 Vert Ambanidia_retour.geojson"
       }
     },
     {
@@ -675,12 +1389,12 @@
       "is_bundled": true,
       "aller": {
         "direction": "aller",
-        "num_stops": 25,
+        "num_stops": 29,
         "asset_path": "assets/transport_lines_public/core/199_aller.geojson"
       },
       "retour": {
         "direction": "retour",
-        "num_stops": 27,
+        "num_stops": 28,
         "asset_path": "assets/transport_lines_public/core/199_retour.geojson"
       }
     },
@@ -699,6 +1413,23 @@
         "direction": "retour",
         "num_stops": 27,
         "asset_path": "assets/transport_lines_public/core/J_retour.geojson"
+      }
+    },
+    {
+      "line_number": "Ligne 178 Rouge",
+      "display_name": "Ligne 178 Rouge",
+      "transport_type": "bus",
+      "color": "0xFF1565C0",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 25,
+        "asset_path": "assets/transport_lines_public/core/Ligne 178 Rouge_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 23,
+        "asset_path": "assets/transport_lines_public/core/Ligne 178 Rouge_retour.geojson"
       }
     }
   ]
