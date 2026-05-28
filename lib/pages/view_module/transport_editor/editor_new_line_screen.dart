@@ -400,6 +400,7 @@ class _EditorNewLineScreenState extends State<EditorNewLineScreen> {
         cooperative: _form.coopCtrl.text,
         schedule: _form.buildScheduleJson(),
         priceAriary: _form.priceAriary,
+        importanceTier: _form.importanceTier,
         allerFeatureCollection: _allerFC!,
         retourFeatureCollection: _retourFC!,
       );

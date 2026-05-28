@@ -286,6 +286,21 @@ class _LinesListState extends State<_LinesList> {
           );
         }
 
+        // Regroupement par tier d'importance (style M réso : Structurant /
+        // Lignes / Périurbain), en conservant le tri par numéro intra-tier.
+        final items = <_PanelEntry>[];
+        void addGroup(int tier) {
+          final g = metas.where((m) => m.importanceTier == tier).toList();
+          if (g.isEmpty) return;
+          items.add(_PanelHeader(_tierTitle(tier, locale)));
+          for (final m in g) {
+            items.add(_PanelLine(m));
+          }
+        }
+        addGroup(1);
+        addGroup(2);
+        addGroup(3);
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -314,26 +329,40 @@ class _LinesListState extends State<_LinesList> {
             Expanded(
               child: ListView.separated(
                 padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
-                itemCount: metas.length,
+                itemCount: items.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 4),
                 itemBuilder: (ctx, i) {
-                  final isSelected =
-                      widget.selectedLine == metas[i].lineNumber;
+                  final entry = items[i];
+                  if (entry is _PanelHeader) {
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(6, 10, 6, 2),
+                      child: Text(
+                        entry.title.toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.4,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    );
+                  }
+                  final meta = (entry as _PanelLine).meta;
+                  final isSelected = widget.selectedLine == meta.lineNumber;
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _LineRow(
-                        meta: metas[i],
+                        meta: meta,
                         selected: isSelected,
                         onTap: () {
-                          final selected = isSelected
-                              ? null
-                              : metas[i].lineNumber;
+                          final selected =
+                              isSelected ? null : meta.lineNumber;
                           widget.onLineSelected(selected);
                         },
                       ),
                       if (isSelected)
-                        _LineStopList(lineNumber: metas[i].lineNumber),
+                        _LineStopList(lineNumber: meta.lineNumber),
                     ],
                   );
                 },
@@ -343,6 +372,35 @@ class _LinesListState extends State<_LinesList> {
         );
       },
     );
+  }
+}
+
+/// Entrée de la liste groupée du panneau : soit un en-tête de tier, soit une
+/// ligne. Permet un seul ListView avec sections (style M réso).
+sealed class _PanelEntry {
+  const _PanelEntry();
+}
+
+class _PanelHeader extends _PanelEntry {
+  final String title;
+  const _PanelHeader(this.title);
+}
+
+class _PanelLine extends _PanelEntry {
+  final LineMetadata meta;
+  const _PanelLine(this.meta);
+}
+
+String _tierTitle(int tier, AppLocale locale) {
+  final en = locale == AppLocale.en;
+  switch (tier) {
+    case 1:
+      return en ? 'Trunk network' : 'Réseau structurant';
+    case 3:
+      return en ? 'Suburban' : 'Périurbain';
+    case 2:
+    default:
+      return en ? 'Lines' : 'Lignes';
   }
 }
 

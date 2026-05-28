@@ -185,6 +185,7 @@ class TransportEditorService {
       'display_name': m.displayName,
       'transport_type': m.transportType,
       'color': m.colorHex,
+      'importance_tier': m.importanceTier,
       'is_bundled': m.isBundled,
       if (aller != null) 'aller': {'feature_collection_json': json.encode(aller)},
       if (retour != null) 'retour': {'feature_collection_json': json.encode(retour)},
@@ -319,6 +320,8 @@ class TransportEditorService {
           'transport_type': lineMetadata['transport_type'],
         if (lineMetadata['color'] != null) 'color': lineMetadata['color'],
         if (lineMetadata['color2'] != null) 'color2': lineMetadata['color2'],
+        if (lineMetadata['importance_tier'] != null)
+          'importance_tier': lineMetadata['importance_tier'],
       },
       direction: {
         'feature_collection_json': json.encode(featureCollection),
@@ -416,6 +419,8 @@ class TransportEditorService {
           'transport_type': lineMetadata['transport_type'],
         if (lineMetadata['color'] != null) 'color': lineMetadata['color'],
         if (lineMetadata['color2'] != null) 'color2': lineMetadata['color2'],
+        if (lineMetadata['importance_tier'] != null)
+          'importance_tier': lineMetadata['importance_tier'],
       },
       direction: {
         'feature_collection_json': encoded,
@@ -570,6 +575,7 @@ class TransportEditorService {
     String? cooperative,
     Map<String, dynamic>? schedule,
     int? priceAriary,
+    int? importanceTier,
     bool clearCooperative = false,
     bool clearSchedule = false,
     bool clearPrice = false,
@@ -624,6 +630,9 @@ class TransportEditorService {
       patch['price_ariary'] = FieldValue.delete();
     } else if (priceAriary != null) {
       patch['price_ariary'] = priceAriary;
+    }
+    if (importanceTier != null) {
+      patch['importance_tier'] = importanceTier;
     }
 
     // 1. Écrit dans transport_lines_edited (source de vérité session).
@@ -891,6 +900,7 @@ class TransportEditorService {
     String? cooperative,
     Map<String, dynamic>? schedule,
     int? priceAriary,
+    int? importanceTier,
   }) async {
     final ref = _db.collection(collEdited).doc(lineNumber);
 
@@ -919,6 +929,8 @@ class TransportEditorService {
         'color2': colorHex2.trim(),
       'is_bundled': true,
       'is_new_line': true,
+      'importance_tier':
+          importanceTier ?? LineMetadata.deriveTier(transportType, lineNumber),
       if (coopClean != null && coopClean.isNotEmpty) 'cooperative': coopClean,
       if (schedule != null) 'schedule': schedule,
       if (priceAriary != null) 'price_ariary': priceAriary,

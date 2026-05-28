@@ -182,6 +182,11 @@ class TransitStrings {
       AppLocale.mg: 'Misy aho',
       AppLocale.en: 'My location',
     },
+    'route.pick.map': {
+      AppLocale.fr: 'Choisir le départ sur la carte',
+      AppLocale.mg: 'Mifidiana eo amin\'ny sarintany',
+      AppLocale.en: 'Pick origin on the map',
+    },
     'route.swap': {
       AppLocale.fr: 'Inverser départ et arrivée',
       AppLocale.mg: 'Hifamadika',

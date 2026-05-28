@@ -251,6 +251,9 @@ class _WizardBodyState extends State<_WizardBody> {
                 Map<String, dynamic>.from(doc['schedule'] as Map))
             : null,
         priceAriary: (doc['price_ariary'] as num?)?.toInt(),
+        importanceTier: (doc['importance_tier'] as num?)?.toInt() ??
+            LineMetadata.deriveTier(
+                (doc['transport_type'] as String?) ?? 'bus', line),
       ));
 
     bool clearCoop = false;
@@ -376,6 +379,7 @@ class _WizardBodyState extends State<_WizardBody> {
         clearSchedule: clearSchedule,
         priceAriary: clearPrice ? null : ctrl.priceAriary,
         clearPrice: clearPrice,
+        importanceTier: ctrl.importanceTier,
       );
       // Reload local doc pour refléter immédiatement dans l'UI.
       await p.loadLine(line, initialStep: p.step);

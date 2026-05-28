@@ -135,6 +135,14 @@ class LineMetadata {
   /// Stocké en Firestore comme `price_ariary` (entier).
   final int? priceAriary;
 
+  /// Niveau d'importance hiérarchique, pilote le rendu carto (style M réso) :
+  ///   1 = structurant (téléphérique, train urbain) — le plus visible
+  ///   2 = ligne "numéro" (bus à numéro chiffré, ex. 105, 199)
+  ///   3 = périurbain (bus lettre/quartier, ex. J, Ambohidratrimo)
+  /// Stocké en Firestore comme `importance_tier`. À défaut, dérivé via
+  /// [deriveTier] depuis le type de transport + le motif du numéro de ligne.
+  final int importanceTier;
+
   /// État de publication (par défaut `published`). Renseigné uniquement par
   /// `getAllLineMetadataForEditor()` pour permettre au dashboard consultant
   /// d'afficher un badge sur les lignes pas encore en prod.
@@ -152,8 +160,21 @@ class LineMetadata {
     this.cooperative,
     this.schedule,
     this.priceAriary,
+    this.importanceTier = 2,
     this.publicationState = LinePublicationState.published,
   });
+
+  /// Tier d'importance par défaut, dérivé du type de transport et du motif du
+  /// numéro de ligne. Sert de fallback quand `importance_tier` est absent des
+  /// données (manifest/Firestore). L'éditeur peut surcharger cette valeur.
+  static int deriveTier(String transportType, String lineNumber) {
+    final t = transportType.trim().toLowerCase();
+    if (t == 'telepherique' || t == 'tele' || t == 'urbantrain' ||
+        t == 'train') {
+      return 1;
+    }
+    return RegExp(r'^\d+$').hasMatch(lineNumber.trim()) ? 2 : 3;
+  }
 
   factory LineMetadata.fromJson(Map<String, dynamic> json) {
     return LineMetadata(
@@ -161,6 +182,11 @@ class LineMetadata {
       displayName: json['display_name'],
       transportType: json['transport_type'],
       colorHex: json['color'],
+      importanceTier: (json['importance_tier'] as num?)?.toInt() ??
+          deriveTier(
+            (json['transport_type'] as String?) ?? 'bus',
+            (json['line_number'] as String?) ?? '',
+          ),
       colorHex2: (json['color2'] as String?)?.trim().isEmpty == true
           ? null
           : json['color2'] as String?,
@@ -198,6 +224,7 @@ class LineMetadata {
     String? cooperative,
     LineSchedule? schedule,
     int? priceAriary,
+    int? importanceTier,
     LinePublicationState? publicationState,
   }) {
     return LineMetadata(
@@ -214,6 +241,7 @@ class LineMetadata {
       cooperative: cooperative ?? this.cooperative,
       schedule: schedule ?? this.schedule,
       priceAriary: priceAriary ?? this.priceAriary,
+      importanceTier: importanceTier ?? this.importanceTier,
       publicationState: publicationState ?? this.publicationState,
     );
   }
@@ -388,6 +416,9 @@ class TransportLinesService {
             ? LineSchedule.fromJson(
                 Map<String, dynamic>.from(data['schedule'] as Map))
             : null,
+        importanceTier: (data['importance_tier'] as num?)?.toInt() ??
+            LineMetadata.deriveTier(
+                (data['transport_type'] as String?) ?? 'bus', line),
       ));
     });
     return out;
@@ -417,6 +448,7 @@ class TransportLinesService {
               Map<String, dynamic>.from(ov['schedule'] as Map))
           : null,
       priceAriary: (ov['price_ariary'] as num?)?.toInt(),
+      importanceTier: (ov['importance_tier'] as num?)?.toInt(),
     );
   }
 
@@ -498,6 +530,9 @@ class TransportLinesService {
                 Map<String, dynamic>.from(src['schedule'] as Map))
             : null,
         priceAriary: (src['price_ariary'] as num?)?.toInt(),
+        importanceTier: (src['importance_tier'] as num?)?.toInt() ??
+            LineMetadata.deriveTier(
+                (src['transport_type'] as String?) ?? 'bus', code),
         publicationState: state,
       ));
     }

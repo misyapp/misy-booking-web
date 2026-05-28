@@ -96,6 +96,10 @@ class _RouteCalculatorState extends State<RouteCalculator> {
 
   // Autocomplete state.
   String? _activeField; // 'origin' | 'destination' | null
+  // Mode "choisir le départ sur la carte" : activé par le bouton à côté du
+  // champ Départ. Hors de ce mode, les taps carte sont ignorés (la carte
+  // n'est pas cliquable par défaut). One-shot : se désactive après 1 tap.
+  bool _pickOnMap = false;
   List<_Suggestion> _suggestions = const [];
   Timer? _debounce;
   String? _lastFetchedQuery;
@@ -103,11 +107,6 @@ class _RouteCalculatorState extends State<RouteCalculator> {
   // QUAND.
   bool _isDeparture = true;
   DateTime _scheduledTime = DateTime.now();
-
-  /// Dernier champ qu'un map-tap doit ajuster. Mis à jour quand l'user
-  /// pose un point (autocomplete OU map-tap). Permet à l'user de cliquer
-  /// sur la carte pour affiner le point qu'il vient de fixer.
-  String? _lastAdjustedField;
 
   @override
   void initState() {
@@ -146,31 +145,25 @@ class _RouteCalculatorState extends State<RouteCalculator> {
     super.dispose();
   }
 
-  /// Quand l'user clique sur la carte en mode public, on ajuste le
-  /// dernier point posé (`_lastAdjustedField`). Si rien n'a encore été
-  /// posé, le clic remplit l'origine par défaut.
+  /// Tap carte → fixe le DÉPART, mais uniquement si l'user a activé le mode
+  /// via le bouton à côté du champ Départ (sinon la carte n'est pas
+  /// cliquable). One-shot : le mode se désactive après le tap.
   void _handleMapTap() {
     final pos = widget.mapTapNotifier?.value;
     if (pos == null || !mounted) return;
-    final target = _lastAdjustedField ??
-        (_originPos == null ? 'origin' : 'destination');
+    if (!_pickOnMap) return;
     final coordsLabel =
         '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}';
     setState(() {
-      if (target == 'origin') {
-        _originPos = pos;
-        _originCtrl.text = coordsLabel;
-      } else {
-        _destPos = pos;
-        _destCtrl.text = coordsLabel;
-      }
-      _lastAdjustedField = target;
+      _originPos = pos;
+      _originCtrl.text = coordsLabel;
       _activeField = null;
       _suggestions = const [];
+      _pickOnMap = false; // one-shot : on quitte le mode après 1 tap.
     });
     _notifyPoints();
     // Reverse-geocode en parallèle pour enrichir le label texte.
-    _reverseGeocodeLabel(target, pos, coordsLabel);
+    _reverseGeocodeLabel('origin', pos, coordsLabel);
   }
 
   Future<void> _reverseGeocodeLabel(
@@ -313,7 +306,6 @@ class _RouteCalculatorState extends State<RouteCalculator> {
         _originCtrl.text = TransitStrings.t('route.my.location', locale);
         _activeField = null;
         _suggestions = const [];
-        _lastAdjustedField = 'origin';
       });
       _notifyPoints();
     } catch (_) {}
@@ -338,11 +330,9 @@ class _RouteCalculatorState extends State<RouteCalculator> {
       if (_activeField == 'origin') {
         _originCtrl.text = s.label;
         _originPos = s.position;
-        _lastAdjustedField = 'origin';
       } else if (_activeField == 'destination') {
         _destCtrl.text = s.label;
         _destPos = s.position;
-        _lastAdjustedField = 'destination';
       }
       _activeField = null;
       _suggestions = const [];
@@ -741,14 +731,36 @@ class _RouteCalculatorState extends State<RouteCalculator> {
             placeholder: TransitStrings.t('route.origin.placeholder', locale),
             iconColor: const Color(0xFF43A047),
             iconLabel: 'O',
-            trailing: IconButton(
-              icon: const Icon(Icons.my_location, size: 18),
-              tooltip: TransitStrings.t('route.my.location', locale),
-              onPressed: _useMyLocation,
-              color: const Color(0xFF1565C0),
-              padding: EdgeInsets.zero,
-              constraints:
-                  const BoxConstraints(minWidth: 32, minHeight: 32),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: Icon(
+                    _pickOnMap
+                        ? Icons.wrong_location_outlined
+                        : Icons.add_location_alt_outlined,
+                    size: 18,
+                  ),
+                  tooltip: TransitStrings.t('route.pick.map', locale),
+                  onPressed: () =>
+                      setState(() => _pickOnMap = !_pickOnMap),
+                  color: _pickOnMap
+                      ? const Color(0xFFFF5357)
+                      : const Color(0xFF1565C0),
+                  padding: EdgeInsets.zero,
+                  constraints:
+                      const BoxConstraints(minWidth: 32, minHeight: 32),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.my_location, size: 18),
+                  tooltip: TransitStrings.t('route.my.location', locale),
+                  onPressed: _useMyLocation,
+                  color: const Color(0xFF1565C0),
+                  padding: EdgeInsets.zero,
+                  constraints:
+                      const BoxConstraints(minWidth: 32, minHeight: 32),
+                ),
+              ],
             ),
             onChanged: (v) => setState(() {
               if (_originPos != null) {

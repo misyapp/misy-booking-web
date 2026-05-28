@@ -34,6 +34,12 @@ class LineTagChips extends StatelessWidget {
       color: const Color(0xFF1565C0),
     ));
 
+    chips.add(_textChip(
+      icon: Icons.layers_outlined,
+      label: _labelForTier(line.importanceTier),
+      color: const Color(0xFF455A64),
+    ));
+
     final coop = line.cooperative?.trim();
     if (coop != null && coop.isNotEmpty) {
       chips.add(_textChip(
@@ -150,6 +156,18 @@ class LineTagChips extends StatelessWidget {
       case 'bus':
       default:
         return 'Bus / Taxi-be';
+    }
+  }
+
+  String _labelForTier(int tier) {
+    switch (tier) {
+      case 1:
+        return 'Tier 1 · structurant';
+      case 3:
+        return 'Tier 3 · périurbain';
+      case 2:
+      default:
+        return 'Tier 2 · ligne';
     }
   }
 

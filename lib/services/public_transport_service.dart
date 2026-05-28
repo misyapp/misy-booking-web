@@ -72,9 +72,20 @@ class PublicTransportService {
       }
       scored.add(MapEntry(group.lineNumber, total));
     }
-    scored.sort((a, b) => b.value.compareTo(a.value));
+    // Tri principal par tier d'importance (1 = structurant en tête), puis par
+    // longueur décroissante au sein d'un même tier. Le tier pilote ainsi
+    // l'ordre de rendu (z-order) et le filtrage zoom.
+    scored.sort((a, b) {
+      final ta = _manifest?[a.key]?.importanceTier ?? 2;
+      final tb = _manifest?[b.key]?.importanceTier ?? 2;
+      if (ta != tb) return ta.compareTo(tb);
+      return b.value.compareTo(a.value);
+    });
     _linesByImportance = scored.map((e) => e.key).toList(growable: false);
   }
+
+  /// Tier d'importance d'une ligne (1/2/3), 2 par défaut.
+  int tierFor(String lineNumber) => _manifest?[lineNumber]?.importanceTier ?? 2;
 
   static double _polylineLengthKm(List<LatLng> pts) {
     if (pts.length < 2) return 0;
@@ -99,33 +110,12 @@ class PublicTransportService {
 
   static double _toRad(double deg) => deg * math.pi / 180.0;
 
-  /// Sous-ensemble des lignes à afficher pour un niveau de zoom donné.
-  /// Plus on dezoom, moins de lignes — on garde les axes longs en priorité.
-  ///
-  /// Seuils calibrés pour Tana (95 lignes max, on en a 40 admin-validées en
-  /// production actuellement) :
-  ///   - zoom <  11   : top 5 (vue régionale, axes principaux)
-  ///   - zoom 11-12   : top 10
-  ///   - zoom 12-13   : top 20
-  ///   - zoom 13-14   : top 30
-  ///   - zoom >= 14   : toutes les lignes
+  /// Toutes les lignes sont affichées quel que soit le zoom (choix produit
+  /// 2026-05-28 : on veut voir le réseau complet en permanence, pas de cap
+  /// anti-fouillis). Le paramètre [zoom] est conservé pour la compatibilité
+  /// des appelants mais n'a plus d'effet sur le sous-ensemble retourné.
   Set<String> visibleLineNumbersForZoom(double zoom) {
-    final all = _linesByImportance;
-    if (all.isEmpty) return const {};
-    int cap;
-    if (zoom < 11) {
-      cap = 5;
-    } else if (zoom < 12) {
-      cap = 10;
-    } else if (zoom < 13) {
-      cap = 20;
-    } else if (zoom < 14) {
-      cap = 30;
-    } else {
-      cap = all.length;
-    }
-    if (cap >= all.length) return all.toSet();
-    return all.take(cap).toSet();
+    return _linesByImportance.toSet();
   }
 
   Future<void> _loadLine(LineMetadata m) async {

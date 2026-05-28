@@ -1989,6 +1989,7 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                 'display_name': widget.meta!.displayName,
                 'transport_type': widget.meta!.transportType,
                 'color': widget.meta!.colorHex,
+                'importance_tier': widget.meta!.importanceTier,
               },
       );
       if (!mounted) return;
@@ -2062,6 +2063,7 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                 'display_name': widget.meta!.displayName,
                 'transport_type': widget.meta!.transportType,
                 'color': widget.meta!.colorHex,
+                'importance_tier': widget.meta!.importanceTier,
               },
         numStops: result.numStops,
         numVertices: result.numVertices,

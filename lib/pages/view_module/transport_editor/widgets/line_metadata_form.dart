@@ -18,6 +18,22 @@ class LineMetadataFormController {
   String transportType = 'bus';
   int colorValue = 0xFF1565C0;
 
+  /// Tier d'importance (1 structurant / 2 ligne numéro / 3 périurbain). Pilote
+  /// le rendu carto. Défaut auto-dérivé du type + numéro, surchargeable.
+  int importanceTier = 2;
+
+  /// Vrai dès que l'éditeur a choisi un tier à la main → on ne réécrase plus
+  /// avec la valeur auto-dérivée quand le type / numéro change.
+  bool importanceTierTouched = false;
+
+  /// Recalcule le tier par défaut depuis le type + le numéro, sauf si
+  /// l'éditeur l'a explicitement fixé.
+  void refreshDefaultTier() {
+    if (!importanceTierTouched) {
+      importanceTier = LineMetadata.deriveTier(transportType, numberCtrl.text);
+    }
+  }
+
   /// Couleur secondaire optionnelle (style ligne IDFM bi-color). Null = mono.
   /// Rendue en trait pointillé par-dessus la couleur principale sur les
   /// cartes éditeur/admin.
@@ -53,6 +69,8 @@ class LineMetadataFormController {
     transportType = m.transportType;
     colorValue = m.colorValue;
     colorValue2 = m.colorValue2;
+    importanceTier = m.importanceTier;
+    importanceTierTouched = true; // valeur déjà stockée → on la respecte
     final s = m.schedule;
     if (s != null) {
       firstCtrl.text = s.firstDeparture ?? '';
@@ -187,7 +205,10 @@ class _LineMetadataFormState extends State<LineMetadataForm> {
             helperMaxLines: 3,
           ),
           textCapitalization: TextCapitalization.characters,
-          onChanged: (_) => _bumped(),
+          onChanged: (_) {
+            c.refreshDefaultTier();
+            _bumped();
+          },
         ),
         if (!widget.numberLocked && widget.existingCodes != null)
           _ExistingCodesSuggestion(
@@ -248,6 +269,37 @@ class _LineMetadataFormState extends State<LineMetadataForm> {
           ],
           onChanged: (v) {
             c.transportType = v ?? 'bus';
+            c.refreshDefaultTier();
+            // Téléphérique → orange par défaut (si couleur encore au défaut).
+            if (c.transportType == 'telepherique' &&
+                c.colorValue == 0xFF1565C0) {
+              c.colorValue = 0xFFFF9800;
+            }
+            _bumped();
+          },
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<int>(
+          value: c.importanceTier,
+          decoration: const InputDecoration(
+            labelText: 'Importance (affichage carte)',
+            border: OutlineInputBorder(),
+            helperText:
+                'Pilote l\'épaisseur et la priorité visuelle sur le plan. '
+                'Pré-rempli selon le type et le numéro, modifiable.',
+            helperMaxLines: 2,
+          ),
+          items: const [
+            DropdownMenuItem(
+                value: 1,
+                child: Text('1 — Structurant (téléphérique / train)')),
+            DropdownMenuItem(value: 2, child: Text('2 — Ligne (numéro)')),
+            DropdownMenuItem(
+                value: 3, child: Text('3 — Périurbain (lettre / quartier)')),
+          ],
+          onChanged: (v) {
+            c.importanceTier = v ?? 2;
+            c.importanceTierTouched = true;
             _bumped();
           },
         ),

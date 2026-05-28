@@ -111,6 +111,24 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Nom de fichier d'asset sûr : pas d'espace. Flutter web échoue à charger un
+// asset dont le nom contient un espace (clé AssetManifest = espace, fichier
+// servi en %20 → fetch malformé). Le line_number garde sa forme d'origine
+// (espaces inclus) pour l'affichage/type/couleur ; seul le FICHIER est slugué.
+function slugFileName(lineNumber) {
+  return String(lineNumber).replace(/\s+/g, '_');
+}
+
+// Miroir de LineMetadata.deriveTier (Dart) : tier d'importance par défaut.
+//   1 = structurant (téléphérique/train), 2 = ligne numéro, 3 = périurbain.
+function deriveImportanceTier(transportType, lineNumber) {
+  const t = String(transportType || '').trim().toLowerCase();
+  if (t === 'telepherique' || t === 'tele' || t === 'urbantrain' || t === 'train') {
+    return 1;
+  }
+  return /^\d+$/.test(String(lineNumber || '').trim()) ? 2 : 3;
+}
+
 function assetPaths(lineNumber) {
   return {
     aller: path.join(CORE_DIR, `${lineNumber}_aller.geojson`),
@@ -293,6 +311,7 @@ async function cmdPull(db, args) {
     entry.transport_type = data.transport_type || entry.transport_type;
     entry.color = data.color || entry.color;
     entry.is_bundled = data.is_bundled ?? entry.is_bundled ?? true;
+    if (data.importance_tier != null) entry.importance_tier = data.importance_tier;
 
     const allerFc = extractFeatureCollection(data.aller);
     if (allerFc) {
@@ -386,10 +405,11 @@ async function cmdPublishBundle(db, args) {
       continue;
     }
 
-    const allerPath = path.join(PUBLIC_CORE_DIR, `${lineNumber}_aller.geojson`);
+    const fileBase = slugFileName(lineNumber);
+    const allerPath = path.join(PUBLIC_CORE_DIR, `${fileBase}_aller.geojson`);
     const retourPath = path.join(
       PUBLIC_CORE_DIR,
-      `${lineNumber}_retour.geojson`,
+      `${fileBase}_retour.geojson`,
     );
 
     if (!dryRun) {
@@ -411,15 +431,18 @@ async function cmdPublishBundle(db, args) {
       transport_type: data.transport_type || 'bus',
       color: data.color || '0xFF1565C0',
       is_bundled: true,
+      importance_tier: data.importance_tier != null
+        ? data.importance_tier
+        : deriveImportanceTier(data.transport_type || 'bus', lineNumber),
       aller: {
         direction: allerFc.properties?.direction || '',
         num_stops: countStops(allerFc),
-        asset_path: `assets/transport_lines_public/core/${lineNumber}_aller.geojson`,
+        asset_path: `assets/transport_lines_public/core/${fileBase}_aller.geojson`,
       },
       retour: {
         direction: retourFc.properties?.direction || '',
         num_stops: countStops(retourFc),
-        asset_path: `assets/transport_lines_public/core/${lineNumber}_retour.geojson`,
+        asset_path: `assets/transport_lines_public/core/${fileBase}_retour.geojson`,
       },
     });
   }
@@ -444,12 +467,18 @@ async function cmdPublishBundle(db, args) {
     const allerFc = JSON.parse(fs.readFileSync(allerPath, 'utf8'));
     const retourFc = JSON.parse(fs.readFileSync(retourPath, 'utf8'));
     const prev = prevByLine.get(lineNumber) || {};
+    const isTele = /TELEPHERIQUE/i.test(lineNumber);
+    const specialType = isTele ? 'telepherique' : 'urbanTrain';
+    // Téléphérique forcé orange (cf. style M réso : tier structurant).
+    const specialColor = prev.color || (isTele ? '0xFFFF9800' : '0xFF4CAF50');
     manifestEntries.push({
       line_number: lineNumber,
       display_name: prev.display_name || lineNumber,
-      transport_type: prev.transport_type || 'bus',
-      color: prev.color || '0xFF1565C0',
+      transport_type: prev.transport_type || specialType,
+      color: specialColor,
       is_bundled: true,
+      // Lignes structurantes = tier 1 (le plus visible sur la carte).
+      importance_tier: 1,
       aller: {
         direction: 'aller',
         num_stops: countStops(allerFc),
