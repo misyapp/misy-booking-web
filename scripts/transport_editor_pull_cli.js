@@ -424,6 +424,46 @@ async function cmdPublishBundle(db, args) {
     });
   }
 
+  // 2b. Lignes spéciales (téléphérique, train urbain) — PAS gérées par
+  // l'éditeur terrain Firestore. On les préserve depuis les GeoJSON committés
+  // dans PUBLIC_CORE_DIR (+ display_name/color du manifest existant) pour
+  // qu'une régénération ne les efface pas du bundle public.
+  const SPECIAL_LINES = ['TELEPHERIQUE_Orange', 'TRAIN_TCE'];
+  const prevManifest = fs.existsSync(PUBLIC_MANIFEST_PATH)
+    ? JSON.parse(fs.readFileSync(PUBLIC_MANIFEST_PATH, 'utf8'))
+    : { lines: [] };
+  const prevByLine = new Map(
+    (prevManifest.lines || []).map((l) => [l.line_number, l]),
+  );
+  const alreadyBundled = new Set(manifestEntries.map((e) => e.line_number));
+  for (const lineNumber of SPECIAL_LINES) {
+    if (alreadyBundled.has(lineNumber)) continue;
+    const allerPath = path.join(PUBLIC_CORE_DIR, `${lineNumber}_aller.geojson`);
+    const retourPath = path.join(PUBLIC_CORE_DIR, `${lineNumber}_retour.geojson`);
+    if (!fs.existsSync(allerPath) || !fs.existsSync(retourPath)) continue;
+    const allerFc = JSON.parse(fs.readFileSync(allerPath, 'utf8'));
+    const retourFc = JSON.parse(fs.readFileSync(retourPath, 'utf8'));
+    const prev = prevByLine.get(lineNumber) || {};
+    manifestEntries.push({
+      line_number: lineNumber,
+      display_name: prev.display_name || lineNumber,
+      transport_type: prev.transport_type || 'bus',
+      color: prev.color || '0xFF1565C0',
+      is_bundled: true,
+      aller: {
+        direction: 'aller',
+        num_stops: countStops(allerFc),
+        asset_path: `assets/transport_lines_public/core/${lineNumber}_aller.geojson`,
+      },
+      retour: {
+        direction: 'retour',
+        num_stops: countStops(retourFc),
+        asset_path: `assets/transport_lines_public/core/${lineNumber}_retour.geojson`,
+      },
+    });
+    console.log(`➕ ${lineNumber.padEnd(8)} ligne spéciale préservée (hors Firestore)`);
+  }
+
   // 3. Écrire le manifest public.
   const manifest = {
     version: '1.0',

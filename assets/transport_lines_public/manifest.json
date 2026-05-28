@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "last_updated": "2026-05-28",
-  "total_lines": 84,
+  "total_lines": 86,
   "source": "transport_lines_published Firestore (admin-approved only)",
   "lines": [
     {
@@ -1430,6 +1430,40 @@
         "direction": "retour",
         "num_stops": 23,
         "asset_path": "assets/transport_lines_public/core/Ligne 178 Rouge_retour.geojson"
+      }
+    },
+    {
+      "line_number": "TELEPHERIQUE_Orange",
+      "display_name": "Téléphérique Orange",
+      "transport_type": "telepherique",
+      "color": "0xFFE65108",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 7,
+        "asset_path": "assets/transport_lines_public/core/TELEPHERIQUE_Orange_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 7,
+        "asset_path": "assets/transport_lines_public/core/TELEPHERIQUE_Orange_retour.geojson"
+      }
+    },
+    {
+      "line_number": "TRAIN_TCE",
+      "display_name": "Train urbain TCE",
+      "transport_type": "urbanTrain",
+      "color": "0xFF1B8C32",
+      "is_bundled": true,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 8,
+        "asset_path": "assets/transport_lines_public/core/TRAIN_TCE_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 8,
+        "asset_path": "assets/transport_lines_public/core/TRAIN_TCE_retour.geojson"
       }
     }
   ]
