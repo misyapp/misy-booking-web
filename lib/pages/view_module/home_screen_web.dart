@@ -234,12 +234,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// la sélection en cours.
   List<_PublicStopAggregate> _baseClusters = const [];
 
-  /// Tracés décalés (faisceau parallèle) par '${lineNumber}_${dir}'. Précalculé
-  /// une fois au load par [_precomputeParallelOffsets]. Sur un tronçon partagé,
-  /// chaque ligne est décalée perpendiculairement pour s'afficher côte à côte
-  /// (style M réso). Vide tant que non calculé → fallback sur le tracé brut.
-  Map<String, List<LatLng>> _offsetCoords = const {};
-
   // Cache des coordonnées écran de chaque stop visible. Recalculé à chaque
   // onCameraIdle via une interpolation linéaire depuis getVisibleRegion
   // (rapide, sync sur N stops). Utilisé par la détection de hover pour
@@ -2976,235 +2970,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     try {
       await PublicTransportService.instance.ensureLoaded();
       if (!mounted) return;
-      _precomputeParallelOffsets();
       _precomputeBaseClusters();
       await _rebuildPublicTransportLayers();
       setState(() => _publicTransportLoaded = true);
     } catch (e) {
       myCustomPrintStatement('PublicTransportLayers: erreur chargement $e');
     }
-  }
-
-  // ───────── Faisceau parallèle (offset des lignes partagées) ─────────
-  // Paramètres réglables à vue.
-  static const double _offsetSampleStepM = 10.0; // densification
-  static const double _offsetMergeRadiusM = 12.0; // co-localisation
-  static const double _offsetSpacingM = 5.0; // écart entre rubans
-  static const double _offsetBearingTolDeg = 25.0; // tolérance de cap
-
-  /// Tracé "rendu" d'une direction : version décalée (faisceau) si dispo,
-  /// sinon coords brutes.
-  List<LatLng> _renderCoords(String lineNumber, String dir, List<LatLng> raw) =>
-      _offsetCoords['${lineNumber}_$dir'] ?? raw;
-
-  /// Densifie un tracé à pas ~constant en gardant le cap local de chaque point.
-  List<_OffsetSample> _densifyWithBearing(List<LatLng> pts) {
-    final out = <_OffsetSample>[];
-    for (var i = 0; i < pts.length - 1; i++) {
-      final a = pts[i], b = pts[i + 1];
-      final segLen = _metersBetween(a, b);
-      if (segLen <= 0) continue;
-      final brg =
-          _bearingBetween(a.latitude, a.longitude, b.latitude, b.longitude);
-      final steps = (segLen / _offsetSampleStepM).ceil().clamp(1, 100000);
-      for (var s = 0; s < steps; s++) {
-        final t = s / steps;
-        out.add(_OffsetSample(
-          LatLng(a.latitude + (b.latitude - a.latitude) * t,
-              a.longitude + (b.longitude - a.longitude) * t),
-          brg,
-        ));
-      }
-    }
-    if (pts.length >= 2) {
-      final last = pts.last, prev = pts[pts.length - 2];
-      out.add(_OffsetSample(
-        last,
-        _bearingBetween(
-            prev.latitude, prev.longitude, last.latitude, last.longitude),
-      ));
-    }
-    return out;
-  }
-
-  /// Écart angulaire ramené sur [0,90] (les sens opposés d'une même rue sont
-  /// traités comme le même axe).
-  double _bearingDiffMod180(double a, double b) {
-    var d = (a - b).abs() % 360.0;
-    if (d > 180.0) d = 360.0 - d;
-    if (d > 90.0) d = 180.0 - d;
-    return d;
-  }
-
-  /// Précalcule les tracés décalés pour afficher les lignes partageant une rue
-  /// en rubans parallèles centrés (style M réso). Densification → index grille
-  /// → ensemble co-localisé (même axe) → slot stable (importance puis numéro)
-  /// → offset perpendiculaire. O(points) grâce à la grille.
-  void _precomputeParallelOffsets() {
-    final svc = PublicTransportService.instance;
-    final byImportance = svc.linesByImportance;
-    final rank = <String, int>{
-      for (var i = 0; i < byImportance.length; i++) byImportance[i]: i,
-    };
-
-    // 1. Densifier chaque (ligne, sens).
-    final samples = <String, List<_OffsetSample>>{};
-    for (final ln in byImportance) {
-      final g = svc.getLineGroup(ln);
-      if (g == null) continue;
-      final a = g.aller, r = g.retour;
-      if (a != null && a.coordinates.length >= 2) {
-        samples['${ln}_aller'] = _densifyWithBearing(a.coordinates);
-      }
-      if (r != null && r.coordinates.length >= 2) {
-        samples['${ln}_retour'] = _densifyWithBearing(r.coordinates);
-      }
-    }
-    if (samples.isEmpty) {
-      _offsetCoords = const {};
-      return;
-    }
-
-    // 2. Index grille (cellule ≈ rayon de fusion).
-    const cell = _offsetMergeRadiusM;
-    final grid = <String, List<_GridEntry>>{};
-    List<int> cellOf(LatLng p) => [
-          (p.longitude * 111320.0 * cos(p.latitude * pi / 180) / cell).floor(),
-          (p.latitude * 111320.0 / cell).floor(),
-        ];
-    samples.forEach((key, list) {
-      for (final s in list) {
-        final c = cellOf(s.pos);
-        grid
-            .putIfAbsent('${c[0]}_${c[1]}', () => [])
-            .add(_GridEntry(key, s.bearing, s.pos));
-      }
-    });
-
-    String lineOf(String key) => key.endsWith('_aller')
-        ? key.substring(0, key.length - 6)
-        : key.substring(0, key.length - 7);
-
-    // 3. Offset par point + LISSAGE (sinon gribouillis aux carrefours).
-    final result = <String, List<LatLng>>{};
-    final selfLineOf = <String, String>{
-      for (final key in samples.keys) key: lineOf(key),
-    };
-    samples.forEach((key, list) {
-      final selfLine = selfLineOf[key]!;
-
-      // 3a. Amplitude d'offset brute par point (slot parmi les LIGNES
-      //     co-localisées : aller+retour d'une même ligne = même slot → ils
-      //     se confondent ; seules les lignes différentes s'écartent).
-      final rawOff = List<double>.filled(list.length, 0.0);
-      for (var i = 0; i < list.length; i++) {
-        final s = list[i];
-        final c = cellOf(s.pos);
-        final coLines = <String>{selfLine};
-        for (var dx = -1; dx <= 1; dx++) {
-          for (var dy = -1; dy <= 1; dy++) {
-            final bucket = grid['${c[0] + dx}_${c[1] + dy}'];
-            if (bucket == null) continue;
-            for (final e in bucket) {
-              final el = lineOf(e.key);
-              if (coLines.contains(el)) continue;
-              if (_metersBetween(s.pos, e.pos) <= _offsetMergeRadiusM &&
-                  _bearingDiffMod180(s.bearing, e.bearing) <=
-                      _offsetBearingTolDeg) {
-                coLines.add(el);
-              }
-            }
-          }
-        }
-        final sorted = coLines.toList()
-          ..sort((x, y) {
-            final rx = rank[x] ?? (1 << 30);
-            final ry = rank[y] ?? (1 << 30);
-            return rx != ry ? rx.compareTo(ry) : x.compareTo(y);
-          });
-        rawOff[i] =
-            (sorted.indexOf(selfLine) - (sorted.length - 1) / 2.0) *
-                _offsetSpacingM;
-      }
-
-      // 3b. Lissage de l'amplitude → fan in/out progressif (pas de saut de slot).
-      final smOff = _movingAverage(rawOff, 4);
-
-      // 3c. Cap perpendiculaire sur FENÊTRE (~30 m) + déroulé continu le long
-      //     de la ligne (évite le flip de l'axe canonique à 0/180 → kinks).
-      final pts = <LatLng>[];
-      double? prevCanon;
-      for (var i = 0; i < list.length; i++) {
-        final s = list[i];
-        final off = smOff[i];
-        if (off.abs() < 0.05) {
-          pts.add(s.pos);
-          prevCanon = null; // reset déroulé sur les portions non décalées
-          continue;
-        }
-        const w = 3;
-        final a = list[(i - w) < 0 ? 0 : i - w].pos;
-        final b = list[(i + w) >= list.length ? list.length - 1 : i + w].pos;
-        var canon =
-            _bearingBetween(a.latitude, a.longitude, b.latitude, b.longitude) %
-                180.0;
-        if (prevCanon != null) {
-          while (canon - prevCanon! > 90) canon -= 180;
-          while (canon - prevCanon! < -90) canon += 180;
-        }
-        prevCanon = canon;
-        final theta = (canon + 90.0) * pi / 180.0;
-        final dLat = (off * cos(theta)) / 111320.0;
-        final dLng =
-            (off * sin(theta)) / (111320.0 * cos(s.pos.latitude * pi / 180));
-        pts.add(LatLng(s.pos.latitude + dLat, s.pos.longitude + dLng));
-      }
-
-      // 3d. Chaikin : arrondit les angles → trajectoire douce et lisse.
-      result[key] = _chaikin(pts, 2);
-    });
-
-    _offsetCoords = result;
-  }
-
-  /// Moyenne glissante (fenêtre ±[w]) sur une séquence de réels.
-  List<double> _movingAverage(List<double> v, int w) {
-    if (v.length < 2 || w <= 0) return v;
-    final out = List<double>.filled(v.length, 0.0);
-    for (var i = 0; i < v.length; i++) {
-      var sum = 0.0;
-      var cnt = 0;
-      for (var j = i - w; j <= i + w; j++) {
-        if (j < 0 || j >= v.length) continue;
-        sum += v[j];
-        cnt++;
-      }
-      out[i] = sum / cnt;
-    }
-    return out;
-  }
-
-  /// Lissage de Chaikin (corner-cutting) : arrondit une polyligne en coupant
-  /// les angles. [iterations] passes. Extrémités conservées.
-  List<LatLng> _chaikin(List<LatLng> pts, int iterations) {
-    var cur = pts;
-    for (var it = 0; it < iterations && cur.length >= 3; it++) {
-      final next = <LatLng>[cur.first];
-      for (var i = 0; i < cur.length - 1; i++) {
-        final p = cur[i], q = cur[i + 1];
-        next.add(LatLng(
-          p.latitude * 0.75 + q.latitude * 0.25,
-          p.longitude * 0.75 + q.longitude * 0.25,
-        ));
-        next.add(LatLng(
-          p.latitude * 0.25 + q.latitude * 0.75,
-          p.longitude * 0.25 + q.longitude * 0.75,
-        ));
-      }
-      next.add(cur.last);
-      cur = next;
-    }
-    return cur;
   }
 
   /// Pré-calcule UNE FOIS la liste des clusters d'arrêts (dédup name +
@@ -3433,12 +3204,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
       void addPolyline(TransportLine? line, String dir) {
         if (line == null || line.coordinates.length < 2) return;
-        // En vue réseau : tracé décalé (faisceau parallèle) pour que les lignes
-        // d'un même corridor s'affichent côte à côte. En sélection (ligne
-        // seule) : tracé brut, pile sur la rue.
-        final pts = isSelected
-            ? line.coordinates
-            : _renderCoords(lineNumber, dir, line.coordinates);
+        final pts = line.coordinates;
         if (drawCasing) {
           polylines.add(Polyline(
             polylineId: PolylineId('pt_${lineNumber}_${dir}_casing'),
@@ -3464,14 +3230,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       addPolyline(group.retour, 'retour');
 
       // Bouts du tracé (= les 2 terminus) à fermer par un gros point.
-      final capDir = group.aller != null ? 'aller' : 'retour';
       final capLine = group.aller ?? group.retour;
       if (capLine != null && capLine.coordinates.length >= 2) {
-        final cpts = isSelected
-            ? capLine.coordinates
-            : _renderCoords(lineNumber, capDir, capLine.coordinates);
-        termCaps.add(cpts.first);
-        termCaps.add(cpts.last);
+        termCaps.add(capLine.coordinates.first);
+        termCaps.add(capLine.coordinates.last);
       }
     }
 
@@ -5378,21 +5140,6 @@ class _SchedulePickerDialogState extends State<_SchedulePickerDialog> {
 }
 
 /// Stop "brut" en sortie d'un GeoJSON, avant clustering par proximité.
-/// Point densifié d'un tracé + cap local, pour le calcul du faisceau parallèle.
-class _OffsetSample {
-  final LatLng pos;
-  final double bearing;
-  const _OffsetSample(this.pos, this.bearing);
-}
-
-/// Entrée de l'index grille (faisceau parallèle).
-class _GridEntry {
-  final String key; // '${lineNumber}_${dir}'
-  final double bearing;
-  final LatLng pos;
-  const _GridEntry(this.key, this.bearing, this.pos);
-}
-
 class _RawStop {
   final LatLng position;
   final String name;
