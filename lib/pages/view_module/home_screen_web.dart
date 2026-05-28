@@ -3034,9 +3034,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   void _precomputeTrunks() {
     final svc = PublicTransportService.instance;
     final byImportance = svc.linesByImportance;
-    final rank = <String, int>{
-      for (var i = 0; i < byImportance.length; i++) byImportance[i]: i,
-    };
 
     final samples = <String, List<_TrunkSample>>{};
     for (final ln in byImportance) {
@@ -3080,16 +3077,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       final isRetour = key.endsWith('_retour');
       final allerKey = '${selfLine}_aller';
 
-      // Passe 1 : comptage + représentant + chevauchement propre aller.
+      // Passe 1 : comptage des LIGNES distinctes co-localisées (une route à
+      // double voie = 1) + chevauchement avec le propre aller (dédup).
       final cnt = List<int>.filled(list.length, 1);
-      final isRep = List<bool>.filled(list.length, true);
       final dupAller = List<bool>.filled(list.length, false);
       for (var i = 0; i < list.length; i++) {
         final s = list[i];
         final c = cellOf(s.pos);
         final coLines = <String>{selfLine};
-        var rep = selfLine;
-        var repRank = rank[selfLine] ?? (1 << 30);
         for (var dx = -1; dx <= 1; dx++) {
           for (var dy = -1; dy <= 1; dy++) {
             final bucket = grid['${c[0] + dx}_${c[1] + dy}'];
@@ -3101,18 +3096,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                 continue;
               }
               if (isRetour && e.key == allerKey) dupAller[i] = true;
-              final el = lineOf(e.key);
-              coLines.add(el);
-              final er = rank[el] ?? (1 << 30);
-              if (er < repRank) {
-                repRank = er;
-                rep = el;
-              }
+              coLines.add(lineOf(e.key));
             }
           }
         }
         cnt[i] = coLines.length;
-        isRep[i] = rep == selfLine;
       }
 
       // Passe 2 : comptage lissé (hystérésis ±2) pour des runs propres.
@@ -3133,7 +3121,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         if (isRetour && dupAller[i]) {
           state[i] = 0; // aller+retour superposés → un seul trait
         } else if (cntS[i] >= _trunkMinLines) {
-          state[i] = isRep[i] ? 2 : 0; // seul le représentant porte le tronc
+          // Toutes les lignes du corridor tracent le tronc gris : superposées
+          // (même couleur) → corridor CONTINU, sans trou de raccord.
+          state[i] = 2;
         } else {
           state[i] = 1;
         }
