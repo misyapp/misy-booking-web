@@ -86,12 +86,12 @@
       "aller": {
         "direction": "aller",
         "num_stops": 26,
-        "asset_path": "assets/transport_lines_public/core/105 Vert_aller.geojson"
+        "asset_path": "assets/transport_lines_public/core/105_Vert_aller.geojson"
       },
       "retour": {
         "direction": "retour",
         "num_stops": 20,
-        "asset_path": "assets/transport_lines_public/core/105 Vert_retour.geojson"
+        "asset_path": "assets/transport_lines_public/core/105_Vert_retour.geojson"
       }
     },
     {
@@ -212,12 +212,12 @@
       "aller": {
         "direction": "aller",
         "num_stops": 28,
-        "asset_path": "assets/transport_lines_public/core/114 Bleu-Rouge_aller.geojson"
+        "asset_path": "assets/transport_lines_public/core/114_Bleu-Rouge_aller.geojson"
       },
       "retour": {
         "direction": "retour",
         "num_stops": 29,
-        "asset_path": "assets/transport_lines_public/core/114 Bleu-Rouge_retour.geojson"
+        "asset_path": "assets/transport_lines_public/core/114_Bleu-Rouge_retour.geojson"
       }
     },
     {
@@ -230,12 +230,12 @@
       "aller": {
         "direction": "aller",
         "num_stops": 22,
-        "asset_path": "assets/transport_lines_public/core/114 Vert-Jaune_aller.geojson"
+        "asset_path": "assets/transport_lines_public/core/114_Vert-Jaune_aller.geojson"
       },
       "retour": {
         "direction": "retour",
         "num_stops": 22,
-        "asset_path": "assets/transport_lines_public/core/114 Vert-Jaune_retour.geojson"
+        "asset_path": "assets/transport_lines_public/core/114_Vert-Jaune_retour.geojson"
       }
     },
     {
@@ -698,12 +698,12 @@
       "aller": {
         "direction": "aller",
         "num_stops": 22,
-        "asset_path": "assets/transport_lines_public/core/146 Rouge_aller.geojson"
+        "asset_path": "assets/transport_lines_public/core/146_Rouge_aller.geojson"
       },
       "retour": {
         "direction": "retour",
         "num_stops": 18,
-        "asset_path": "assets/transport_lines_public/core/146 Rouge_retour.geojson"
+        "asset_path": "assets/transport_lines_public/core/146_Rouge_retour.geojson"
       }
     },
     {
@@ -716,12 +716,12 @@
       "aller": {
         "direction": "aller",
         "num_stops": 21,
-        "asset_path": "assets/transport_lines_public/core/147 Bleu_aller.geojson"
+        "asset_path": "assets/transport_lines_public/core/147_Bleu_aller.geojson"
       },
       "retour": {
         "direction": "retour",
         "num_stops": 26,
-        "asset_path": "assets/transport_lines_public/core/147 Bleu_retour.geojson"
+        "asset_path": "assets/transport_lines_public/core/147_Bleu_retour.geojson"
       }
     },
     {
@@ -734,12 +734,12 @@
       "aller": {
         "direction": "aller",
         "num_stops": 25,
-        "asset_path": "assets/transport_lines_public/core/147 Rouge_aller.geojson"
+        "asset_path": "assets/transport_lines_public/core/147_Rouge_aller.geojson"
       },
       "retour": {
         "direction": "retour",
         "num_stops": 21,
-        "asset_path": "assets/transport_lines_public/core/147 Rouge_retour.geojson"
+        "asset_path": "assets/transport_lines_public/core/147_Rouge_retour.geojson"
       }
     },
     {
@@ -770,12 +770,12 @@
       "aller": {
         "direction": "aller",
         "num_stops": 29,
-        "asset_path": "assets/transport_lines_public/core/147BIS Bleu_aller.geojson"
+        "asset_path": "assets/transport_lines_public/core/147BIS_Bleu_aller.geojson"
       },
       "retour": {
         "direction": "retour",
         "num_stops": 34,
-        "asset_path": "assets/transport_lines_public/core/147BIS Bleu_retour.geojson"
+        "asset_path": "assets/transport_lines_public/core/147BIS_Bleu_retour.geojson"
       }
     },
     {
@@ -788,12 +788,12 @@
       "aller": {
         "direction": "aller",
         "num_stops": 25,
-        "asset_path": "assets/transport_lines_public/core/147D Bleu_aller.geojson"
+        "asset_path": "assets/transport_lines_public/core/147D_Bleu_aller.geojson"
       },
       "retour": {
         "direction": "retour",
         "num_stops": 31,
-        "asset_path": "assets/transport_lines_public/core/147D Bleu_retour.geojson"
+        "asset_path": "assets/transport_lines_public/core/147D_Bleu_retour.geojson"
       }
     },
     {
@@ -806,12 +806,12 @@
       "aller": {
         "direction": "aller",
         "num_stops": 30,
-        "asset_path": "assets/transport_lines_public/core/147D Rouge_aller.geojson"
+        "asset_path": "assets/transport_lines_public/core/147D_Rouge_aller.geojson"
       },
       "retour": {
         "direction": "retour",
         "num_stops": 26,
-        "asset_path": "assets/transport_lines_public/core/147D Rouge_retour.geojson"
+        "asset_path": "assets/transport_lines_public/core/147D_Rouge_retour.geojson"
       }
     },
     {
@@ -842,12 +842,12 @@
       "aller": {
         "direction": "aller",
         "num_stops": 27,
-        "asset_path": "assets/transport_lines_public/core/150 Vert_aller.geojson"
+        "asset_path": "assets/transport_lines_public/core/150_Vert_aller.geojson"
       },
       "retour": {
         "direction": "retour",
         "num_stops": 27,
-        "asset_path": "assets/transport_lines_public/core/150 Vert_retour.geojson"
+        "asset_path": "assets/transport_lines_public/core/150_Vert_retour.geojson"
       }
     },
     {
@@ -1184,12 +1184,12 @@
       "aller": {
         "direction": "aller",
         "num_stops": 22,
-        "asset_path": "assets/transport_lines_public/core/178 Bleu_aller.geojson"
+        "asset_path": "assets/transport_lines_public/core/178_Bleu_aller.geojson"
       },
       "retour": {
         "direction": "retour",
         "num_stops": 32,
-        "asset_path": "assets/transport_lines_public/core/178 Bleu_retour.geojson"
+        "asset_path": "assets/transport_lines_public/core/178_Bleu_retour.geojson"
       }
     },
     {
@@ -1418,12 +1418,12 @@
       "aller": {
         "direction": "aller",
         "num_stops": 33,
-        "asset_path": "assets/transport_lines_public/core/194 Rouge_aller.geojson"
+        "asset_path": "assets/transport_lines_public/core/194_Rouge_aller.geojson"
       },
       "retour": {
         "direction": "retour",
         "num_stops": 33,
-        "asset_path": "assets/transport_lines_public/core/194 Rouge_retour.geojson"
+        "asset_path": "assets/transport_lines_public/core/194_Rouge_retour.geojson"
       }
     },
     {
@@ -1436,12 +1436,12 @@
       "aller": {
         "direction": "aller",
         "num_stops": 40,
-        "asset_path": "assets/transport_lines_public/core/194 Vert Ambanidia_aller.geojson"
+        "asset_path": "assets/transport_lines_public/core/194_Vert_Ambanidia_aller.geojson"
       },
       "retour": {
         "direction": "retour",
         "num_stops": 42,
-        "asset_path": "assets/transport_lines_public/core/194 Vert Ambanidia_retour.geojson"
+        "asset_path": "assets/transport_lines_public/core/194_Vert_Ambanidia_retour.geojson"
       }
     },
     {
@@ -1508,12 +1508,12 @@
       "aller": {
         "direction": "aller",
         "num_stops": 25,
-        "asset_path": "assets/transport_lines_public/core/Ligne 178 Rouge_aller.geojson"
+        "asset_path": "assets/transport_lines_public/core/Ligne_178_Rouge_aller.geojson"
       },
       "retour": {
         "direction": "retour",
         "num_stops": 23,
-        "asset_path": "assets/transport_lines_public/core/Ligne 178 Rouge_retour.geojson"
+        "asset_path": "assets/transport_lines_public/core/Ligne_178_Rouge_retour.geojson"
       }
     },
     {
