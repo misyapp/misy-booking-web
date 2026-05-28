@@ -2980,7 +2980,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     try {
       await PublicTransportService.instance.ensureLoaded();
       if (!mounted) return;
-      _precomputeCorridors();
+      // Consolidation corridor désactivée (revert) → traits bruts empilés.
+      // _precomputeCorridors();
       _precomputeBaseClusters();
       await _rebuildPublicTransportLayers();
       setState(() => _publicTransportLoaded = true);
