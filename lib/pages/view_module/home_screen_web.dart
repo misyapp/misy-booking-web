@@ -234,11 +234,15 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// la sélection en cours.
   List<_PublicStopAggregate> _baseClusters = const [];
 
-  /// Découpe de chaque (ligne, sens) en "runs" pour la consolidation en tronc
-  /// commun. Clé '${lineNumber}_${dir}'. Un run est soit individuel (couleur de
-  /// la ligne), soit tronc (gris, > 3 lignes co-localisées). Précalculé une
-  /// fois par [_precomputeTrunks]. Vide → fallback sur le tracé brut entier.
+  /// Portions INDIVIDUELLES colorées de chaque (ligne, sens) — clé
+  /// '${lineNumber}_${dir}' — là où ≤ 3 lignes co-localisées. Précalculé par
+  /// [_precomputeCorridors]. Vide → fallback sur le tracé brut entier.
   Map<String, List<_LineRun>> _lineRuns = const {};
+
+  /// Épines des corridors (> 3 lignes) : une polyligne par corridor (géométrie
+  /// réelle d'une ligne), rendue en rayures multicolores. Précalculé par
+  /// [_precomputeCorridors].
+  List<_Corridor> _corridorSpines = const [];
 
   // Cache des coordonnées écran de chaque stop visible. Recalculé à chaque
   // onCameraIdle via une interpolation linéaire depuis getVisibleRegion
@@ -2976,7 +2980,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     try {
       await PublicTransportService.instance.ensureLoaded();
       if (!mounted) return;
-      _precomputeTrunks();
+      _precomputeCorridors();
       _precomputeBaseClusters();
       await _rebuildPublicTransportLayers();
       setState(() => _publicTransportLoaded = true);
@@ -2985,11 +2989,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
   }
 
-  // ───────── Tronc commun (consolidation des corridors > 3 lignes) ─────────
-  static const int _trunkMinLines = 4; // tronc si > 3 lignes (réglable)
-  static const double _trunkSampleStepM = 10.0;
-  static const double _trunkMergeRadiusM = 12.0;
-  static const double _trunkBearingTolDeg = 25.0;
+  // ───────── Corridors multicolores (consolidation > 3 lignes) ─────────
+  static const int _corridorMinLines = 4; // corridor si > 3 lignes (réglable)
+  static const double _corridorSampleStepM = 10.0;
+  static const double _corridorMergeRadiusM = 25.0; // englobe un terre-plein
+  static const double _corridorBearingTolDeg = 25.0;
 
   /// Densifie un tracé à pas ~constant en gardant le cap local.
   List<_TrunkSample> _densifyTrunk(List<LatLng> pts) {
@@ -3000,7 +3004,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       if (segLen <= 0) continue;
       final brg =
           _bearingBetween(a.latitude, a.longitude, b.latitude, b.longitude);
-      final steps = (segLen / _trunkSampleStepM).ceil().clamp(1, 100000);
+      final steps = (segLen / _corridorSampleStepM).ceil().clamp(1, 100000);
       for (var s = 0; s < steps; s++) {
         final t = s / steps;
         out.add(_TrunkSample(
@@ -3027,16 +3031,22 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     return d;
   }
 
-  /// Détecte les tronçons partagés par > 3 lignes → un seul trait "tronc"
-  /// (gris, porté par la ligne la plus importante) ; ailleurs, traits
-  /// individuels colorés. Dédup aller/retour d'une même ligne. Pas d'offset
-  /// (aucun gribouilli). Découpe chaque (ligne, sens) en runs prêts à tracer.
-  void _precomputeTrunks() {
+  /// Corridors > 3 lignes → une ÉPINE unique (géométrie réelle d'une ligne,
+  /// choisie par importance, claim par rayon pour qu'un terre-plein = 1 seul
+  /// corridor), rendue en rayures multicolores. Ailleurs (≤ 3 lignes) → traits
+  /// individuels colorés (+ dédup aller/retour). Aucun offset → pas de gribouilli.
+  void _precomputeCorridors() {
     final svc = PublicTransportService.instance;
     final byImportance = svc.linesByImportance;
+    final rank = <String, int>{
+      for (var i = 0; i < byImportance.length; i++) byImportance[i]: i,
+    };
 
     final samples = <String, List<_TrunkSample>>{};
     for (final ln in byImportance) {
+      // Tier 1 (téléphérique, train urbain) = HORS logique corridor : jamais
+      // consolidé ni compté ; tracé en ligne pleine (pas de runs → fallback).
+      if (svc.tierFor(ln) == 1) continue;
       final g = svc.getLineGroup(ln);
       if (g == null) continue;
       final a = g.aller, r = g.retour;
@@ -3049,10 +3059,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
     if (samples.isEmpty) {
       _lineRuns = const {};
+      _corridorSpines = const [];
       return;
     }
 
-    const cell = _trunkMergeRadiusM;
+    const cell = _corridorMergeRadiusM;
     final grid = <String, List<_TrunkGridEntry>>{};
     List<int> cellOf(LatLng p) => [
           (p.longitude * 111320.0 * cos(p.latitude * pi / 180) / cell).floor(),
@@ -3071,40 +3082,42 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         ? key.substring(0, key.length - 6)
         : key.substring(0, key.length - 7);
 
-    final result = <String, List<_LineRun>>{};
+    // Par échantillon : ensemble des LIGNES distinctes co-localisées (terre-plein
+    // englobé par le rayon 25 m → une double voie = 1), comptage lissé, et
+    // chevauchement du retour avec son propre aller (dédup).
+    final coAt = <String, List<Set<String>>>{};
+    final cntS = <String, List<int>>{};
+    final dupAt = <String, List<bool>>{};
     samples.forEach((key, list) {
       final selfLine = lineOf(key);
       final isRetour = key.endsWith('_retour');
       final allerKey = '${selfLine}_aller';
-
-      // Passe 1 : comptage des LIGNES distinctes co-localisées (une route à
-      // double voie = 1) + chevauchement avec le propre aller (dédup).
+      final co = <Set<String>>[];
       final cnt = List<int>.filled(list.length, 1);
-      final dupAller = List<bool>.filled(list.length, false);
+      final du = List<bool>.filled(list.length, false);
       for (var i = 0; i < list.length; i++) {
         final s = list[i];
         final c = cellOf(s.pos);
-        final coLines = <String>{selfLine};
+        final set = <String>{selfLine};
         for (var dx = -1; dx <= 1; dx++) {
           for (var dy = -1; dy <= 1; dy++) {
             final bucket = grid['${c[0] + dx}_${c[1] + dy}'];
             if (bucket == null) continue;
             for (final e in bucket) {
-              if (_metersBetween(s.pos, e.pos) > _trunkMergeRadiusM) continue;
+              if (_metersBetween(s.pos, e.pos) > _corridorMergeRadiusM) continue;
               if (_bearingDiffMod180Trunk(s.bearing, e.bearing) >
-                  _trunkBearingTolDeg) {
+                  _corridorBearingTolDeg) {
                 continue;
               }
-              if (isRetour && e.key == allerKey) dupAller[i] = true;
-              coLines.add(lineOf(e.key));
+              if (isRetour && e.key == allerKey) du[i] = true;
+              set.add(lineOf(e.key));
             }
           }
         }
-        cnt[i] = coLines.length;
+        co.add(set);
+        cnt[i] = set.length;
       }
-
-      // Passe 2 : comptage lissé (hystérésis ±2) pour des runs propres.
-      final cntS = List<int>.filled(list.length, 1);
+      final sm = List<int>.filled(list.length, 1);
       for (var i = 0; i < list.length; i++) {
         var sum = 0, c = 0;
         for (var j = i - 2; j <= i + 2; j++) {
@@ -3112,47 +3125,102 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           sum += cnt[j];
           c++;
         }
-        cntS[i] = (sum / c).round();
+        sm[i] = (sum / c).round();
       }
-
-      // État par échantillon : 0=skip, 1=individuel, 2=tronc.
-      final state = List<int>.filled(list.length, 1);
-      for (var i = 0; i < list.length; i++) {
-        if (isRetour && dupAller[i]) {
-          state[i] = 0; // aller+retour superposés → un seul trait
-        } else if (cntS[i] >= _trunkMinLines) {
-          // Toutes les lignes du corridor tracent le tronc gris : superposées
-          // (même couleur) → corridor CONTINU, sans trou de raccord.
-          state[i] = 2;
-        } else {
-          state[i] = 1;
-        }
-      }
-
-      // Découpe en runs (segments consécutifs de même état non-skip).
-      final runs = <_LineRun>[];
-      var i = 0;
-      while (i < list.length) {
-        if (state[i] == 0) {
-          i++;
-          continue;
-        }
-        final st = state[i];
-        var j = i, maxc = cnt[i];
-        while (j + 1 < list.length && state[j + 1] == st) {
-          j++;
-          if (cnt[j] > maxc) maxc = cnt[j];
-        }
-        final pts = <LatLng>[for (var k = i; k <= j; k++) list[k].pos];
-        // Raccord : prolonge d'un point vers le run suivant pour éviter un trou.
-        if (j + 1 < list.length && state[j + 1] != 0) pts.add(list[j + 1].pos);
-        if (pts.length >= 2) runs.add(_LineRun(pts, st == 2, maxc));
-        i = j + 1;
-      }
-      result[key] = runs;
+      coAt[key] = co;
+      cntS[key] = sm;
+      dupAt[key] = du;
     });
 
-    _lineRuns = result;
+    // Claim par importance + rayon : la ligne la plus importante pose l'épine
+    // d'un corridor et réclame les cellules autour (terre-plein + autres lignes
+    // du même axe) ; les suivantes remplissent les portions encore libres.
+    final claimed = <String>{};
+    bool isClaimed(LatLng p) {
+      final c = cellOf(p);
+      return claimed.contains('${c[0]}_${c[1]}');
+    }
+
+    void claimAround(LatLng p) {
+      final c = cellOf(p);
+      for (var dx = -1; dx <= 1; dx++) {
+        for (var dy = -1; dy <= 1; dy++) {
+          claimed.add('${c[0] + dx}_${c[1] + dy}');
+        }
+      }
+    }
+
+    final lineRuns = <String, List<_LineRun>>{};
+    final spines = <_Corridor>[];
+
+    int catOf(String key, int i, bool isRetour, List<int> cn, List<bool> du,
+        List<_TrunkSample> list) {
+      if (cn[i] >= _corridorMinLines) {
+        return isClaimed(list[i].pos) ? 0 : 2; // corridor : épine si non réclamé
+      }
+      if (isRetour && du[i]) return 0; // dédup aller/retour
+      return 1; // individuel coloré
+    }
+
+    for (final ln in byImportance) {
+      for (final dir in const ['aller', 'retour']) {
+        final key = '${ln}_$dir';
+        final list = samples[key];
+        if (list == null) continue;
+        final isRetour = dir == 'retour';
+        final cn = cntS[key]!;
+        final du = dupAt[key]!;
+        final co = coAt[key]!;
+
+        var i = 0;
+        while (i < list.length) {
+          final cat = catOf(key, i, isRetour, cn, du, list);
+          if (cat == 0) {
+            i++;
+            continue;
+          }
+          var j = i;
+          while (j + 1 < list.length &&
+              catOf(key, j + 1, isRetour, cn, du, list) == cat) {
+            j++;
+          }
+          final pts = <LatLng>[for (var k = i; k <= j; k++) list[k].pos];
+          if (j + 1 < list.length) pts.add(list[j + 1].pos); // raccord
+
+          if (cat == 1) {
+            if (pts.length >= 2) {
+              lineRuns.putIfAbsent(key, () => []).add(_LineRun(pts, false, 0));
+            }
+          } else {
+            // Épine de corridor : couleurs = lignes co-localisées triées par
+            // importance ; largeur ∝ nb de lignes.
+            if (pts.length >= 2) {
+              final union = <String>{};
+              var maxc = 0;
+              for (var k = i; k <= j; k++) {
+                union.addAll(co[k]);
+                if (co[k].length > maxc) maxc = co[k].length;
+              }
+              final sortedLines = union.toList()
+                ..sort((x, y) =>
+                    (rank[x] ?? (1 << 30)).compareTo(rank[y] ?? (1 << 30)));
+              final colors = [
+                for (final l in sortedLines)
+                  Color(svc.metadataFor(l)?.colorValue ?? 0xFF1565C0)
+              ];
+              spines.add(_Corridor(pts, colors, maxc));
+              for (var k = i; k <= j; k++) {
+                claimAround(list[k].pos);
+              }
+            }
+          }
+          i = j + 1;
+        }
+      }
+    }
+
+    _lineRuns = lineRuns;
+    _corridorSpines = spines;
   }
 
   /// Pré-calcule UNE FOIS la liste des clusters d'arrêts (dédup name +
@@ -3408,28 +3476,15 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           addColored(dir, line.coordinates);
           return;
         }
-        // Vue réseau : consolidation en tronc commun via les runs précalculés.
+        // Vue réseau : seulement les portions individuelles (≤ 3 lignes). Les
+        // portions de corridor (> 3) sont rendues à part via _corridorSpines.
         final runs = _lineRuns['${lineNumber}_$dir'];
         if (runs == null) {
           addColored(dir, line.coordinates);
           return;
         }
         for (var ri = 0; ri < runs.length; ri++) {
-          final run = runs[ri];
-          if (run.trunk) {
-            // Un seul trait "corridor" gris-bleu, épaisseur ∝ nb de lignes.
-            final tw = (4 + run.count * 1.2).clamp(5, 14).toDouble();
-            polylines.add(Polyline(
-              polylineId: PolylineId('pt_${lineNumber}_${dir}_t$ri'),
-              points: run.pts,
-              color: const Color(0xFF607D8B),
-              width: tw.toInt(),
-              zIndex: 1,
-              consumeTapEvents: false,
-            ));
-          } else {
-            addColored('${dir}_$ri', run.pts);
-          }
+          addColored('${dir}_$ri', runs[ri].pts);
         }
       }
 
@@ -3441,6 +3496,39 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       if (capLine != null && capLine.coordinates.length >= 2) {
         termCaps.add(capLine.coordinates.first);
         termCaps.add(capLine.coordinates.last);
+      }
+    }
+
+    // Épines de corridor (> 3 lignes) : rayures multicolores des couleurs des
+    // lignes, légèrement fondues. Largeur ∝ nb de lignes. Vue réseau seulement.
+    if (selected == null) {
+      const stripeLenM = 16.0;
+      for (var ci = 0; ci < _corridorSpines.length; ci++) {
+        final cor = _corridorSpines[ci];
+        final colors = cor.colors;
+        if (colors.isEmpty || cor.pts.length < 2) continue;
+        final w = (3 + cor.count * 0.8).clamp(4.0, 10.0).toInt();
+        var dist = 0.0;
+        for (var i = 0; i < cor.pts.length - 1; i++) {
+          final a = cor.pts[i], b = cor.pts[i + 1];
+          final pos = dist / stripeLenM;
+          final idx = pos.floor();
+          final frac = pos - idx;
+          final c0 = colors[idx % colors.length];
+          final c1 = colors[(idx + 1) % colors.length];
+          // Fondu léger : interpolation seulement sur les 30 % de fin de rayure.
+          final t = frac < 0.7 ? 0.0 : (frac - 0.7) / 0.3;
+          final col = Color.lerp(c0, c1, t) ?? c0;
+          polylines.add(Polyline(
+            polylineId: PolylineId('cor_${ci}_$i'),
+            points: [a, b],
+            color: col,
+            width: w,
+            zIndex: 1,
+            consumeTapEvents: false,
+          ));
+          dist += _metersBetween(a, b);
+        }
       }
     }
 
@@ -5361,13 +5449,23 @@ class _TrunkGridEntry {
   const _TrunkGridEntry(this.key, this.bearing, this.pos);
 }
 
-/// Sous-tracé d'une ligne : soit individuel (couleur), soit tronc commun
-/// (gris, [count] lignes co-localisées).
+/// Portion individuelle colorée d'une ligne. [trunk] non utilisé désormais
+/// (les corridors > 3 lignes passent par [_Corridor]).
 class _LineRun {
   final List<LatLng> pts;
   final bool trunk;
   final int count;
   const _LineRun(this.pts, this.trunk, this.count);
+}
+
+/// Épine d'un corridor (> 3 lignes) : géométrie réelle d'une ligne, rendue en
+/// rayures des [colors] (couleurs des lignes du corridor, triées par
+/// importance). [count] = nb de lignes max le long du corridor (→ largeur).
+class _Corridor {
+  final List<LatLng> pts;
+  final List<Color> colors;
+  final int count;
+  const _Corridor(this.pts, this.colors, this.count);
 }
 
 /// Stop "brut" en sortie d'un GeoJSON, avant clustering par proximité.
