@@ -10,6 +10,7 @@
       "transport_type": "bus",
       "color": "0xFF00897B",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 16,
@@ -27,6 +28,7 @@
       "transport_type": "bus",
       "color": "0xFF1565C0",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 30,
@@ -44,6 +46,7 @@
       "transport_type": "bus",
       "color": "0xFF880E4F",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 12,
@@ -61,6 +64,7 @@
       "transport_type": "bus",
       "color": "0xFFD32F2F",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 18,
@@ -78,6 +82,7 @@
       "transport_type": "bus",
       "color": "0xFF1565C0",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 26,
@@ -95,6 +100,7 @@
       "transport_type": "bus",
       "color": "0xFFE65100",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 13,
@@ -112,6 +118,7 @@
       "transport_type": "bus",
       "color": "0xFF1565C0",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 34,
@@ -129,6 +136,7 @@
       "transport_type": "bus",
       "color": "0xFF6A1B9A",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 20,
@@ -146,6 +154,7 @@
       "transport_type": "bus",
       "color": "0xFF1565C0",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 30,
@@ -163,6 +172,7 @@
       "transport_type": "bus",
       "color": "0xFFD84315",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 22,
@@ -180,6 +190,7 @@
       "transport_type": "bus",
       "color": "0xFF43A047",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 29,
@@ -197,6 +208,7 @@
       "transport_type": "bus",
       "color": "0xFF1565C0",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 28,
@@ -214,6 +226,7 @@
       "transport_type": "bus",
       "color": "0xFF1565C0",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 22,
@@ -231,6 +244,7 @@
       "transport_type": "bus",
       "color": "0xFF00695C",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 13,
@@ -248,6 +262,7 @@
       "transport_type": "bus",
       "color": "0xFFFF8F00",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 20,
@@ -265,6 +280,7 @@
       "transport_type": "bus",
       "color": "0xFF283593",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 13,
@@ -282,6 +298,7 @@
       "transport_type": "bus",
       "color": "0xFF6D4C41",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 18,
@@ -299,6 +316,7 @@
       "transport_type": "bus",
       "color": "0xFF00796B",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 29,
@@ -316,6 +334,7 @@
       "transport_type": "bus",
       "color": "0xFFE53935",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 13,
@@ -333,6 +352,7 @@
       "transport_type": "bus",
       "color": "0xFF1565C0",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 16,
@@ -350,6 +370,7 @@
       "transport_type": "bus",
       "color": "0xFF8E24AA",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 10,
@@ -367,6 +388,7 @@
       "transport_type": "bus",
       "color": "0xFFC2185B",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 14,
@@ -384,6 +406,7 @@
       "transport_type": "bus",
       "color": "0xFFFB8C00",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 23,
@@ -401,6 +424,7 @@
       "transport_type": "bus",
       "color": "0xFFFB8C00",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 25,
@@ -418,6 +442,7 @@
       "transport_type": "bus",
       "color": "0xFFFB8C00",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 24,
@@ -435,6 +460,7 @@
       "transport_type": "bus",
       "color": "0xFFFB8C00",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 27,
@@ -452,6 +478,7 @@
       "transport_type": "bus",
       "color": "0xFFAD1457",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 12,
@@ -469,6 +496,7 @@
       "transport_type": "bus",
       "color": "0xFFE53935",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 29,
@@ -486,6 +514,7 @@
       "transport_type": "bus",
       "color": "0xFFC62838",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 21,
@@ -503,6 +532,7 @@
       "transport_type": "bus",
       "color": "0xFFEF5350",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 18,
@@ -520,6 +550,7 @@
       "transport_type": "bus",
       "color": "0xFF827717",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 23,
@@ -537,6 +568,7 @@
       "transport_type": "bus",
       "color": "0xFF43A047",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 16,
@@ -554,6 +586,7 @@
       "transport_type": "bus",
       "color": "0xFFE53935",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 18,
@@ -571,6 +604,7 @@
       "transport_type": "bus",
       "color": "0xFFFB8C00",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 24,
@@ -588,6 +622,7 @@
       "transport_type": "bus",
       "color": "0xFF1E88E5",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 19,
@@ -605,6 +640,7 @@
       "transport_type": "bus",
       "color": "0xFFEF6C00",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 23,
@@ -622,6 +658,7 @@
       "transport_type": "bus",
       "color": "0xFF512DA8",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 16,
@@ -639,6 +676,7 @@
       "transport_type": "bus",
       "color": "0xFF1565C0",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 18,
@@ -656,6 +694,7 @@
       "transport_type": "bus",
       "color": "0xFFE53935",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 22,
@@ -673,6 +712,7 @@
       "transport_type": "bus",
       "color": "0xFF1565C0",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 21,
@@ -690,6 +730,7 @@
       "transport_type": "bus",
       "color": "0xFF1565C0",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 25,
@@ -707,6 +748,7 @@
       "transport_type": "bus",
       "color": "0xFF1A5FC7",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 34,
@@ -724,6 +766,7 @@
       "transport_type": "bus",
       "color": "0xFF1565C0",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 29,
@@ -741,6 +784,7 @@
       "transport_type": "bus",
       "color": "0xFF0D47A9",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 25,
@@ -758,6 +802,7 @@
       "transport_type": "bus",
       "color": "0xFFE53935",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 30,
@@ -775,6 +820,7 @@
       "transport_type": "bus",
       "color": "0xFF00838F",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 30,
@@ -792,6 +838,7 @@
       "transport_type": "bus",
       "color": "0xFFF06292",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 27,
@@ -809,6 +856,7 @@
       "transport_type": "bus",
       "color": "0xFFE53935",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 29,
@@ -826,6 +874,7 @@
       "transport_type": "bus",
       "color": "0xFFE53935",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 21,
@@ -843,6 +892,7 @@
       "transport_type": "bus",
       "color": "0xFF00ACC1",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 29,
@@ -860,6 +910,7 @@
       "transport_type": "bus",
       "color": "0xFF00869B",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 38,
@@ -877,6 +928,7 @@
       "transport_type": "bus",
       "color": "0xFFFB8C00",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 40,
@@ -894,6 +946,7 @@
       "transport_type": "bus",
       "color": "0xFFFB8C00",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 47,
@@ -911,6 +964,7 @@
       "transport_type": "bus",
       "color": "0xFFAB47BC",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 21,
@@ -928,6 +982,7 @@
       "transport_type": "bus",
       "color": "0xFF9B30A8",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 21,
@@ -945,6 +1000,7 @@
       "transport_type": "bus",
       "color": "0xFFEF6C00",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 35,
@@ -962,6 +1018,7 @@
       "transport_type": "bus",
       "color": "0xFFEF6C00",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 33,
@@ -979,6 +1036,7 @@
       "transport_type": "bus",
       "color": "0xFF37474F",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 18,
@@ -996,6 +1054,7 @@
       "transport_type": "bus",
       "color": "0xFF009688",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 18,
@@ -1013,6 +1072,7 @@
       "transport_type": "bus",
       "color": "0xFF7E57C2",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 37,
@@ -1030,6 +1090,7 @@
       "transport_type": "bus",
       "color": "0xFF4E342E",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 12,
@@ -1047,6 +1108,7 @@
       "transport_type": "bus",
       "color": "0xFFFB8C00",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 21,
@@ -1064,6 +1126,7 @@
       "transport_type": "bus",
       "color": "0xFFEC407A",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 18,
@@ -1081,6 +1144,7 @@
       "transport_type": "bus",
       "color": "0xFFFB8C00",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 19,
@@ -1098,6 +1162,7 @@
       "transport_type": "bus",
       "color": "0xFF0288D1",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 30,
@@ -1115,6 +1180,7 @@
       "transport_type": "bus",
       "color": "0xFF1565C0",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 22,
@@ -1132,6 +1198,7 @@
       "transport_type": "bus",
       "color": "0xFFFFA000",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 29,
@@ -1149,6 +1216,7 @@
       "transport_type": "bus",
       "color": "0xFFFFB300",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 19,
@@ -1166,6 +1234,7 @@
       "transport_type": "bus",
       "color": "0xFFBF360C",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 18,
@@ -1183,6 +1252,7 @@
       "transport_type": "bus",
       "color": "0xFF455A64",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 20,
@@ -1200,6 +1270,7 @@
       "transport_type": "bus",
       "color": "0xFF607D8B",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 26,
@@ -1217,6 +1288,7 @@
       "transport_type": "bus",
       "color": "0xFF00BFA5",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 15,
@@ -1234,6 +1306,7 @@
       "transport_type": "bus",
       "color": "0xFF9E9D24",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 24,
@@ -1251,6 +1324,7 @@
       "transport_type": "bus",
       "color": "0xFF9C27B8",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 27,
@@ -1268,6 +1342,7 @@
       "transport_type": "bus",
       "color": "0xFF3E2723",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 11,
@@ -1285,6 +1360,7 @@
       "transport_type": "bus",
       "color": "0xFF6A1B9A",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 26,
@@ -1302,6 +1378,7 @@
       "transport_type": "bus",
       "color": "0xFF66BB6A",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 34,
@@ -1319,6 +1396,7 @@
       "transport_type": "bus",
       "color": "0xFF1565C0",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 33,
@@ -1336,6 +1414,7 @@
       "transport_type": "bus",
       "color": "0xFFE53935",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 33,
@@ -1353,6 +1432,7 @@
       "transport_type": "bus",
       "color": "0xFF43A047",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 40,
@@ -1370,6 +1450,7 @@
       "transport_type": "bus",
       "color": "0xFFC62828",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 18,
@@ -1387,6 +1468,7 @@
       "transport_type": "bus",
       "color": "0xFF4A148C",
       "is_bundled": true,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 29,
@@ -1404,6 +1486,7 @@
       "transport_type": "bus",
       "color": "0xFFD50071",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 30,
@@ -1421,6 +1504,7 @@
       "transport_type": "bus",
       "color": "0xFF1565C0",
       "is_bundled": true,
+      "importance_tier": 3,
       "aller": {
         "direction": "aller",
         "num_stops": 25,
@@ -1438,6 +1522,7 @@
       "transport_type": "telepherique",
       "color": "0xFFE65108",
       "is_bundled": true,
+      "importance_tier": 1,
       "aller": {
         "direction": "aller",
         "num_stops": 7,
@@ -1455,6 +1540,7 @@
       "transport_type": "urbanTrain",
       "color": "0xFF1B8C32",
       "is_bundled": true,
+      "importance_tier": 1,
       "aller": {
         "direction": "aller",
         "num_stops": 8,
