@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:rider_ride_hailing_app/models/transport_line.dart';
 import 'package:rider_ride_hailing_app/models/transport_line_validation.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/build_line_flow_screen.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/prod_lines_viewer_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/line_tag_chips.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/widgets/osm_base_map.dart';
 import 'package:rider_ride_hailing_app/provider/build_line_flow_provider.dart';
@@ -104,6 +105,15 @@ class _AdminReviewBodyState extends State<_AdminReviewBody> {
         backgroundColor: const Color(0xFF5E35B1),
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            tooltip: 'Lignes en prod',
+            icon: const Icon(Icons.alt_route),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const ProdLinesViewerScreen(),
+              ),
+            ),
+          ),
           IconButton(
             tooltip: 'Gérer les comptes (IAM)',
             icon: const Icon(Icons.manage_accounts_outlined),
