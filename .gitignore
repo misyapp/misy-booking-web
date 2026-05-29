@@ -29,6 +29,10 @@ migrate_working_dir/
 
 # Web related
 
+# Node (functions/, transport-editor/) — ne jamais versionner node_modules
+node_modules/
+**/node_modules/
+
 # Secrets and credentials
 functions/serviceAccountKey.json
 lib/services/firebase_access_token.dart
