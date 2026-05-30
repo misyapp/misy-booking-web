@@ -3594,20 +3594,48 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // Correspondance = ≥ 2 lignes, uniquement en vue réseau (hors sélection).
       final isInterchange = selected == null && agg.lines.length >= 2;
 
-      // Arrêt actif (tap/survol) : badge agrandi, point sur le tracé + tuile
-      // flottée perpendiculairement.
+      // Le point d'arrêt doit tomber EXACTEMENT au milieu du trait : la coord.
+      // brute de l'arrêt est souvent au bord de la chaussée, on la snappe donc
+      // sur la polyligne réellement dessinée (ligne primaire). Sert aussi de
+      // base au cap pour orienter les tuiles flottées.
+      final primaryCoords = _coordsForLine(agg.primaryLine);
+      final stopPos = primaryCoords.length >= 2
+          ? _snapToPolyline(agg.position, primaryCoords)
+          : agg.position;
+      final bearing = _bearingAtPointOnPolyline(stopPos, primaryCoords);
+
+      // POINT D'ARRÊT TOUJOURS PRÉSENT : un point rond posé pile sur le trait,
+      // dessiné à TOUS les zooms (dès showStops) et JAMAIS remplacé quand les
+      // labels apparaissent. Les badges (terminus), capsules (correspondances)
+      // et gros labels (actif) viennent simplement FLOTTER au-dessus, avec
+      // `withDot:false` pour ne pas redessiner un 2e point.
+      markerFutures.add(StopMarkerFactory.create(
+        label: agg.primaryLine,
+        color: agg.primaryColor,
+        devicePixelRatio: dpr,
+        style: StopMarkerStyle.dot,
+      ).then((icon) => Marker(
+            markerId: MarkerId('dot_${agg.key}'),
+            position: stopPos,
+            icon: icon,
+            anchor: const Offset(0.5, 0.5),
+            zIndex: 8,
+            consumeTapEvents: true,
+            onTap: () => _onPublicStopTap(agg),
+          )));
+
+      // Arrêt actif (tap/survol) : gros badge flotté au-dessus du point.
       if (isActive) {
-        final bearing =
-            _bearingAtPointOnPolyline(agg.position, _coordsForLine(agg.primaryLine));
         markerFutures.add(StopMarkerFactory.createPinnedLabel(
           label: agg.primaryLine,
           color: agg.primaryColor,
           devicePixelRatio: dpr,
           bearingDeg: bearing,
           style: StopMarkerStyle.largeLabel,
+          withDot: false,
         ).then((m) => Marker(
               markerId: MarkerId('stop_${agg.key}'),
-              position: agg.position,
+              position: stopPos,
               icon: m.descriptor,
               anchor: m.anchor,
               zIndex: isStopSelected ? 100 : 50,
@@ -3617,57 +3645,26 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         continue;
       }
 
-      // Pôle de correspondance : nœud (point d'arrêt sur les lignes) +
-      // capsule des lignes flottée au-dessus.
+      // Correspondance : capsule des lignes flottée au-dessus du point.
       if (isInterchange && useLabels) {
         markerFutures.add(_buildPublicPoleMarker(agg, dpr, useBigLabels));
-        markerFutures.add(StopMarkerFactory.createNode(devicePixelRatio: dpr)
-            .then((icon) => Marker(
-                  markerId: MarkerId('node_${agg.key}'),
-                  position: agg.position,
-                  icon: icon,
-                  anchor: const Offset(0.5, 0.5),
-                  zIndex: 11,
-                  consumeTapEvents: true,
-                  onTap: () => _onPublicStopTap(agg),
-                )));
         continue;
       }
 
-      // Déclutter façon M réso : aux zooms "label", terminus → numéro,
-      // arrêts intermédiaires → tiret (plein 2 sens / demi 1 sens). En deçà,
-      // point discret pour rester léger.
+      // Terminus : badge numéro flotté au-dessus du point (le rond reste).
       if (useLabels && agg.isTerminus) {
-        final bearing =
-            _bearingAtPointOnPolyline(agg.position, _coordsForLine(agg.primaryLine));
         markerFutures.add(StopMarkerFactory.createPinnedLabel(
           label: agg.primaryLine,
           color: agg.primaryColor,
           devicePixelRatio: dpr,
           bearingDeg: bearing,
           style: useBigLabels ? StopMarkerStyle.bigLabel : StopMarkerStyle.label,
+          withDot: false,
         ).then((m) => Marker(
               markerId: MarkerId('stop_${agg.key}'),
-              position: agg.position,
+              position: stopPos,
               icon: m.descriptor,
               anchor: m.anchor,
-              zIndex: 10,
-              consumeTapEvents: true,
-              onTap: () => _onPublicStopTap(agg),
-            )));
-      } else if (useLabels) {
-        markerFutures.add(_buildTickMarker(agg, dpr));
-      } else {
-        markerFutures.add(StopMarkerFactory.create(
-          label: agg.primaryLine,
-          color: agg.primaryColor,
-          devicePixelRatio: dpr,
-          style: StopMarkerStyle.dot,
-        ).then((icon) => Marker(
-              markerId: MarkerId('stop_${agg.key}'),
-              position: agg.position,
-              icon: icon,
-              anchor: const Offset(0.5, 0.5),
               zIndex: 10,
               consumeTapEvents: true,
               onTap: () => _onPublicStopTap(agg),
@@ -3742,35 +3739,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         poly[bi + 1].latitude, poly[bi + 1].longitude);
   }
 
-  /// Marker "tiret d'arrêt" style M réso : barre perpendiculaire au tracé.
-  /// Plein = arrêt desservi dans les 2 sens, demi = un seul sens. Orienté via
-  /// `rotation` = cap local + `flat: true`.
   /// Coordonnées du tracé d'une ligne (aller si dispo, sinon retour) — sert à
-  /// calculer le cap local d'un arrêt.
+  /// calculer le cap local d'un arrêt et à snapper le point sur le trait.
   List<LatLng> _coordsForLine(String line) {
     final g = PublicTransportService.instance.getLineGroup(line);
     if (g?.aller?.coordinates.isNotEmpty ?? false) return g!.aller!.coordinates;
     return g?.retour?.coordinates ?? const <LatLng>[];
-  }
-
-  Future<Marker> _buildTickMarker(_PublicStopAggregate agg, double dpr) async {
-    final coords = _coordsForLine(agg.primaryLine);
-    final bearing = _bearingAtPointOnPolyline(agg.position, coords);
-    final icon = await StopMarkerFactory.createTick(
-      color: agg.primaryColor,
-      twoWay: agg.twoWay,
-      bearingDeg: bearing,
-      devicePixelRatio: dpr,
-    );
-    return Marker(
-      markerId: MarkerId('tick_${agg.key}'),
-      position: agg.position,
-      icon: icon,
-      anchor: const Offset(0.5, 0.5),
-      zIndex: 9,
-      consumeTapEvents: true,
-      onTap: () => _onPublicStopTap(agg),
-    );
   }
 
   /// Flèches de sens pour la ligne SÉLECTIONNÉE : on pose des chevrons le long
