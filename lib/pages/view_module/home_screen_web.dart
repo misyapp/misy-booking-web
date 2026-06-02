@@ -250,6 +250,20 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// [_precomputeCorridors].
   List<_Corridor> _corridorSpines = const [];
 
+  /// Découpage aller/retour de CHAQUE ligne pour la VUE RÉSEAU, précalculé une
+  /// fois par [_precomputeMergedLines] (statique, ≠ zoom). Par ligne :
+  /// - `trunk`      : portions où aller≈retour (même chaussée) → 1 tronc large ;
+  /// - `allerSolo`  : portions de l'aller à sens unique (branches fines) ;
+  /// - `retourSolo` : portions du retour à sens unique (branches fines).
+  /// Le tronc reprend la géométrie de l'aller → aucun offset, aucune médiane.
+  Map<String,
+          ({
+            List<List<LatLng>> trunk,
+            List<List<LatLng>> allerSolo,
+            List<List<LatLng>> retourSolo
+          })> _mergedRuns =
+      const {};
+
   // Cache des coordonnées écran de chaque stop visible. Recalculé à chaque
   // onCameraIdle via une interpolation linéaire depuis getVisibleRegion
   // (rapide, sync sur N stops). Utilisé par la détection de hover pour
@@ -2991,6 +3005,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       if (!mounted) return;
       // Consolidation corridor désactivée (revert) → traits bruts empilés.
       // _precomputeCorridors();
+      // Fusion aller/retour par ligne (vue réseau) : tronc partagé + branches.
+      _precomputeMergedLines();
       _precomputeBaseClusters();
       await _rebuildPublicTransportLayers();
       setState(() => _publicTransportLoaded = true);
@@ -3255,6 +3271,122 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _corridorSpines = spines;
   }
 
+  /// Pré-calcule (UNE fois, statique) pour chaque ligne le découpage
+  /// aller/retour utilisé par la vue réseau : tronc partagé (double sens même
+  /// chaussée) vs branches à sens unique. Cf. champ [_mergedRuns].
+  void _precomputeMergedLines() {
+    final svc = PublicTransportService.instance;
+    final result = <String,
+        ({
+          List<List<LatLng>> trunk,
+          List<List<LatLng>> allerSolo,
+          List<List<LatLng>> retourSolo
+        })>{};
+    for (final ln in svc.linesByImportance) {
+      final g = svc.getLineGroup(ln);
+      if (g == null) continue;
+      result[ln] = _segmentAllerRetour(
+        g.aller?.coordinates ?? const <LatLng>[],
+        g.retour?.coordinates ?? const <LatLng>[],
+      );
+    }
+    _mergedRuns = result;
+  }
+
+  /// Découpe l'aller et le retour d'UNE même ligne en :
+  /// - `trunk` : portions où le retour longe l'aller (≤ [_corridorMergeRadiusM],
+  ///   caps quasi-parallèles mod 180°) = même chaussée double sens → tracées
+  ///   UNE fois depuis la géométrie de l'aller ;
+  /// - `allerSolo` / `retourSolo` : portions à sens unique propres à chaque sens.
+  /// Aucun offset, aucune ligne médiane fabriquée (géométrie inchangée).
+  ({
+    List<List<LatLng>> trunk,
+    List<List<LatLng>> allerSolo,
+    List<List<LatLng>> retourSolo
+  }) _segmentAllerRetour(List<LatLng> aller, List<LatLng> retour) {
+    // Une seule direction présente → pas de fusion possible : c'est le tronc.
+    if (aller.length < 2 || retour.length < 2) {
+      final lone = aller.length >= 2 ? aller : retour;
+      return (
+        trunk: lone.length >= 2 ? [List<LatLng>.from(lone)] : <List<LatLng>>[],
+        allerSolo: const <List<LatLng>>[],
+        retourSolo: const <List<LatLng>>[],
+      );
+    }
+
+    final a = _densifyTrunk(aller);
+    final r = _densifyTrunk(retour);
+
+    const cell = _corridorMergeRadiusM;
+    List<int> cellOf(LatLng p) => [
+          (p.longitude * 111320.0 * cos(p.latitude * pi / 180) / cell).floor(),
+          (p.latitude * 111320.0 / cell).floor(),
+        ];
+    Map<String, List<_TrunkSample>> buildGrid(List<_TrunkSample> s) {
+      final g = <String, List<_TrunkSample>>{};
+      for (final e in s) {
+        final c = cellOf(e.pos);
+        g.putIfAbsent('${c[0]}_${c[1]}', () => []).add(e);
+      }
+      return g;
+    }
+
+    // Un échantillon « coïncide » s'il existe, dans l'autre sens, un point à
+    // ≤ rayon ET de cap quasi-parallèle (mod 180° → sens opposé accepté).
+    bool coincides(Map<String, List<_TrunkSample>> grid, _TrunkSample s) {
+      final c = cellOf(s.pos);
+      for (var dx = -1; dx <= 1; dx++) {
+        for (var dy = -1; dy <= 1; dy++) {
+          final bucket = grid['${c[0] + dx}_${c[1] + dy}'];
+          if (bucket == null) continue;
+          for (final e in bucket) {
+            if (_metersBetween(s.pos, e.pos) > _corridorMergeRadiusM) continue;
+            if (_bearingDiffMod180Trunk(s.bearing, e.bearing) >
+                _corridorBearingTolDeg) {
+              continue;
+            }
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    final gridA = buildGrid(a);
+    final gridR = buildGrid(r);
+    final sharedA = [for (final s in a) coincides(gridR, s)];
+    final sharedR = [for (final s in r) coincides(gridA, s)];
+
+    // Regroupe en runs contigus selon le flag voulu ; ajoute le point suivant
+    // au raccord pour éviter tout trou entre tronc et branche.
+    List<List<LatLng>> runsOf(List<_TrunkSample> s, List<bool> flag, bool want) {
+      final runs = <List<LatLng>>[];
+      var i = 0;
+      while (i < s.length) {
+        if (flag[i] != want) {
+          i++;
+          continue;
+        }
+        var j = i;
+        while (j + 1 < s.length && flag[j + 1] == want) {
+          j++;
+        }
+        final pts = <LatLng>[for (var k = i; k <= j; k++) s[k].pos];
+        if (j + 1 < s.length) pts.add(s[j + 1].pos); // raccord continuité
+        if (pts.length >= 2) runs.add(pts);
+        i = j + 1;
+      }
+      return runs;
+    }
+
+    return (
+      trunk: runsOf(a, sharedA, true), // aller partagé = tronc (chaussée pleine)
+      allerSolo: runsOf(a, sharedA, false), // aller seul = branche fine
+      retourSolo: runsOf(r, sharedR, false), // retour seul = branche fine
+      // (retour partagé non tracé : déjà couvert par le tronc de l'aller)
+    );
+  }
+
   /// Pré-calcule UNE FOIS la liste des clusters d'arrêts (dédup name +
   /// proximité) avec snap à la polyline de leur ligne la plus importante.
   /// Cette opération est O(N²) mais ne dépend ni du zoom ni de la
@@ -3480,14 +3612,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // sinon les corridors partagés noircissent ("boue").
       final bool drawCasing = isSelected || isTier1;
 
-      void addColored(String id, List<LatLng> pts) {
+      void addColored(String id, List<LatLng> pts, int w) {
         if (pts.length < 2) return;
         if (drawCasing) {
           polylines.add(Polyline(
             polylineId: PolylineId('pt_${lineNumber}_${id}_casing'),
             points: pts,
             color: Colors.white,
-            width: width + 3,
+            width: w + 3,
             zIndex: baseZ - 1,
             consumeTapEvents: false,
           ));
@@ -3496,33 +3628,42 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           polylineId: PolylineId('pt_${lineNumber}_$id'),
           points: pts,
           color: color,
-          width: width,
+          width: w,
           zIndex: baseZ,
           consumeTapEvents: false,
         ));
       }
 
-      void addPolyline(TransportLine? line, String dir) {
-        if (line == null || line.coordinates.length < 2) return;
-        // Sélection : tracé brut plein, inchangé.
-        if (isSelected) {
-          addColored(dir, line.coordinates);
-          return;
-        }
-        // Vue réseau : seulement les portions individuelles (≤ 3 lignes). Les
-        // portions de corridor (> 3) sont rendues à part via _corridorSpines.
-        final runs = _lineRuns['${lineNumber}_$dir'];
-        if (runs == null) {
-          addColored(dir, line.coordinates);
-          return;
-        }
-        for (var ri = 0; ri < runs.length; ri++) {
-          addColored('${dir}_$ri', runs[ri].pts);
+      if (isSelected) {
+        // Vue ligne sélectionnée : tracé brut plein, aller + retour, INCHANGÉ.
+        if (group.aller != null) addColored('aller', group.aller!.coordinates, width);
+        if (group.retour != null) addColored('retour', group.retour!.coordinates, width);
+      } else {
+        // VUE RÉSEAU : aller et retour fusionnés. Sur les portions où ils
+        // empruntent la même chaussée (double sens), un SEUL tronc large
+        // (= largeur de la chaussée) au lieu de 2 traits superposés. Les
+        // portions à sens unique (couplets, boucles) restent en branches fines.
+        // Découpage pré-calculé une fois (_precomputeMergedLines), géométrie
+        // de l'aller pour le tronc → aucun offset, aucune géométrie fabriquée.
+        final merged = _mergedRuns[lineNumber];
+        final trunkW = width + 1; // chaussée pleine (2 sens)
+        final branchW = width - 2 >= 2 ? width - 2 : 2; // branche sens unique
+        if (merged == null) {
+          // Fallback (precompute pas encore prêt) : ancien comportement.
+          if (group.aller != null) addColored('aller', group.aller!.coordinates, width);
+          if (group.retour != null) addColored('retour', group.retour!.coordinates, width);
+        } else {
+          for (var i = 0; i < merged.trunk.length; i++) {
+            addColored('trunk_$i', merged.trunk[i], trunkW);
+          }
+          for (var i = 0; i < merged.allerSolo.length; i++) {
+            addColored('aSolo_$i', merged.allerSolo[i], branchW);
+          }
+          for (var i = 0; i < merged.retourSolo.length; i++) {
+            addColored('rSolo_$i', merged.retourSolo[i], branchW);
+          }
         }
       }
-
-      addPolyline(group.aller, 'aller');
-      addPolyline(group.retour, 'retour');
 
       // Bouts du tracé (= les 2 terminus) à fermer par un gros point.
       final capLine = group.aller ?? group.retour;
