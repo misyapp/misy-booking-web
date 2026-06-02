@@ -293,6 +293,16 @@ class TransitStrings {
       AppLocale.mg: 'Fiantsonana tsy misy anarana',
       AppLocale.en: 'Unnamed stop',
     },
+    'stop.line.one': {
+      AppLocale.fr: 'ligne',
+      AppLocale.mg: 'tsipika',
+      AppLocale.en: 'line',
+    },
+    'stop.line.many': {
+      AppLocale.fr: 'lignes',
+      AppLocale.mg: 'tsipika',
+      AppLocale.en: 'lines',
+    },
 
     // ───────── États ─────────
     'state.loading': {
