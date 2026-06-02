@@ -3355,9 +3355,15 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final sharedA = [for (final s in a) coincides(gridR, s)];
     final sharedR = [for (final s in r) coincides(gridA, s)];
 
-    // Regroupe en runs contigus selon le flag voulu ; ajoute le point suivant
-    // au raccord pour éviter tout trou entre tronc et branche.
-    List<List<LatLng>> runsOf(List<_TrunkSample> s, List<bool> flag, bool want) {
+    // Regroupe en runs contigus selon [want].
+    // - [stitchTo] null (aller) : on prolonge d'un point au raccord → les runs
+    //   tronc/branche se chevauchent d'un segment sur la MÊME géométrie (aller),
+    //   donc continuité parfaite.
+    // - [stitchTo] = aller (retour) : aux bords qui touchent une zone partagée,
+    //   on raccorde l'extrémité de la branche retour sur le TRONC (projection
+    //   sur l'aller) → plus de trait « coupé » flottant à ~25 m du tronc.
+    List<List<LatLng>> runsOf(List<_TrunkSample> s, List<bool> flag, bool want,
+        {List<LatLng>? stitchTo}) {
       final runs = <List<LatLng>>[];
       var i = 0;
       while (i < s.length) {
@@ -3369,8 +3375,20 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         while (j + 1 < s.length && flag[j + 1] == want) {
           j++;
         }
-        final pts = <LatLng>[for (var k = i; k <= j; k++) s[k].pos];
-        if (j + 1 < s.length) pts.add(s[j + 1].pos); // raccord continuité
+        final pts = <LatLng>[];
+        if (stitchTo != null && i > 0 && flag[i - 1] != want) {
+          pts.add(_snapToPolyline(s[i].pos, stitchTo)); // raccord au tronc
+        }
+        for (var k = i; k <= j; k++) {
+          pts.add(s[k].pos);
+        }
+        if (stitchTo != null) {
+          if (j + 1 < s.length && flag[j + 1] != want) {
+            pts.add(_snapToPolyline(s[j + 1].pos, stitchTo)); // raccord au tronc
+          }
+        } else if (j + 1 < s.length) {
+          pts.add(s[j + 1].pos); // raccord continuité (même géométrie)
+        }
         if (pts.length >= 2) runs.add(pts);
         i = j + 1;
       }
@@ -3380,7 +3398,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     return (
       trunk: runsOf(a, sharedA, true), // aller partagé = tronc (chaussée pleine)
       allerSolo: runsOf(a, sharedA, false), // aller seul = branche fine
-      retourSolo: runsOf(r, sharedR, false), // retour seul = branche fine
+      retourSolo: runsOf(r, sharedR, false, stitchTo: aller), // raccordée au tronc
       // (retour partagé non tracé : déjà couvert par le tronc de l'aller)
     );
   }
@@ -3640,6 +3658,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             width: w + 3,
             zIndex: baseZ - 1,
             consumeTapEvents: false,
+            jointType: JointType.round,
+            startCap: Cap.roundCap,
+            endCap: Cap.roundCap,
           ));
         }
         polylines.add(Polyline(
@@ -3649,6 +3670,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           width: w,
           zIndex: baseZ,
           consumeTapEvents: false,
+          jointType: JointType.round,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
         ));
       }
 
