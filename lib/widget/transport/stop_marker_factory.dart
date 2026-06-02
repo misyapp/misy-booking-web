@@ -27,7 +27,7 @@ class StopMarkerFactory {
   // Tailles logiques (× devicePixelRatio en sortie). Calibrées pour rester
   // lisibles sans saturer la carte type IDF Mobilités. Volontairement
   // petites pour que les markers ne masquent pas le trait de la ligne.
-  static const double _dotSize = 9; // diamètre extérieur (anneau)
+  static const double _dotSize = 10; // diamètre extérieur (anneau couleur ligne)
   static const double _labelWidth = 17;
   static const double _labelHeight = 13;
   static const double _bigLabelWidth = 24;
@@ -287,12 +287,16 @@ class StopMarkerFactory {
       Offset(chipCenter.dx - tp.width / 2, chipCenter.dy - tp.height / 2),
     );
 
-    // Point blanc bord noir posé sur le tracé (à l'origine = ancre géo).
+    // Bille couleur de ligne posée sur le tracé (à l'origine = ancre géo) :
+    // liseré blanc → anneau couleur → cœur blanc, cohérent avec _renderDot.
     if (withDot) {
       final dotR = dotDia / 2 * s;
-      final ring = 1.0 * s;
-      canvas.drawCircle(origin, dotR, Paint()..color = Colors.black);
-      canvas.drawCircle(origin, dotR - ring, Paint()..color = Colors.white);
+      final whiteKeyline = 0.6 * s;
+      final colorBand = 1.7 * s;
+      canvas.drawCircle(origin, dotR, Paint()..color = Colors.white);
+      canvas.drawCircle(origin, dotR - whiteKeyline, Paint()..color = color);
+      canvas.drawCircle(
+          origin, dotR - whiteKeyline - colorBand, Paint()..color = Colors.white);
     }
 
     final picture = recorder.endRecording();
@@ -461,24 +465,29 @@ class StopMarkerFactory {
     return descriptor;
   }
 
-  /// Cap de terminus = dernier arrêt : gros point blanc cerclé de sombre posé
-  /// au bout de la polyligne pour "fermer" le tracé. Plus gros que le nœud de
-  /// correspondance.
+  /// Cap de terminus = dernier arrêt : gros point PLEIN à la couleur de la
+  /// ligne, cœur blanc + fin liseré blanc extérieur, posé au bout de la
+  /// polyligne pour "fermer" le tracé. Plus gros que le nœud de correspondance.
   static Future<BitmapDescriptor> createTerminusCap({
+    required Color color,
     required double devicePixelRatio,
   }) async {
-    final key = 'termcap_${devicePixelRatio.toStringAsFixed(1)}';
+    final key =
+        'termcap_${color.value.toRadixString(16)}_${devicePixelRatio.toStringAsFixed(1)}';
     final cached = _cache[key];
     if (cached != null) return cached;
 
     const logical = 15.0;
     final size = logical * devicePixelRatio;
+    final s = devicePixelRatio;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final c = Offset(size / 2, size / 2);
-    final ring = 2.4 * devicePixelRatio;
-    canvas.drawCircle(c, size / 2, Paint()..color = const Color(0xFF263238));
-    canvas.drawCircle(c, size / 2 - ring, Paint()..color = Colors.white);
+    final r = size / 2;
+    final whiteKeyline = 0.8 * s; // liseré blanc extérieur
+    canvas.drawCircle(c, r, Paint()..color = Colors.white);
+    canvas.drawCircle(c, r - whiteKeyline, Paint()..color = color);
+    canvas.drawCircle(c, r * 0.40, Paint()..color = Colors.white); // cœur
 
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());
@@ -492,24 +501,28 @@ class StopMarkerFactory {
     return descriptor;
   }
 
-  /// Point blanc avec fine bordure noire — neutre, lisible quelle que
-  /// soit la couleur de la ligne. Posé directement sur la polyline (qui
-  /// a elle-même un contour noir), donne un effet "stop blanc dans la
-  /// ligne" type plan métro.
+  /// Bille « couleur de ligne » : fin liseré blanc extérieur → anneau à la
+  /// couleur de la ligne → cœur blanc. Le liseré détache l'arrêt du trait
+  /// (même couleur dessous) et des lignes voisines, et garde le point lisible
+  /// sur les couleurs claires (jaune/pastel). Effet station premium type Apple
+  /// Plans / Citymapper, posé pile sur la polyline.
   static Future<BitmapDescriptor> _renderDot(
       Color color, double devicePixelRatio) async {
     final size = _dotSize * devicePixelRatio;
-    final ringWidth = 1.0 * devicePixelRatio;
+    final s = devicePixelRatio;
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
 
     final center = Offset(size / 2, size / 2);
-    final outerRadius = size / 2;
-    final innerRadius = outerRadius - ringWidth;
+    final r = size / 2;
+    final whiteKeyline = 0.6 * s; // liseré blanc extérieur
+    final colorBand = 1.7 * s; // épaisseur de l'anneau couleur
 
-    canvas.drawCircle(center, outerRadius, Paint()..color = Colors.black);
-    canvas.drawCircle(center, innerRadius, Paint()..color = Colors.white);
+    canvas.drawCircle(center, r, Paint()..color = Colors.white);
+    canvas.drawCircle(center, r - whiteKeyline, Paint()..color = color);
+    canvas.drawCircle(
+        center, r - whiteKeyline - colorBand, Paint()..color = Colors.white);
 
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());

@@ -175,6 +175,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // lignes visibles à zoom faible).
   Set<Polyline> _publicTransportPolylines = {};
   Set<Marker> _publicTransportMarkers = {};
+  // Billes d'arrêt = Circle Google Maps (rayon en MÈTRES) → géographiques,
+  // donc elles scalent avec le zoom comme la polyline, au lieu d'un marker
+  // bitmap à taille-écran fixe qui paraît énorme en vue réseau dézoomée.
+  Set<Circle> _publicTransportCircles = {};
+  static const double _stopBeadRadiusM = 16; // bille d'arrêt courante
+  static const double _terminusRadiusM = 24; // terminus (plus gros)
   bool _publicTransportLoaded = false;
 
   // Ligne sélectionnée dans la liste (= mise en évidence sur la carte). Null
@@ -2482,6 +2488,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   Widget _buildMap() {
     final allMarkers = <Marker>{};
     final allPolylines = <Polyline>{};
+    final allCircles = <Circle>{};
 
     if (_homeMode == HomeMode.publicTransport) {
       // Mode "Transport en commun" : carte du réseau uniquement. Aucun
@@ -2492,6 +2499,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         // + éventuel preview O→D (pointillé) en cours de saisie.
         allPolylines.addAll(_publicTransportPolylines);
         allMarkers.addAll(_publicTransportMarkers);
+        allCircles.addAll(_publicTransportCircles);
         allPolylines.addAll(_publicPreviewPolyline);
         allMarkers.addAll(_publicPreviewMarkers);
       } else {
@@ -2545,6 +2553,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       style: _mapStyle,
       markers: allMarkers,
       polylines: allPolylines,
+      circles: allCircles,
       onMapCreated: (controller) {
         _mapController = controller;
         if (kIsWeb) {
@@ -3441,8 +3450,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final renderOrder = [
       for (var i = byImportance.length - 1; i >= 0; i--) byImportance[i],
     ];
-    // Bouts de tracé (terminus) à "fermer" par un gros point = dernier arrêt.
-    final termCaps = <LatLng>[];
+    // Bouts de tracé (terminus) à "fermer" par un gros point = dernier arrêt,
+    // à la couleur de la ligne (dédup par position = 1ʳᵉ couleur rencontrée).
+    final termCaps = <({LatLng pos, Color color})>[];
     for (final lineNumber in renderOrder) {
       if (!visible.contains(lineNumber)) continue;
       final group = svc.getLineGroup(lineNumber);
@@ -3517,8 +3527,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // Bouts du tracé (= les 2 terminus) à fermer par un gros point.
       final capLine = group.aller ?? group.retour;
       if (capLine != null && capLine.coordinates.length >= 2) {
-        termCaps.add(capLine.coordinates.first);
-        termCaps.add(capLine.coordinates.last);
+        termCaps.add((pos: capLine.coordinates.first, color: color));
+        termCaps.add((pos: capLine.coordinates.last, color: color));
       }
     }
 
@@ -3585,6 +3595,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // (label, color, dpr, style), donc seuls les nouveaux variants paient
     // une rastérisation ; les autres reviennent du cache instantanément.
     final markers = <Marker>{};
+    final circles = <Circle>{};
     final hovered = _publicHoveredStop;
     final markerFutures = <Future<Marker>>[];
     for (final agg in stopsByKey.values) {
@@ -3604,25 +3615,24 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           : agg.position;
       final bearing = _bearingAtPointOnPolyline(stopPos, primaryCoords);
 
-      // POINT D'ARRÊT TOUJOURS PRÉSENT : un point rond posé pile sur le trait,
-      // dessiné à TOUS les zooms (dès showStops) et JAMAIS remplacé quand les
-      // labels apparaissent. Les badges (terminus), capsules (correspondances)
-      // et gros labels (actif) viennent simplement FLOTTER au-dessus, avec
-      // `withDot:false` pour ne pas redessiner un 2e point.
-      markerFutures.add(StopMarkerFactory.create(
-        label: agg.primaryLine,
-        color: agg.primaryColor,
-        devicePixelRatio: dpr,
-        style: StopMarkerStyle.dot,
-      ).then((icon) => Marker(
-            markerId: MarkerId('dot_${agg.key}'),
-            position: stopPos,
-            icon: icon,
-            anchor: const Offset(0.5, 0.5),
-            zIndex: 8,
-            consumeTapEvents: true,
-            onTap: () => _onPublicStopTap(agg),
-          )));
+      // POINT D'ARRÊT TOUJOURS PRÉSENT : une bille GÉOGRAPHIQUE (Circle, rayon
+      // en mètres) posée pile sur le trait → elle scale avec le zoom comme la
+      // polyline (≠ marker bitmap à taille-écran fixe qui paraît énorme en vue
+      // réseau dézoomée). Cœur blanc + liseré couleur de la ligne. Présente à
+      // TOUS les zooms (dès showStops) ; les badges (terminus), capsules
+      // (correspondances) et gros labels (actif) viennent FLOTTER au-dessus
+      // (markers, toujours rendus par-dessus les Circle), avec `withDot:false`.
+      circles.add(Circle(
+        circleId: CircleId('dot_${agg.key}'),
+        center: stopPos,
+        radius: _stopBeadRadiusM,
+        fillColor: Colors.white,
+        strokeColor: agg.primaryColor,
+        strokeWidth: 2,
+        zIndex: 8,
+        consumeTapEvents: true,
+        onTap: () => _onPublicStopTap(agg),
+      ));
 
       // Arrêt actif (tap/survol) : gros badge flotté au-dessus du point.
       if (isActive) {
@@ -3677,19 +3687,32 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // Caps de terminus : un gros point au bout de chaque tracé pour le fermer
     // (= dernier arrêt). Dédupliqués par position (terminus partagés).
     if (showStops && termCaps.isNotEmpty) {
-      final capIcon =
-          await StopMarkerFactory.createTerminusCap(devicePixelRatio: dpr);
       final seenCaps = <String>{};
-      for (final pos in termCaps) {
+      for (final cap in termCaps) {
+        final pos = cap.pos;
         final ck =
             '${pos.latitude.toStringAsFixed(5)}_${pos.longitude.toStringAsFixed(5)}';
         if (!seenCaps.add(ck)) continue;
-        markers.add(Marker(
-          markerId: MarkerId('termcap_$ck'),
-          position: pos,
-          icon: capIcon,
-          anchor: const Offset(0.5, 0.5),
+        // Terminus = grosse bille géographique PLEINE couleur de la ligne +
+        // cœur blanc (2 Circle concentriques, mètres → scalent avec le zoom).
+        circles.add(Circle(
+          circleId: CircleId('termcap_${ck}_outer'),
+          center: pos,
+          radius: _terminusRadiusM,
+          fillColor: cap.color,
+          strokeColor: Colors.white,
+          strokeWidth: 2,
           zIndex: 12,
+          consumeTapEvents: false,
+        ));
+        circles.add(Circle(
+          circleId: CircleId('termcap_${ck}_core'),
+          center: pos,
+          radius: _terminusRadiusM * 0.42,
+          fillColor: Colors.white,
+          strokeColor: Colors.white,
+          strokeWidth: 0,
+          zIndex: 13,
           consumeTapEvents: false,
         ));
       }
@@ -3712,6 +3735,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     setState(() {
       _publicTransportPolylines = polylines;
       _publicTransportMarkers = markers;
+      _publicTransportCircles = circles;
       _publicStopsByKey = stopsByKey;
     });
     // Refresh le cache écran après le rebuild — sinon le hover réagirait
