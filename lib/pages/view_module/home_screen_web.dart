@@ -3786,22 +3786,31 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         chains.add((pts: cPts, colors: cCols));
       }
 
-      // 2) MULTICOLORE SUR LA LARGEUR : N voies PARALLÈLES côte à côte
-      //    (décalage perpendiculaire), une par ligne → faisceau. Chaque voie
-      //    garde la largeur NORMALE d'une ligne (on NE touche PAS à la largeur
-      //    des polylignes) ; on les décale juste de cette largeur. Appliqué sur
-      //    les tracés CHAÎNÉS (continus) pour limiter les trous.
-      final bandWM = _lineBaseMeters(2, false); // largeur normale d'une ligne
-      final bandPx = (bandWM / mppCor).clamp(2.5, 60.0).round();
+      // 2) UN SEUL BRIN, colorié d'un MIX dans la LARGEUR : la largeur totale
+      //    reste celle d'UNE ligne (on n'élargit pas, on ne décale pas le brin),
+      //    mais elle est divisée en N fines rayures parallèles (1 par ligne),
+      //    chacune courant le long du tracé. Si le brin est trop fin pour
+      //    toutes les couleurs → on n'en met que X (lignes les plus importantes).
+      final lineWM = _lineBaseMeters(2, false); // largeur d'UNE ligne
+      final lineWPx = lineWM / mppCor;
+      const minStripePx = 2.5; // rayure lisible minimale
+      final maxStripes = (lineWPx / minStripePx).floor().clamp(1, 99);
       for (var ci = 0; ci < chains.length; ci++) {
         final pts = chains[ci].pts;
         final cols = chains[ci].colors;
-        final n = cols.length;
-        if (n == 0 || pts.length < 2) continue;
+        if (cols.isEmpty || pts.length < 2) continue;
+        final n = cols.length < maxStripes ? cols.length : maxStripes;
+        if (n == 1) {
+          addBand('cor_${ci}_0', pts, cols.first, lineWPx.clamp(2.5, 60.0).round());
+          continue;
+        }
+        final stripeWM = lineWM / n; // rayures qui se partagent UNE largeur
+        final stripePx = (stripeWM / mppCor).clamp(1.5, 60.0).round();
         for (var k = 0; k < n; k++) {
-          final off = (k - (n - 1) / 2.0) * bandWM; // décalage perpendiculaire
+          // décalage DANS la largeur du brin (total = lineWM, brin non élargi)
+          final off = (k - (n - 1) / 2.0) * stripeWM;
           final band = off.abs() < 0.01 ? pts : _offsetPolyline(pts, off);
-          addBand('cor_${ci}_$k', band, cols[k], bandPx);
+          addBand('cor_${ci}_$k', band, cols[k], stripePx);
         }
       }
     }
