@@ -1,48 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/transit_strings.dart';
 import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
-import 'package:rider_ride_hailing_app/services/network_diagram_layout.dart';
-import 'package:rider_ride_hailing_app/services/public_transport_service.dart';
-import 'package:rider_ride_hailing_app/widget/transport/network_diagram_painter.dart';
 
-/// Écran plein-page qui affiche le diagramme schématique du réseau
-/// taxi-be d'Antananarivo, à la manière d'un plan tramway. Pan/zoom via
-/// [InteractiveViewer], rendu via [NetworkDiagramPainter].
+/// Écran plein-page : plan SCHÉMATIQUE octilinéaire du réseau taxi-be
+/// d'Antananarivo, façon plan de métro.
 ///
-/// Le layout est calculé une fois au montage à partir du
-/// [PublicTransportService] déjà chargé. Si jamais le service n'est pas
-/// encore prêt (cas où l'utilisateur ouvre directement la page sans
-/// passer par le mode public), on déclenche `ensureLoaded` puis on
-/// recalcule.
-class TransportNetworkDiagramScreen extends StatefulWidget {
+/// Le schéma est PRÉ-CALCULÉ hors-ligne via la chaîne LOOM
+/// (misy2loom.py | topo | loom | octi | transitmap) — cf. _tools/ — et servi
+/// comme SVG statique sous `web/transport_schema/`. L'app ne fait que
+/// l'afficher (téléchargé à l'ouverture de l'écran, pas dans le bundle initial)
+/// avec pan/zoom via [InteractiveViewer]. Régénérer après maj des lignes =
+/// relancer la chaîne LOOM et remplacer le SVG.
+class TransportNetworkDiagramScreen extends StatelessWidget {
   const TransportNetworkDiagramScreen({super.key});
 
-  @override
-  State<TransportNetworkDiagramScreen> createState() =>
-      _TransportNetworkDiagramScreenState();
-}
-
-class _TransportNetworkDiagramScreenState
-    extends State<TransportNetworkDiagramScreen> {
-  // Taille du canvas logique du diagramme. Choisie large pour donner de
-  // l'espace aux 40 lignes — l'InteractiveViewer pan/zoom permet de
-  // naviguer dedans.
-  static const Size _canvasSize = Size(2400, 1800);
-
-  late Future<NetworkDiagramLayout> _layoutFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _layoutFuture = _ensureLayout();
-  }
-
-  Future<NetworkDiagramLayout> _ensureLayout() async {
-    final svc = PublicTransportService.instance;
-    await svc.ensureLoaded();
-    return NetworkDiagramLayout.compute(svc, targetSize: _canvasSize);
-  }
+  // Même origine que l'app (book.misy.app) → URL relative résolue à l'exécution.
+  static String get _svgUrl =>
+      Uri.base.resolve('transport_schema/misy_octilineaire.svg').toString();
 
   @override
   Widget build(BuildContext context) {
@@ -67,40 +43,25 @@ class _TransportNetworkDiagramScreenState
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: FutureBuilder<NetworkDiagramLayout>(
-        future: _layoutFuture,
-        builder: (ctx, snap) {
-          if (snap.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snap.hasError || snap.data == null) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  TransitStrings.t('state.error', locale),
-                  style: const TextStyle(color: Colors.red),
-                  textAlign: TextAlign.center,
+      body: InteractiveViewer(
+        minScale: 0.3,
+        maxScale: 8.0,
+        boundaryMargin: const EdgeInsets.all(600),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: SvgPicture.network(
+              _svgUrl,
+              fit: BoxFit.contain,
+              placeholderBuilder: (_) => const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(48),
+                  child: CircularProgressIndicator(),
                 ),
               ),
-            );
-          }
-          final layout = snap.data!;
-          return InteractiveViewer(
-            minScale: 0.3,
-            maxScale: 4.0,
-            boundaryMargin: const EdgeInsets.all(200),
-            constrained: false,
-            child: SizedBox(
-              width: layout.canvasSize.width,
-              height: layout.canvasSize.height,
-              child: CustomPaint(
-                painter: NetworkDiagramPainter(layout: layout),
-                size: layout.canvasSize,
-              ),
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }
