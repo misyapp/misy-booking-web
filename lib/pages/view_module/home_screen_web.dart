@@ -77,6 +77,15 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // Position par défaut: Antananarivo, Madagascar (Ankadifotsy)
   static const LatLng _defaultPosition = LatLng(-18.9103, 47.5305);
 
+  // Bornage carte : zoom min/max + caméra limitée à ~40 km autour
+  // d'Antananarivo (≈ ±0.36° lat, ±0.38° lng à cette latitude).
+  static const double _minZoom = 11;
+  static const double _maxZoom = 18;
+  static final LatLngBounds _tanaBounds = LatLngBounds(
+    southwest: const LatLng(-19.2707, 47.1496),
+    northeast: const LatLng(-18.5499, 47.9114),
+  );
+
   // Subscription pour les chauffeurs en ligne
   StreamSubscription<QuerySnapshot>? _driversSubscription;
 
@@ -2566,6 +2575,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       markers: allMarkers,
       polylines: allPolylines,
       circles: allCircles,
+      minMaxZoomPreference: const MinMaxZoomPreference(_minZoom, _maxZoom),
+      cameraTargetBounds: CameraTargetBounds(_tanaBounds),
       onMapCreated: (controller) {
         _mapController = controller;
         if (kIsWeb) {
