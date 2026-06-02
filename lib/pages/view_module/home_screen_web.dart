@@ -234,6 +234,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // dès qu'un itinéraire est calculé/sélectionné.
   Set<Polyline> _publicPreviewPolyline = {};
   Set<Marker> _publicPreviewMarkers = {};
+  /// Arrivée du trajet en cours de saisie. Non null = on MASQUE le réseau
+  /// (toutes les lignes) pour ne montrer que départ + arrivée (cf. _buildMap).
+  LatLng? _publicPreviewDest;
 
   /// Notifier pushé par le map.onTap en mode public, écouté par le
   /// calculateur d'itinéraire pour ajuster le dernier point posé (origin
@@ -2518,9 +2521,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       if (_publicRoutePolylines.isEmpty) {
         // Pas d'itinéraire sélectionné → on montre le réseau complet
         // + éventuel preview O→D (pointillé) en cours de saisie.
-        allPolylines.addAll(_publicTransportPolylines);
-        allMarkers.addAll(_publicTransportMarkers);
-        allCircles.addAll(_publicTransportCircles);
+        // Tant qu'aucune arrivée n'est posée → réseau complet visible.
+        // Dès que l'arrivée est saisie → on MASQUE le réseau (toutes les
+        // lignes) pour ne montrer que le départ + l'arrivée.
+        if (_publicPreviewDest == null) {
+          allPolylines.addAll(_publicTransportPolylines);
+          allMarkers.addAll(_publicTransportMarkers);
+          allCircles.addAll(_publicTransportCircles);
+        }
         allPolylines.addAll(_publicPreviewPolyline);
         allMarkers.addAll(_publicPreviewMarkers);
       } else {
@@ -2691,6 +2699,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       _publicRouteMarkers = {};
       _publicPreviewPolyline = {};
       _publicPreviewMarkers = {};
+      _publicPreviewDest = null;
     });
     if (mode == HomeMode.publicTransport && !_publicTransportLoaded) {
       _loadPublicTransportLayers();
@@ -2749,6 +2758,19 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         consumeTapEvents: false,
       ));
     }
+    if (origin != null) {
+      // Pin sur la position GPS du lieu de DÉPART (icône verte, comme Course).
+      markers.add(Marker(
+        markerId: const MarkerId('public_preview_origin'),
+        position: origin,
+        icon: _pickupMarkerIcon ??
+            BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueGreen),
+        anchor: const Offset(0.5, 0.5),
+        zIndex: 251,
+        consumeTapEvents: false,
+      ));
+    }
     if (destination != null) {
       markers.add(Marker(
         markerId: const MarkerId('public_preview_dest'),
@@ -2764,6 +2786,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     setState(() {
       _publicPreviewPolyline = polylines;
       _publicPreviewMarkers = markers;
+      _publicPreviewDest = destination;
     });
 
     // Animation caméra.
@@ -2808,6 +2831,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       setState(() {
         _publicRoutePolylines = {};
         _publicRouteMarkers = {};
+        // Trajet effacé → on restaure le réseau complet.
+        _publicPreviewDest = null;
       });
       // Re-render le réseau au cas où on était en mode iso.
       _rebuildPublicTransportLayers();
