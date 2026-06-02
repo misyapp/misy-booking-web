@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/transit_strings.dart';
 import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
@@ -78,7 +79,11 @@ class StopCard extends StatelessWidget {
             child: Stack(
               clipBehavior: Clip.none,
               children: [
-                Material(
+                // PointerInterceptor : insère un élément DOM au-dessus de la
+                // carte (platform view) → la molette/scroll sur la card scrolle
+                // la liste au lieu de zoomer la carte Google Maps.
+                PointerInterceptor(
+                  child: Material(
                   color: Colors.white,
                   elevation: 14,
                   borderRadius: BorderRadius.circular(16),
@@ -109,6 +114,7 @@ class StopCard extends StatelessWidget {
                         ),
                       ),
                     ],
+                  ),
                   ),
                 ),
                 // Pointeur triangulaire vers le marker.
