@@ -3748,26 +3748,67 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         ));
       }
 
-      for (var ci = 0; ci < _corridorSpines.length; ci++) {
-        final cor = _corridorSpines[ci];
-        final cols = cor.colors;
-        final pts = cor.pts;
-        final n = cols.length;
-        if (n == 0 || pts.length < 2) continue;
-        if (n == 1) {
-          addBand('cor_${ci}_0', pts, cols[0]);
-          continue;
+      // 1) CHAÎNER les tronçons de corridor contigus (fin de l'un ≈ extrémité
+      //    du suivant) en longues polylignes → un seul arc-en-ciel CONTINU,
+      //    pas un damier de petits tronçons. Glouton par proximité (≤ 35 m).
+      const joinTolM = 35.0;
+      final used = List<bool>.filled(_corridorSpines.length, false);
+      final chains = <({List<LatLng> pts, List<Color> colors})>[];
+      for (var si = 0; si < _corridorSpines.length; si++) {
+        if (used[si]) continue;
+        used[si] = true;
+        if (_corridorSpines[si].pts.length < 2) continue;
+        final cPts = List<LatLng>.from(_corridorSpines[si].pts);
+        final cCols = <Color>[..._corridorSpines[si].colors];
+        var extended = true;
+        while (extended) {
+          extended = false;
+          for (var sj = 0; sj < _corridorSpines.length; sj++) {
+            if (used[sj] || _corridorSpines[sj].pts.length < 2) continue;
+            final sp = _corridorSpines[sj].pts;
+            if (_metersBetween(cPts.last, sp.first) <= joinTolM) {
+              cPts.addAll(sp.skip(1));
+            } else if (_metersBetween(cPts.last, sp.last) <= joinTolM) {
+              cPts.addAll(sp.reversed.skip(1));
+            } else if (_metersBetween(cPts.first, sp.last) <= joinTolM) {
+              cPts.insertAll(0, sp.take(sp.length - 1));
+            } else if (_metersBetween(cPts.first, sp.first) <= joinTolM) {
+              cPts.insertAll(0, sp.reversed.take(sp.length - 1));
+            } else {
+              continue;
+            }
+            for (final c in _corridorSpines[sj].colors) {
+              if (!cCols.contains(c)) cCols.add(c);
+            }
+            used[sj] = true;
+            extended = true;
+          }
         }
-        // Longueur totale du tracé partagé → N bandes égales successives.
+        chains.add((pts: cPts, colors: cCols));
+      }
+
+      // 2) ARC-EN-CIEL dans la longueur sur chaque chaîne : bandes CONTINUES
+      //    successives (1 par couleur). Bandes longues (≥ ~60 px) → vrai effet
+      //    "longueur", jamais un damier ; si la chaîne est trop courte pour
+      //    toutes les couleurs, on n'en montre que X (les plus importantes).
+      final minBandLenM = 60.0 * mppCor;
+      for (var ci = 0; ci < chains.length; ci++) {
+        final pts = chains[ci].pts;
+        final cols = chains[ci].colors;
+        if (cols.isEmpty || pts.length < 2) continue;
         var total = 0.0;
         for (var i = 0; i < pts.length - 1; i++) {
           total += _metersBetween(pts[i], pts[i + 1]);
         }
         if (total <= 0) continue;
+        final n = (total / minBandLenM).floor().clamp(1, cols.length);
+        if (n == 1) {
+          addBand('cor_${ci}_0', pts, cols.first);
+          continue;
+        }
         final bandLen = total / n;
-        // On accumule les points en continu ; on coupe à chaque frontière de
-        // bande jusqu'à n-1 bandes, le reste forme la dernière (garde toute
-        // la géométrie, aucun point sauté).
+        // Accumulation continue : coupe à chaque frontière de bande jusqu'à
+        // n-1, le reste forme la dernière (toute la géométrie conservée).
         final bands = <List<LatLng>>[];
         var band = <LatLng>[pts.first];
         var acc = 0.0;
@@ -3791,7 +3832,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           acc += segLen;
           band.add(b);
         }
-        bands.add(band); // dernière bande = reste
+        bands.add(band);
         for (var k = 0; k < bands.length && k < n; k++) {
           addBand('cor_${ci}_$k', bands[k], cols[k]);
         }
