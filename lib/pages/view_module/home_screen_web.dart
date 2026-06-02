@@ -179,8 +179,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // donc elles scalent avec le zoom comme la polyline, au lieu d'un marker
   // bitmap à taille-écran fixe qui paraît énorme en vue réseau dézoomée.
   Set<Circle> _publicTransportCircles = {};
-  static const double _stopBeadRadiusM = 16; // bille d'arrêt courante
-  static const double _terminusRadiusM = 24; // terminus (plus gros)
   bool _publicTransportLoaded = false;
 
   // Ligne sélectionnée dans la liste (= mise en évidence sur la carte). Null
@@ -3387,6 +3385,22 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     );
   }
 
+  /// Mètres par pixel au [zoom] Google (lat Antananarivo ≈ -18.9°). Sert à
+  /// rendre les traits/billes en géométrie statique : largeur définie en
+  /// MÈTRES puis convertie en px → le trait épaissit en zoomant (≠ px fixe
+  /// ridiculement fin en zoom serré) et reste fin/visible en vue réseau.
+  double _metersPerPixel(double zoom) =>
+      156543.03392 * cos(-18.9 * pi / 180) / pow(2, zoom).toDouble();
+
+  /// Largeur géographique de référence (mètres) d'une ligne selon son tier
+  /// (≈ largeur de chaussée pour le tronc). La bille d'arrêt en dérive pour
+  /// rester proportionnelle au trait.
+  double _lineBaseMeters(int tier, bool isTele) {
+    if (tier == 1) return isTele ? 18 : 22; // téléphérique / train
+    if (tier == 2) return 15; // bus numéroté
+    return 10; // périurbain
+  }
+
   /// Pré-calcule UNE FOIS la liste des clusters d'arrêts (dédup name +
   /// proximité) avec snap à la polyline de leur ligne la plus importante.
   /// Cette opération est O(N²) mais ne dépend ni du zoom ni de la
@@ -3584,7 +3598,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     ];
     // Bouts de tracé (terminus) à "fermer" par un gros point = dernier arrêt,
     // à la couleur de la ligne (dédup par position = 1ʳᵉ couleur rencontrée).
-    final termCaps = <({LatLng pos, Color color})>[];
+    final termCaps = <({LatLng pos, Color color, double radiusM})>[];
     for (final lineNumber in renderOrder) {
       if (!visible.contains(lineNumber)) continue;
       final group = svc.getLineGroup(lineNumber);
@@ -3646,8 +3660,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         // Découpage pré-calculé une fois (_precomputeMergedLines), géométrie
         // de l'aller pour le tronc → aucun offset, aucune géométrie fabriquée.
         final merged = _mergedRuns[lineNumber];
-        final trunkW = width + 1; // chaussée pleine (2 sens)
-        final branchW = width - 2 >= 2 ? width - 2 : 2; // branche sens unique
+        // Largeurs en MÈTRES → px au zoom courant (géométrie statique) :
+        // bornées [plancher, plafond] pour rester visibles en vue réseau et
+        // ne pas exploser en zoom serré. Tronc = chaussée pleine (2 sens),
+        // branche sens unique = ~moitié.
+        final mpp = _metersPerPixel(_publicMapZoom);
+        final baseM = _lineBaseMeters(tier, isTele);
+        final trunkW = (baseM / mpp).clamp(2.5, 60.0).round();
+        final branchW = (baseM * 0.55 / mpp).clamp(2.0, 34.0).round();
         if (merged == null) {
           // Fallback (precompute pas encore prêt) : ancien comportement.
           if (group.aller != null) addColored('aller', group.aller!.coordinates, width);
@@ -3668,8 +3688,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // Bouts du tracé (= les 2 terminus) à fermer par un gros point.
       final capLine = group.aller ?? group.retour;
       if (capLine != null && capLine.coordinates.length >= 2) {
-        termCaps.add((pos: capLine.coordinates.first, color: color));
-        termCaps.add((pos: capLine.coordinates.last, color: color));
+        // Terminus un peu plus gros que la bille courante, même échelle ligne.
+        final capR = _lineBaseMeters(tier, isTele) * 0.95;
+        termCaps.add((pos: capLine.coordinates.first, color: color, radiusM: capR));
+        termCaps.add((pos: capLine.coordinates.last, color: color, radiusM: capR));
       }
     }
 
@@ -3763,10 +3785,17 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // TOUS les zooms (dès showStops) ; les badges (terminus), capsules
       // (correspondances) et gros labels (actif) viennent FLOTTER au-dessus
       // (markers, toujours rendus par-dessus les Circle), avec `withDot:false`.
+      // Bille PROPORTIONNELLE à la largeur (mètres) de la ligne primaire →
+      // même échelle que le trait, scale avec le zoom (Circle géographique).
+      final dotMeta = svc.metadataFor(agg.primaryLine);
+      final dotType = (dotMeta?.transportType ?? 'bus').toLowerCase();
+      final dotTele = dotType == 'telepherique' || dotType == 'tele';
+      final beadRadiusM =
+          _lineBaseMeters(dotMeta?.importanceTier ?? 2, dotTele) * 0.62;
       circles.add(Circle(
         circleId: CircleId('dot_${agg.key}'),
         center: stopPos,
-        radius: _stopBeadRadiusM,
+        radius: beadRadiusM,
         fillColor: Colors.white,
         strokeColor: agg.primaryColor,
         strokeWidth: 2,
@@ -3839,7 +3868,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         circles.add(Circle(
           circleId: CircleId('termcap_${ck}_outer'),
           center: pos,
-          radius: _terminusRadiusM,
+          radius: cap.radiusM,
           fillColor: cap.color,
           strokeColor: Colors.white,
           strokeWidth: 2,
@@ -3849,7 +3878,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         circles.add(Circle(
           circleId: CircleId('termcap_${ck}_core'),
           center: pos,
-          radius: _terminusRadiusM * 0.42,
+          radius: cap.radiusM * 0.42,
           fillColor: Colors.white,
           strokeColor: Colors.white,
           strokeWidth: 0,
@@ -4200,8 +4229,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _lastKnownCamera = pos;
     if (_homeMode != HomeMode.publicTransport) return;
     final newZoom = pos.zoom;
+    // Pas de 0,5 niveau : assez fin pour que la largeur des traits (en mètres
+    // → px) suive le zoom de façon fluide, sans rebuild à chaque micro-mouvement.
     final crossedZoomThreshold =
-        newZoom.floor() != _publicMapZoom.floor() ||
+        (newZoom * 2).floor() != (_publicMapZoom * 2).floor() ||
             (newZoom >= 14.5) != (_publicMapZoom >= 14.5) ||
             (newZoom >= 15.5) != (_publicMapZoom >= 15.5);
     _publicMapZoom = newZoom;
