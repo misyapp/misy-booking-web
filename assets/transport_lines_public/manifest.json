@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "last_updated": "2026-05-28",
-  "total_lines": 86,
+  "last_updated": "2026-06-02",
+  "total_lines": 91,
   "source": "transport_lines_published Firestore (admin-approved only)",
   "lines": [
     {
@@ -80,9 +80,9 @@
       "line_number": "105 Vert",
       "display_name": "Ligne 105 Vert",
       "transport_type": "bus",
-      "color": "0xFF1565C0",
+      "color": "0xFF43A047",
       "is_bundled": true,
-      "importance_tier": 3,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 26,
@@ -128,6 +128,24 @@
         "direction": "retour",
         "num_stops": 31,
         "asset_path": "assets/transport_lines_public/core/109_retour.geojson"
+      }
+    },
+    {
+      "line_number": "109 Bleu",
+      "display_name": "Ligne 109 Bleu",
+      "transport_type": "bus",
+      "color": "0xFF1565C0",
+      "is_bundled": true,
+      "importance_tier": 3,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 27,
+        "asset_path": "assets/transport_lines_public/core/109_Bleu_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 31,
+        "asset_path": "assets/transport_lines_public/core/109_Bleu_retour.geojson"
       }
     },
     {
@@ -312,7 +330,7 @@
     },
     {
       "line_number": "126",
-      "display_name": "Ligne 126",
+      "display_name": "Ligne 126 Vert",
       "transport_type": "bus",
       "color": "0xFF00796B",
       "is_bundled": true,
@@ -326,6 +344,24 @@
         "direction": "retour",
         "num_stops": 24,
         "asset_path": "assets/transport_lines_public/core/126_retour.geojson"
+      }
+    },
+    {
+      "line_number": "126 Rouge",
+      "display_name": "Ligne 126 Rouge",
+      "transport_type": "bus",
+      "color": "0xFFE53935",
+      "is_bundled": true,
+      "importance_tier": 2,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 18,
+        "asset_path": "assets/transport_lines_public/core/126_Rouge_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 21,
+        "asset_path": "assets/transport_lines_public/core/126_Rouge_retour.geojson"
       }
     },
     {
@@ -348,11 +384,11 @@
     },
     {
       "line_number": "127B",
-      "display_name": "Ligne 127B",
+      "display_name": "Ligne 127 B",
       "transport_type": "bus",
-      "color": "0xFF1565C0",
+      "color": "0xFFE53935",
       "is_bundled": true,
-      "importance_tier": 3,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 16,
@@ -366,7 +402,7 @@
     },
     {
       "line_number": "128",
-      "display_name": "Ligne 128",
+      "display_name": "Ligne 128 Bleu",
       "transport_type": "bus",
       "color": "0xFF8E24AA",
       "is_bundled": true,
@@ -614,6 +650,24 @@
         "direction": "retour",
         "num_stops": 19,
         "asset_path": "assets/transport_lines_public/core/140_retour.geojson"
+      }
+    },
+    {
+      "line_number": "140 Vert",
+      "display_name": "Ligne 140 Vert",
+      "transport_type": "bus",
+      "color": "0xFF1565C0",
+      "is_bundled": true,
+      "importance_tier": 3,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 24,
+        "asset_path": "assets/transport_lines_public/core/140_Vert_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 21,
+        "asset_path": "assets/transport_lines_public/core/140_Vert_retour.geojson"
       }
     },
     {
@@ -1068,7 +1122,7 @@
     },
     {
       "line_number": "162",
-      "display_name": "Ligne 162",
+      "display_name": "Ligne 162 - 67Ha",
       "transport_type": "bus",
       "color": "0xFF7E57C2",
       "is_bundled": true,
@@ -1481,6 +1535,24 @@
       }
     },
     {
+      "line_number": "D",
+      "display_name": "Ligne D - Ivato",
+      "transport_type": "bus",
+      "color": "0xFFE53935",
+      "is_bundled": true,
+      "importance_tier": 3,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 33,
+        "asset_path": "assets/transport_lines_public/core/D_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 30,
+        "asset_path": "assets/transport_lines_public/core/D_retour.geojson"
+      }
+    },
+    {
       "line_number": "J",
       "display_name": "Ligne J",
       "transport_type": "bus",
@@ -1514,6 +1586,24 @@
         "direction": "retour",
         "num_stops": 23,
         "asset_path": "assets/transport_lines_public/core/Ligne_178_Rouge_retour.geojson"
+      }
+    },
+    {
+      "line_number": "MAHITSY",
+      "display_name": "Ligne D - MAHITSY",
+      "transport_type": "bus",
+      "color": "0xFFE53935",
+      "is_bundled": true,
+      "importance_tier": 3,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 22,
+        "asset_path": "assets/transport_lines_public/core/MAHITSY_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 24,
+        "asset_path": "assets/transport_lines_public/core/MAHITSY_retour.geojson"
       }
     },
     {
