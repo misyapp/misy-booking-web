@@ -3586,8 +3586,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // Les labels (numéro de ligne) n'apparaissent que plus haut pour ne
     // pas saturer.
     final showStops = _publicMapZoom >= 11;
-    final useLabels = _publicMapZoom >= 14.5;
-    final useBigLabels = _publicMapZoom >= 15.5;
+    // Pastilles n° de ligne + capsules de correspondance : cachées par défaut,
+    // affichées seulement TRÈS PROCHE (≥ 16) — ou, à tout zoom, sur l'arrêt
+    // cliqué/survolé (géré par la branche isActive plus bas). Les billes rondes
+    // restent visibles dès showStops.
+    final useLabels = _publicMapZoom >= 16;
+    final useBigLabels = _publicMapZoom >= 16.5;
 
     // Polylines visibles : on parcourt UNIQUEMENT les groupes filtrés.
     // Le clustering des stops, lui, est pré-calculé une fois (cf.
@@ -4233,8 +4237,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // → px) suive le zoom de façon fluide, sans rebuild à chaque micro-mouvement.
     final crossedZoomThreshold =
         (newZoom * 2).floor() != (_publicMapZoom * 2).floor() ||
-            (newZoom >= 14.5) != (_publicMapZoom >= 14.5) ||
-            (newZoom >= 15.5) != (_publicMapZoom >= 15.5);
+            (newZoom >= 16) != (_publicMapZoom >= 16) ||
+            (newZoom >= 16.5) != (_publicMapZoom >= 16.5);
     _publicMapZoom = newZoom;
     if (crossedZoomThreshold) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
