@@ -3001,8 +3001,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     try {
       await PublicTransportService.instance.ensureLoaded();
       if (!mounted) return;
-      // Consolidation corridor désactivée (revert) → traits bruts empilés.
-      // _precomputeCorridors();
+      // Détection des corridors (≥2 lignes co-localisées) → rendu multicolore
+      // DANS LA LONGUEUR sur les portions partagées (cf. bloc corridor du
+      // rebuild). On n'utilise que la détection (_corridorSpines), PAS l'ancien
+      // rendu offset/bandes parallèles (rejeté).
+      _precomputeCorridors();
       // Fusion aller/retour par ligne (vue réseau) : tronc partagé + branches.
       _precomputeMergedLines();
       _precomputeBaseClusters();
@@ -3723,35 +3726,74 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       }
     }
 
-    // Épines de corridor (> 3 lignes) : ARC-EN-CIEL sur la LARGEUR. Chaque
-    // ligne = une bande fine parallèle décalée perpendiculairement → largeur
-    // totale ∝ nb de lignes. Une seule épine lisse décalée N fois = propre
-    // (pas de gribouilli). Bandes adjacentes en pixels (offset = largeur de
-    // bande convertie en mètres au zoom courant). Vue réseau seulement.
+    // Corridors partagés (≥ 2 lignes co-localisées) : rendus en ARC-EN-CIEL
+    // DANS LA LONGUEUR. La portion partagée est découpée en N bandes CONTINUES
+    // successives (N = nb de lignes du corridor), chacune de la couleur d'une
+    // ligne, en séquence le long du tracé — PAS un damier répété, PAS d'offset
+    // (même géométrie). Posées par-dessus les traits colorés des lignes
+    // (zIndex 4 : au-dessus des bus 2/1, sous le structurant 5). Vue réseau.
     if (selected == null && _corridorSpines.isNotEmpty) {
-      const bandPx = 3; // largeur d'une bande (px)
-      // mètres par pixel au zoom courant (lat Antananarivo ≈ -18.9).
-      final mpp = 156543.03392 *
-          cos(-18.9 * pi / 180) /
-          pow(2, _publicMapZoom).toDouble();
-      final bandM = bandPx * mpp;
+      final mppCor = _metersPerPixel(_publicMapZoom);
+      final spineW = (16.0 / mppCor).clamp(3.0, 60.0).round();
+      void addBand(String id, List<LatLng> p, Color c) {
+        if (p.length < 2) return;
+        polylines.add(Polyline(
+          polylineId: PolylineId(id),
+          points: List<LatLng>.from(p),
+          color: c,
+          width: spineW,
+          zIndex: 4,
+          consumeTapEvents: false,
+          jointType: JointType.round,
+        ));
+      }
+
       for (var ci = 0; ci < _corridorSpines.length; ci++) {
         final cor = _corridorSpines[ci];
-        final colors = cor.colors;
-        final n = colors.length;
-        if (n == 0 || cor.pts.length < 2) continue;
-        for (var k = 0; k < n; k++) {
-          final off = (k - (n - 1) / 2.0) * bandM;
-          final band =
-              off.abs() < 0.01 ? cor.pts : _offsetPolyline(cor.pts, off);
-          polylines.add(Polyline(
-            polylineId: PolylineId('cor_${ci}_$k'),
-            points: band,
-            color: colors[k],
-            width: bandPx,
-            zIndex: 1,
-            consumeTapEvents: false,
-          ));
+        final cols = cor.colors;
+        final pts = cor.pts;
+        final n = cols.length;
+        if (n == 0 || pts.length < 2) continue;
+        if (n == 1) {
+          addBand('cor_${ci}_0', pts, cols[0]);
+          continue;
+        }
+        // Longueur totale du tracé partagé → N bandes égales successives.
+        var total = 0.0;
+        for (var i = 0; i < pts.length - 1; i++) {
+          total += _metersBetween(pts[i], pts[i + 1]);
+        }
+        if (total <= 0) continue;
+        final bandLen = total / n;
+        // On accumule les points en continu ; on coupe à chaque frontière de
+        // bande jusqu'à n-1 bandes, le reste forme la dernière (garde toute
+        // la géométrie, aucun point sauté).
+        final bands = <List<LatLng>>[];
+        var band = <LatLng>[pts.first];
+        var acc = 0.0;
+        for (var i = 0; i < pts.length - 1; i++) {
+          var a = pts[i];
+          final b = pts[i + 1];
+          var segLen = _metersBetween(a, b);
+          while (bands.length < n - 1 && segLen > 0 && acc + segLen >= bandLen) {
+            final t = ((bandLen - acc) / segLen).clamp(0.0, 1.0);
+            final cut = LatLng(
+              a.latitude + (b.latitude - a.latitude) * t,
+              a.longitude + (b.longitude - a.longitude) * t,
+            );
+            band.add(cut);
+            bands.add(band);
+            band = <LatLng>[cut];
+            a = cut;
+            segLen = _metersBetween(a, b);
+            acc = 0.0;
+          }
+          acc += segLen;
+          band.add(b);
+        }
+        bands.add(band); // dernière bande = reste
+        for (var k = 0; k < bands.length && k < n; k++) {
+          addBand('cor_${ci}_$k', bands[k], cols[k]);
         }
       }
     }
