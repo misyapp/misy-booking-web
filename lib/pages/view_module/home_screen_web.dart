@@ -3734,14 +3734,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // (zIndex 4 : au-dessus des bus 2/1, sous le structurant 5). Vue réseau.
     if (selected == null && _corridorSpines.isNotEmpty) {
       final mppCor = _metersPerPixel(_publicMapZoom);
-      final spineW = (16.0 / mppCor).clamp(3.0, 60.0).round();
-      void addBand(String id, List<LatLng> p, Color c) {
+      void addBand(String id, List<LatLng> p, Color c, int w) {
         if (p.length < 2) return;
         polylines.add(Polyline(
           polylineId: PolylineId(id),
           points: List<LatLng>.from(p),
           color: c,
-          width: spineW,
+          width: w,
           zIndex: 4,
           consumeTapEvents: false,
           jointType: JointType.round,
@@ -3787,54 +3786,22 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         chains.add((pts: cPts, colors: cCols));
       }
 
-      // 2) ARC-EN-CIEL dans la longueur sur chaque chaîne : bandes CONTINUES
-      //    successives (1 par couleur). Bandes longues (≥ ~60 px) → vrai effet
-      //    "longueur", jamais un damier ; si la chaîne est trop courte pour
-      //    toutes les couleurs, on n'en montre que X (les plus importantes).
-      final minBandLenM = 60.0 * mppCor;
+      // 2) MULTICOLORE SUR LA LARGEUR : N voies PARALLÈLES côte à côte
+      //    (décalage perpendiculaire), une par ligne → faisceau. Chaque voie
+      //    garde la largeur NORMALE d'une ligne (on NE touche PAS à la largeur
+      //    des polylignes) ; on les décale juste de cette largeur. Appliqué sur
+      //    les tracés CHAÎNÉS (continus) pour limiter les trous.
+      final bandWM = _lineBaseMeters(2, false); // largeur normale d'une ligne
+      final bandPx = (bandWM / mppCor).clamp(2.5, 60.0).round();
       for (var ci = 0; ci < chains.length; ci++) {
         final pts = chains[ci].pts;
         final cols = chains[ci].colors;
-        if (cols.isEmpty || pts.length < 2) continue;
-        var total = 0.0;
-        for (var i = 0; i < pts.length - 1; i++) {
-          total += _metersBetween(pts[i], pts[i + 1]);
-        }
-        if (total <= 0) continue;
-        final n = (total / minBandLenM).floor().clamp(1, cols.length);
-        if (n == 1) {
-          addBand('cor_${ci}_0', pts, cols.first);
-          continue;
-        }
-        final bandLen = total / n;
-        // Accumulation continue : coupe à chaque frontière de bande jusqu'à
-        // n-1, le reste forme la dernière (toute la géométrie conservée).
-        final bands = <List<LatLng>>[];
-        var band = <LatLng>[pts.first];
-        var acc = 0.0;
-        for (var i = 0; i < pts.length - 1; i++) {
-          var a = pts[i];
-          final b = pts[i + 1];
-          var segLen = _metersBetween(a, b);
-          while (bands.length < n - 1 && segLen > 0 && acc + segLen >= bandLen) {
-            final t = ((bandLen - acc) / segLen).clamp(0.0, 1.0);
-            final cut = LatLng(
-              a.latitude + (b.latitude - a.latitude) * t,
-              a.longitude + (b.longitude - a.longitude) * t,
-            );
-            band.add(cut);
-            bands.add(band);
-            band = <LatLng>[cut];
-            a = cut;
-            segLen = _metersBetween(a, b);
-            acc = 0.0;
-          }
-          acc += segLen;
-          band.add(b);
-        }
-        bands.add(band);
-        for (var k = 0; k < bands.length && k < n; k++) {
-          addBand('cor_${ci}_$k', bands[k], cols[k]);
+        final n = cols.length;
+        if (n == 0 || pts.length < 2) continue;
+        for (var k = 0; k < n; k++) {
+          final off = (k - (n - 1) / 2.0) * bandWM; // décalage perpendiculaire
+          final band = off.abs() < 0.01 ? pts : _offsetPolyline(pts, off);
+          addBand('cor_${ci}_$k', band, cols[k], bandPx);
         }
       }
     }
