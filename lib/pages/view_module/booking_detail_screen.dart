@@ -6,6 +6,10 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart' as fm;
+import 'package:latlong2/latlong.dart' as ll;
+import 'package:rider_ride_hailing_app/widgets/booking_map.dart';
+import 'package:rider_ride_hailing_app/utils/gmap_flutter_adapter.dart' as gma;
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:provider/provider.dart';
 import 'dart:ui' as ui;
@@ -48,7 +52,9 @@ class _BookingDetailsState extends State<BookingDetails> {
   Map? rating;
   DriverModal? driver;
   ValueNotifier<Map<String, Marker>> bookingDetailMarker = ValueNotifier({});
-  ValueNotifier<GoogleMapController>? mapController;
+  // Contrôleurs flutter_map (1 par carte : récap statique / suivi de trajet).
+  final fm.MapController _summaryMapController = fm.MapController();
+  final fm.MapController _trackMapController = fm.MapController();
 
   @override
   void initState() {
@@ -557,55 +563,31 @@ class _BookingDetailsState extends State<BookingDetails> {
                             child: FutureBuilder<Set<Marker>>(
                               future: _createCustomMarkers(),
                               builder: (context, snapshot) {
-                                return GoogleMap(
-                                  initialCameraPosition: CameraPosition(
-                                    target: LatLng(
-                                      (_getPickupLatitude() + _getDropLatitude()) / 2,
-                                      (_getPickupLongitude() + _getDropLongitude()) / 2,
-                                    ),
-                                    zoom: 12,
+                                return BookingMap(
+                                  controller: _summaryMapController,
+                                  initialCenter: ll.LatLng(
+                                    (_getPickupLatitude() + _getDropLatitude()) / 2,
+                                    (_getPickupLongitude() + _getDropLongitude()) / 2,
                                   ),
-                                  mapType: MapType.normal,
-                                  zoomControlsEnabled: false,
-                                  mapToolbarEnabled: false,
-                                  myLocationButtonEnabled: false,
-                                  myLocationEnabled: false,
-                                  compassEnabled: false,
-                                  scrollGesturesEnabled: false,
-                                  zoomGesturesEnabled: false,
-                                  rotateGesturesEnabled: false,
-                                  tiltGesturesEnabled: false,
-                                  markers: snapshot.data ?? {},
-                                  polylines: _createPolylines(),
-                                  onMapCreated: (GoogleMapController controller) {
-                                    // Ajuster la caméra pour afficher les deux marqueurs
-                                    Future.delayed(const Duration(milliseconds: 100), () {
-                                      controller.animateCamera(
-                                        CameraUpdate.newLatLngBounds(
-                                          LatLngBounds(
-                                            southwest: LatLng(
-                                              _getPickupLatitude() < _getDropLatitude() 
-                                                ? _getPickupLatitude() 
-                                                : _getDropLatitude(),
-                                              _getPickupLongitude() < _getDropLongitude() 
-                                                ? _getPickupLongitude() 
-                                                : _getDropLongitude(),
-                                            ),
-                                            northeast: LatLng(
-                                              _getPickupLatitude() > _getDropLatitude() 
-                                                ? _getPickupLatitude() 
-                                                : _getDropLatitude(),
-                                              _getPickupLongitude() > _getDropLongitude() 
-                                                ? _getPickupLongitude() 
-                                                : _getDropLongitude(),
-                                            ),
-                                          ),
-                                          50, // padding réduit pour un meilleur zoom sur l'itinéraire
-                                        ),
-                                      );
-                                    });
-                                  },
-                                  gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{},
+                                  initialZoom: 12,
+                                  // Cadre pickup→drop dès l'affichage (ex-fit onMapCreated).
+                                  initialCameraFit: fm.CameraFit.bounds(
+                                    bounds: fm.LatLngBounds(
+                                      ll.LatLng(_getPickupLatitude(), _getPickupLongitude()),
+                                      ll.LatLng(_getDropLatitude(), _getDropLongitude()),
+                                    ),
+                                    padding: const EdgeInsets.all(50),
+                                  ),
+                                  interactive: false, // mini-carte récap figée
+                                  showZoomControls: false,
+                                  children: [
+                                    fm.PolylineLayer(
+                                        polylines:
+                                            gma.toFmPolylines(_createPolylines())),
+                                    if (snapshot.data != null)
+                                      fm.MarkerLayer(
+                                          markers: gma.toFmMarkers(snapshot.data!)),
+                                  ],
                                 );
                               },
                             ),
@@ -977,131 +959,75 @@ class _BookingDetailsState extends State<BookingDetails> {
                               valueListenable: bookingDetailMarker,
                               builder:
                                   (context, bookingDetailMarkerValue, child) =>
-                                      GoogleMap(
-                                myLocationButtonEnabled: false,
-                                myLocationEnabled: false,
-                                compassEnabled: false,
-                                zoomControlsEnabled: false,
-                                zoomGesturesEnabled: false,
-                                mapToolbarEnabled: false,
-                                rotateGesturesEnabled: false,
-                                scrollGesturesEnabled: false,
-                                initialCameraPosition: CameraPosition(
-                                    target: LatLng(
-                                        booking['suggestPath'][0]['latitude'],
-                                        booking['suggestPath'][0]['longitude']),
-                                    zoom: 12.80),
-                                gestureRecognizers: Set()
-                                  ..add(Factory<PanGestureRecognizer>(
-                                      () => PanGestureRecognizer()))
-                                  ..add(Factory<ScaleGestureRecognizer>(
-                                      () => ScaleGestureRecognizer())),
-                                markers:
-                                    bookingDetailMarkerValue.values.toSet(),
-                                onMapCreated: (controller) async {
-                                  mapController = ValueNotifier(controller);
-                                  mapController!.notifyListeners();
-                                  bookingDetailMarker.value['dropingPoint'] =
-                                      Marker(
-                                          markerId:
-                                              const MarkerId("dropingPoint"),
-                                          icon: await mapProvider
-                                              .createMarkerImageFromAssets(
-                                            MyImagesUrl
-                                                .dropLocationCircleIconTheme(),
-                                          ),
-                                          position: LatLng(
+                                      BookingMap(
+                                controller: _trackMapController,
+                                initialCenter: ll.LatLng(
+                                    booking['suggestPath'][0]['latitude'],
+                                    booking['suggestPath'][0]['longitude']),
+                                initialZoom: 12.80,
+                                showZoomControls: false,
+                                // Cadre tout le trajet dès l'affichage
+                                // (remplace le fit animé de l'ex-onMapCreated).
+                                initialCameraFit: fm.CameraFit.bounds(
+                                  bounds: fm.LatLngBounds.fromPoints(
+                                    List.generate(
+                                      booking['suggestPath'].length,
+                                      (index) => ll.LatLng(
+                                          booking['suggestPath'][index]
+                                              ['latitude'],
+                                          booking['suggestPath'][index]
+                                              ['longitude']),
+                                    ),
+                                  ),
+                                  padding: const EdgeInsets.all(50),
+                                ),
+                                children: [
+                                  fm.PolylineLayer(
+                                      polylines: gma.toFmPolylines({
+                                    Polyline(
+                                        polylineId: const PolylineId('path'),
+                                        color: MyColors.blackColor,
+                                        width: 5,
+                                        points: List.generate(
+                                            booking['suggestPath'].length,
+                                            (index) => LatLng(
+                                                booking['suggestPath'][index]
+                                                    ['latitude'],
+                                                booking['suggestPath'][index]
+                                                    ['longitude']))),
+                                    Polyline(
+                                        polylineId: const PolylineId('path1'),
+                                        color: MyColors.primaryColor,
+                                        width: 5,
+                                        points: List.generate(
+                                            booking['coveredPath'].length,
+                                            (index) => LatLng(
+                                                booking['coveredPath'][index]
+                                                    ['lat'],
+                                                booking['coveredPath'][index]
+                                                    ['lng']))),
+                                  })),
+                                  fm.MarkerLayer(markers: gma.toFmMarkers({
+                                    Marker(
+                                        markerId:
+                                            const MarkerId('pickupPoint'),
+                                        position: LatLng(
+                                            booking['suggestPath'][0]
+                                                ['latitude'],
+                                            booking['suggestPath'][0]
+                                                ['longitude'])),
+                                    Marker(
+                                        markerId:
+                                            const MarkerId('dropingPoint'),
+                                        position: LatLng(
                                             booking['suggestPath'][
                                                 booking['suggestPath'].length -
                                                     1]['latitude'],
                                             booking['suggestPath'][
                                                 booking['suggestPath'].length -
-                                                    1]['longitude'],
-                                          ));
-                                  bookingDetailMarker.value['pickupPoint'] =
-                                      Marker(
-                                          markerId:
-                                              const MarkerId("pickupPoint"),
-                                          icon: await mapProvider
-                                              .createMarkerImageFromAssets(
-                                            MyImagesUrl.pickupCircleIconTheme(),
-                                          ),
-                                          position: LatLng(
-                                            booking['suggestPath'][0]
-                                                ['latitude'],
-                                            booking['suggestPath'][0]
-                                                ['longitude'],
-                                          ));
-                                  var a = await mapProvider.getLatLongBounds(
-                                      List.generate(
-                                    booking['suggestPath'].length,
-                                    (index) => [
-                                      booking['suggestPath'][index]['latitude'],
-                                      booking['suggestPath'][index]['longitude']
-                                    ],
-                                  )
-                                      // [
-                                      //   [
-                                      //     booking['suggestPath'][0]['latitude'],
-                                      //     booking['suggestPath'][0]['longitude']
-                                      //   ],
-                                      //   [
-                                      //     booking['suggestPath'][
-                                      //         booking['suggestPath'].length -
-                                      //             1]['latitude'],
-                                      //     booking['suggestPath'][
-                                      //         booking['suggestPath'].length -
-                                      //             1]['longitude']
-                                      //   ],
-                                      // ],
-                                      );
-                                  myCustomPrintStatement(
-                                      "lat lang bound is that $a");
-                                  {
-                                    const int steps = 6;
-                                    const Duration total = Duration(milliseconds: 1500);
-                                    final int stepMs = (total.inMilliseconds / steps).round();
-                                    const double finalPadding = 50.0;
-                                    const double startPadding = 250.0; // commence très zoomé puis dézoom vers 50
-                                    for (int i = 1; i <= steps; i++) {
-                                      final double t = i / steps;
-                                      final double pad = startPadding + (finalPadding - startPadding) * t;
-                                      await mapController!.value.animateCamera(
-                                        CameraUpdate.newLatLngBounds(a, pad),
-                                      );
-                                      await Future.delayed(Duration(milliseconds: stepMs));
-                                    }
-                                  }
-                                  mapController!.notifyListeners();
-                                },
-                                polylines: {
-                                  Polyline(
-                                      polylineId: const PolylineId('path'),
-                                      color: MyColors.blackColor,
-                                      width: 5,
-                                      geodesic: true,
-                                      visible: true,
-                                      points: List.generate(
-                                          booking['suggestPath'].length,
-                                          (index) => LatLng(
-                                              booking['suggestPath'][index]
-                                                  ['latitude'],
-                                              booking['suggestPath'][index]
-                                                  ['longitude']))),
-                                  Polyline(
-                                      polylineId: const PolylineId('path1'),
-                                      color: MyColors.primaryColor,
-                                      width: 5,
-                                      geodesic: true,
-                                      visible: true,
-                                      points: List.generate(
-                                          booking['coveredPath'].length,
-                                          (index) => LatLng(
-                                              booking['coveredPath'][index]
-                                                  ['lat'],
-                                              booking['coveredPath'][index]
-                                                  ['lng']))),
-                                },
+                                                    1]['longitude'])),
+                                  })),
+                                ],
                                 // cameraTargetBounds: CameraTargetBounds(
                                 //   mapProvider.getLatLongBounds([
                                 //     [
