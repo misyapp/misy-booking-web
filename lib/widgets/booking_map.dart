@@ -37,6 +37,13 @@ class BookingMap extends StatefulWidget {
 
   final bool showZoomControls;
 
+  /// Cadrage initial sur des bounds (prioritaire sur center/zoom) —
+  /// équivalent du fit `onMapCreated` Google pour les cartes statiques.
+  final CameraFit? initialCameraFit;
+
+  /// `false` = carte figée (mini-cartes récap : aucun geste).
+  final bool interactive;
+
   const BookingMap({
     super.key,
     required this.controller,
@@ -50,6 +57,8 @@ class BookingMap extends StatefulWidget {
     this.onPositionChanged,
     this.satellite = false,
     this.showZoomControls = true,
+    this.initialCameraFit,
+    this.interactive = true,
   });
 
   /// Provider PMTiles + thème, chargés **une seule fois** et partagés entre
@@ -151,6 +160,7 @@ class _BookingMapState extends State<BookingMap> {
         options: MapOptions(
           initialCenter: widget.initialCenter,
           initialZoom: widget.initialZoom,
+          initialCameraFit: widget.initialCameraFit,
           minZoom: widget.minZoom,
           maxZoom: widget.maxZoom,
           onTap: widget.onTap,
@@ -158,8 +168,10 @@ class _BookingMapState extends State<BookingMap> {
           cameraConstraint: widget.cameraBounds != null
               ? CameraConstraint.contain(bounds: widget.cameraBounds!)
               : const CameraConstraint.unconstrained(),
-          interactionOptions: const InteractionOptions(
-            flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+          interactionOptions: InteractionOptions(
+            flags: widget.interactive
+                ? InteractiveFlag.all & ~InteractiveFlag.rotate
+                : InteractiveFlag.none,
           ),
         ),
         children: [

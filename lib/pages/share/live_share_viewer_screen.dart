@@ -5,6 +5,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart' as fm;
+import 'package:latlong2/latlong.dart' as ll;
+import 'package:rider_ride_hailing_app/widgets/booking_map.dart';
+import 'package:rider_ride_hailing_app/utils/gmap_flutter_adapter.dart' as gma;
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/global_data.dart';
 import 'package:rider_ride_hailing_app/contants/my_colors.dart';
@@ -32,7 +36,7 @@ class LiveShareViewerScreen extends StatefulWidget {
 
 class _LiveShareViewerScreenState extends State<LiveShareViewerScreen>
     with SingleTickerProviderStateMixin {
-  GoogleMapController? _mapController;
+  fm.MapController? _mapController;
   bool _isLoading = true;
   bool _isConnected = false;
   String _errorMessage = '';
@@ -50,7 +54,8 @@ class _LiveShareViewerScreenState extends State<LiveShareViewerScreen>
   bool _routeLoaded = false;
   bool _isUpdatingMap = false; // Debounce flag
   bool _userHasMovedMap = false; // Track if user has manually moved the map
-  bool _isProgrammaticCameraMove = false; // Pour distinguer les mouvements programmés vs utilisateur
+  // (flutter_map distingue nativement gestes utilisateur vs mouvements
+  //  programmés via `hasGesture` — plus besoin de flag manuel.)
 
   // 📍 Trajet parcouru par le chauffeur
   final List<LatLng> _driverPathPoints = [];
@@ -72,6 +77,12 @@ class _LiveShareViewerScreenState extends State<LiveShareViewerScreen>
   @override
   void initState() {
     super.initState();
+    _mapController = fm.MapController();
+    // _refreshRideData était déclenché par onMapCreated (Google) ; avec
+    // flutter_map le contrôleur est prêt dès le premier frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _refreshRideData();
+    });
 
     // Initialiser l'animation de pulsation
     _pulseAnimationController = AnimationController(
@@ -95,29 +106,6 @@ class _LiveShareViewerScreenState extends State<LiveShareViewerScreen>
     _pickupMarkerIcon = await _createCircleMarker(Colors.black);
     _destinationMarkerIcon = await _createSquareMarker(Colors.black);
     if (mounted) setState(() {});
-  }
-
-  /// Applique le style de carte (light/dark mode)
-  Future<void> _setMapStyle() async {
-    if (_mapController == null) return;
-
-    try {
-      // Vérifier le thème actuel
-      bool isDarkMode = Provider.of<DarkThemeProvider>(context, listen: false).darkTheme;
-
-      // Charger le style depuis les assets
-      String mapStyle = await DefaultAssetBundle.of(context).loadString(
-        isDarkMode
-            ? 'assets/map_styles/dark_mode.json'
-            : 'assets/map_styles/light_mode.json',
-      );
-
-      // Appliquer le style
-      _mapController!.setMapStyle(mapStyle);
-      myCustomPrintStatement('🗺️ Style de carte appliqué: ${isDarkMode ? "dark" : "light"}');
-    } catch (e) {
-      myCustomPrintStatement('⚠️ Erreur application style carte: $e');
-    }
   }
 
   /// Crée un marker rond (pour le départ)
@@ -647,14 +635,7 @@ class _LiveShareViewerScreenState extends State<LiveShareViewerScreen>
 
       // 🎯 Centrer sur le chauffeur (sauf si l'utilisateur a bougé la carte)
       if (!_userHasMovedMap && driverLat != null && driverLng != null) {
-        _isProgrammaticCameraMove = true;
-        _mapController!.animateCamera(
-          CameraUpdate.newLatLngZoom(LatLng(driverLat, driverLng), 16.0),
-        ).then((_) {
-          _isProgrammaticCameraMove = false;
-        }).catchError((_) {
-          _isProgrammaticCameraMove = false;
-        });
+        _mapController!.move(gma.toLL(LatLng(driverLat, driverLng)), 16.0);
       }
 
       myCustomPrintStatement("🗺️ _updateMapView END");
@@ -696,14 +677,7 @@ class _LiveShareViewerScreenState extends State<LiveShareViewerScreen>
   void _centerOnDriver() {
     final driverPos = _getDriverPosition();
     if (driverPos != null && _mapController != null) {
-      _isProgrammaticCameraMove = true;
-      _mapController!.animateCamera(
-        CameraUpdate.newLatLngZoom(driverPos, 16.0),
-      ).then((_) {
-        _isProgrammaticCameraMove = false;
-      }).catchError((_) {
-        _isProgrammaticCameraMove = false;
-      });
+      _mapController!.move(gma.toLL(driverPos), 16.0);
     }
   }
 
@@ -1063,39 +1037,29 @@ class _LiveShareViewerScreenState extends State<LiveShareViewerScreen>
       body: Stack(
         children: [
           // Carte plein écran
-          GoogleMap(
-            onMapCreated: (GoogleMapController controller) {
-              _mapController = controller;
-              _setMapStyle(); // Appliquer le style de carte
-              _refreshRideData();
-            },
-            onCameraMoveStarted: () {
-              // Ignorer les mouvements programmés (notre propre animation)
-              if (_isProgrammaticCameraMove) {
-                return;
-              }
-              // Détecter quand l'utilisateur bouge la carte manuellement
-              if (!_userHasMovedMap) {
+          BookingMap(
+            controller: _mapController!,
+            // Vue initiale Madagascar (sera recentré sur chauffeur)
+            initialCenter: const ll.LatLng(-18.9, 47.5),
+            initialZoom: 10.0,
+            showZoomControls: false, // On utilise nos propres boutons
+            onPositionChanged: (cam, hasGesture) {
+              // `hasGesture` distingue nativement geste utilisateur vs
+              // mouvement programmé (notre suivi auto du chauffeur).
+              if (hasGesture && !_userHasMovedMap) {
                 setState(() {
                   _userHasMovedMap = true;
                 });
-                myCustomPrintStatement("👆 Utilisateur a bougé la carte - suivi auto désactivé");
+                myCustomPrintStatement(
+                    "👆 Utilisateur a bougé la carte - suivi auto désactivé");
               }
             },
-            initialCameraPosition: const CameraPosition(
-              target: LatLng(-18.9, 47.5), // Vue initiale Madagascar (sera recentré sur chauffeur)
-              zoom: 10.0, // Zoom raisonnable en attendant les positions
-            ),
-            markers: _markers,
-            polylines: _polylines,
-            myLocationEnabled: false,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false, // On utilise nos propres boutons
-            // Activer tous les gestes pour navigation libre
-            scrollGesturesEnabled: true,
-            zoomGesturesEnabled: true,
-            tiltGesturesEnabled: true,
-            rotateGesturesEnabled: true,
+            children: [
+              if (_polylines.isNotEmpty)
+                fm.PolylineLayer(polylines: gma.toFmPolylines(_polylines)),
+              if (_markers.isNotEmpty)
+                fm.MarkerLayer(markers: gma.toFmMarkers(_markers)),
+            ],
           ),
           // 🫧 Bouton retour - Style Liquid Glass (masqué en position expanded)
           Positioned(

@@ -52,13 +52,15 @@ List<fm.Marker> toFmMarkers(Iterable<gmaps.Marker> markers) {
 }
 
 Widget _markerWidget(String id) {
-  if (id == 'pickup') return _dot(const Color(0xFF1DBF73));
-  if (id == 'destination') return _square(const Color(0xFFef3b30));
+  if (id.startsWith('pickup') || id.contains('origin')) {
+    return _dot(const Color(0xFF1DBF73));
+  }
+  if (id == 'destination' || id.startsWith('drop') || id.contains('dest')) {
+    return _square(const Color(0xFFef3b30));
+  }
   if (id.startsWith('driver')) {
     return const _Pin(icon: Icons.local_taxi, color: Color(0xFF111111));
   }
-  if (id.contains('origin')) return _dot(const Color(0xFF1DBF73));
-  if (id.contains('dest')) return _square(const Color(0xFFef3b30));
   return _dot(const Color(0xFF2563EB));
 }
 
