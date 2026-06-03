@@ -35,6 +35,27 @@ def line_base(num):
     return m.group(1) if m else (num or "").strip()
 
 
+def dp(pts, tol=6.0):
+    """Douglas-Peucker (espace canvas) — garde les vrais coudes, tue le
+    micro-wobble géographique résiduel d'octi."""
+    if len(pts) < 3:
+        return pts
+    ax, ay = pts[0]
+    bx, by = pts[-1]
+    dmax, idx = 0.0, 0
+    for i in range(1, len(pts) - 1):
+        px, py = pts[i]
+        dx, dy = bx - ax, by - ay
+        l2 = dx * dx + dy * dy
+        t = 0.0 if l2 == 0 else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / l2))
+        d = math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+        if d > dmax:
+            dmax, idx = d, i
+    if dmax > tol:
+        return dp(pts[:idx + 1], tol)[:-1] + dp(pts[idx:], tol)
+    return [pts[0], pts[-1]]
+
+
 def parse_water_id(lid):
     """W_RIVER__Ikopa__0 → ("river", "Ikopa") ; None si pas une eau."""
     if not lid.startswith("W_"):
@@ -87,7 +108,7 @@ def main():
         wid = parse_water_id(ll[0]["id"]) if ll else None
         if wid and all(parse_water_id(l["id"]) for l in ll):
             water_segs[ll[0]["id"]].append(
-                [proj(c[0], c[1]) for c in f["geometry"]["coordinates"]])
+                dp([proj(c[0], c[1]) for c in f["geometry"]["coordinates"]]))
         else:
             net_lines.append(f)
 
@@ -125,13 +146,26 @@ def main():
                          "tier": tier, "n": len(lns)})
 
     # ---- arêtes réseau ----
+    # 1) SIMPLIFICATION Douglas-Peucker : les points intermédiaires d'octi sont
+    #    des résidus géographiques courbes → brins « pas linéaires ». On garde
+    #    les vrais coudes (L octilinéaires), on tue le micro-wobble.
+    # 2) ORIENTATION CANONIQUE : sans elle, le côté des offsets de faisceau
+    #    saute d'une arête à l'autre (brins « cassés » aux nœuds). On retourne
+    #    pts ET l'ordre des lignes ENSEMBLE (l'ordre loom est relatif au sens
+    #    de parcours de l'arête).
     edges = []
     for f in net_lines:
-        pts = [proj(c[0], c[1]) for c in f["geometry"]["coordinates"]]
+        pts = dp([proj(c[0], c[1]) for c in f["geometry"]["coordinates"]])
         ll = [{"color": "#" + l["color"], "tier": tier_of.get(l["label"], 2)}
               for l in f["properties"].get("lines", [])]
-        if len(pts) >= 2 and ll:
-            edges.append({"pts": pts, "lines": ll})
+        if len(pts) < 2 or not ll:
+            continue
+        dx = pts[-1][0] - pts[0][0]
+        dy = pts[-1][1] - pts[0][1]
+        if dx < 0 or (dx == 0 and dy < 0):
+            pts.reverse()
+            ll.reverse()
+        edges.append({"pts": pts, "lines": ll})
 
     # ---- eau : réassembler les segments par id (jointure par extrémités) ----
     def stitch(segs):
