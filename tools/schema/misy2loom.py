@@ -144,7 +144,50 @@ def main():
         def _in(i):
             x, y = cl_by_id[i]["pos"]
             return W <= x <= E and S <= y <= N
-        edges = [e for e in edges if _in(e["from"]) and _in(e["to"])]
+
+        # Arêtes coupées → CONTINUATIONS (flèches « la ligne continue ») :
+        # par nœud-frontière, direction sortante moyenne groupée par secteur de
+        # 30° (1 flèche par sortie de corridor) + nb de lignes concernées.
+        # Écrites en sidecar si MISY_CONT_OUT est défini (lu par octi2json).
+        latc = (S + N) / 2.0
+        mlng = 111320.0 * math.cos(math.radians(latc))
+        mlat = 111320.0
+        kept, conts = [], {}
+        for e in edges:
+            fi, ti = _in(e["from"]), _in(e["to"])
+            if fi and ti:
+                kept.append(e)
+                continue
+            if not (fi or ti):
+                continue
+            innid = e["from"] if fi else e["to"]
+            outid = e["to"] if fi else e["from"]
+            ip = cl_by_id[innid]["pos"]
+            op = cl_by_id[outid]["pos"]
+            dx = (op[0] - ip[0]) * mlng       # est (m)
+            dy = (op[1] - ip[1]) * mlat       # nord (m)
+            d = math.hypot(dx, dy)
+            if d < 1e-6:
+                continue
+            bucket = round(math.atan2(dy, dx) / (math.pi / 6.0))  # secteurs 30°
+            c = conts.setdefault((innid, bucket),
+                                 {"station_id": innid, "dx": 0.0, "dy": 0.0,
+                                  "lines": set()})
+            c["dx"] += dx / d
+            c["dy"] += dy / d
+            c["lines"].add(e["lineid"])
+        edges = kept
+        cont_out = os.environ.get("MISY_CONT_OUT", "").strip()
+        if cont_out:
+            data = []
+            for c in conts.values():
+                d = math.hypot(c["dx"], c["dy"]) or 1.0
+                data.append({"station_id": c["station_id"],
+                             "dir": [c["dx"] / d, c["dy"] / d],  # [est, nord] unitaire
+                             "n": len(c["lines"])})
+            json.dump(data, open(cont_out, "w"))
+            print("CONTINUATIONS: %d groupes → %s" % (len(data), cont_out),
+                  file=sys.stderr)
         print("ZONE %s → %d arêtes" % (bbox, len(edges)), file=sys.stderr)
 
     feats = []

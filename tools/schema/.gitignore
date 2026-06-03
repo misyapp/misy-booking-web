@@ -2,3 +2,7 @@
 misy_graph.json
 misy_graph_centre.json
 misy_octi.svg
+
+# Intermédiaires octi (régénérés)
+*_octi.json
+*_cont.json
