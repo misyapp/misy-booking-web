@@ -5,14 +5,17 @@ import 'dart:ui';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:rider_ride_hailing_app/services/admin_auth_service.dart';
-import 'dart:js_util' as js_util;
 import 'dart:html' as html;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart' as fm;
+import 'package:latlong2/latlong.dart' as ll;
 import 'package:provider/provider.dart';
+import 'package:rider_ride_hailing_app/widgets/booking_map.dart';
+import 'package:rider_ride_hailing_app/utils/gmap_flutter_adapter.dart' as gma;
 import 'package:rider_ride_hailing_app/contants/my_colors.dart';
 import 'package:rider_ride_hailing_app/contants/my_image_url.dart';
 import 'package:rider_ride_hailing_app/contants/global_data.dart';
@@ -66,7 +69,7 @@ class HomeScreenWeb extends StatefulWidget {
 }
 
 class _HomeScreenWebState extends State<HomeScreenWeb> {
-  GoogleMapController? _mapController;
+  fm.MapController? _mapController;
   final TextEditingController _pickupController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
 
@@ -197,7 +200,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // carte étant unique et partagée, on ne devrait pas observer de reset,
   // mais cette restauration agit en filet de sécurité contre toute
   // régression future qui forcerait un recentrage au mount du panel.
-  CameraPosition? _lastKnownCamera;
+  fm.MapCamera? _lastKnownCamera;
 
   // Stops dédupliqués générés au dernier rebuild des couches. Permet de
   // retrouver les métadonnées à l'ouverture de la card de stop.
@@ -260,6 +263,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   @override
   void initState() {
     super.initState();
+    _mapController = fm.MapController();
     _setupFocusListeners();
     _initializeAndSubscribe();
     _readUrlParameters();
@@ -1096,9 +1100,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
         final pickupPosition = LatLng(location['lat'], location['lng']);
 
-        _mapController?.animateCamera(
-          CameraUpdate.newLatLngZoom(pickupPosition, 14),
-        );
+        _mapController?.move(gma.toLL(pickupPosition), 14);
 
         _reloadDriversNearPosition(pickupPosition);
 
@@ -1153,6 +1155,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _driversSubscription?.cancel();
     _animationTimer?.cancel();
     _polylineAnimationTimer?.cancel();
+    _mapController?.dispose();
     _pickupController.dispose();
     _destinationController.dispose();
     _pickupFocusNode.dispose();
@@ -1286,9 +1289,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       if (currentPosition != null && mounted) {
         final latLng = LatLng(currentPosition!.latitude, currentPosition!.longitude);
 
-        _mapController?.animateCamera(
-          CameraUpdate.newLatLngZoom(latLng, 15),
-        );
+        _mapController?.move(gma.toLL(latLng), 15);
 
         // Recharger les chauffeurs proches de cette position
         _reloadDriversNearPosition(latLng);
@@ -1769,14 +1770,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     });
 
     // Zoom animé sur la destination
-    _mapController?.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(
-          target: destination,
-          zoom: 18.0, // Zoom élevé pour bien voir le point de dépose en satellite
-        ),
-      ),
-    );
+    _mapController?.move(gma.toLL(destination), 18.0);
   }
 
   /// Remet la carte en mode normal
@@ -2151,13 +2145,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       if (point.longitude > maxLng) maxLng = point.longitude;
     }
 
-    _mapController?.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(minLat, minLng),
-          northeast: LatLng(maxLat, maxLng),
+    _mapController?.fitCamera(
+      fm.CameraFit.bounds(
+        bounds: fm.LatLngBounds(
+          ll.LatLng(maxLat, maxLng),
+          ll.LatLng(minLat, minLng),
         ),
-        80, // padding
+        padding: const EdgeInsets.all(80),
       ),
     );
   }
@@ -2545,36 +2539,24 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       }
     }
 
-    return GoogleMap(
-      initialCameraPosition: CameraPosition(
-        target: _defaultPosition,
-        zoom: 13,
-      ),
-      style: _mapStyle,
-      markers: allMarkers,
-      polylines: allPolylines,
-      circles: allCircles,
-      onMapCreated: (controller) {
-        _mapController = controller;
-        if (kIsWeb) {
-          // Appliquer le style plusieurs fois pour s'assurer qu'il est appliqué
-          _applyMapStyleViaJS();
-          Future.delayed(const Duration(milliseconds: 500), _applyMapStyleViaJS);
-          Future.delayed(const Duration(seconds: 1), _applyMapStyleViaJS);
-          Future.delayed(const Duration(seconds: 2), _applyMapStyleViaJS);
-        }
+    return BookingMap(
+      controller: _mapController!,
+      initialCenter: gma.toLL(_defaultPosition),
+      initialZoom: 13,
+      satellite: _currentMapType == MapType.satellite,
+      onTap: (_, p) => _onMapTap(gma.toGM(p)),
+      onPositionChanged: (cam, hasGesture) {
+        _onPublicCameraMove(cam);
+        _onPublicCameraIdle();
       },
-      myLocationEnabled: false,
-      myLocationButtonEnabled: false,
-      zoomControlsEnabled: true,
-      mapToolbarEnabled: false,
-      compassEnabled: false,
-      mapType: _currentMapType,
-      gestureRecognizers: const {},
-      padding: const EdgeInsets.only(top: 70, bottom: 400),
-      onTap: _onMapTap,
-      onCameraMove: _onPublicCameraMove,
-      onCameraIdle: _onPublicCameraIdle,
+      children: [
+        if (allPolylines.isNotEmpty)
+          fm.PolylineLayer(polylines: gma.toFmPolylines(allPolylines)),
+        if (allCircles.isNotEmpty)
+          fm.CircleLayer(circles: gma.toFmCircles(allCircles)),
+        if (allMarkers.isNotEmpty)
+          fm.MarkerLayer(markers: gma.toFmMarkers(allMarkers)),
+      ],
     );
   }
 
@@ -2677,7 +2659,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final last = _lastKnownCamera;
     if (last != null && _mapController != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _mapController?.moveCamera(CameraUpdate.newCameraPosition(last));
+        _mapController?.move(last.center, last.zoom);
       });
     }
   }
@@ -2762,20 +2744,20 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // Si les 2 points sont quasi confondus, fallback newLatLngZoom.
       if ((maxLat - minLat).abs() < 0.0005 &&
           (maxLng - minLng).abs() < 0.0005) {
-        controller.animateCamera(CameraUpdate.newLatLngZoom(origin, 17));
+        controller.move(gma.toLL(origin), 17);
         return;
       }
-      controller.animateCamera(CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(minLat, minLng),
-          northeast: LatLng(maxLat, maxLng),
+      controller.fitCamera(fm.CameraFit.bounds(
+        bounds: fm.LatLngBounds(
+          ll.LatLng(maxLat, maxLng),
+          ll.LatLng(minLat, minLng),
         ),
-        80,
+        padding: const EdgeInsets.all(80),
       ));
     } else if (origin != null) {
-      controller.animateCamera(CameraUpdate.newLatLngZoom(origin, 17));
+      controller.move(gma.toLL(origin), 17);
     } else if (destination != null) {
-      controller.animateCamera(CameraUpdate.newLatLngZoom(destination, 17));
+      controller.move(gma.toLL(destination), 17);
     }
   }
 
@@ -2971,13 +2953,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         if (p.longitude < minLng) minLng = p.longitude;
         if (p.longitude > maxLng) maxLng = p.longitude;
       }
-      _mapController!.animateCamera(
-        CameraUpdate.newLatLngBounds(
-          LatLngBounds(
-            southwest: LatLng(minLat, minLng),
-            northeast: LatLng(maxLat, maxLng),
+      _mapController?.fitCamera(
+        fm.CameraFit.bounds(
+          bounds: fm.LatLngBounds(
+            ll.LatLng(maxLat, maxLng),
+            ll.LatLng(minLat, minLng),
           ),
-          80,
+          padding: const EdgeInsets.all(80),
         ),
       );
     }
@@ -3883,16 +3865,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final agg = _publicStopsByKey[key];
     if (agg == null) return;
     try {
-      final coord = await _mapController!.getScreenCoordinate(agg.position);
+      // flutter_map : projection synchrone en pixels LOGIQUES (pas de /dpr).
+      final pt =
+          _mapController!.camera.latLngToScreenPoint(gma.toLL(agg.position));
       if (!mounted || _publicSelectedStop != key) return;
-      // Convertit les pixels physiques renvoyés par le plugin en pixels
-      // logiques que Positioned attend.
-      final dpr = MediaQuery.maybeOf(context)?.devicePixelRatio ?? 2.0;
       setState(() {
-        _publicSelectedStopScreenPos = Offset(
-          coord.x / dpr,
-          coord.y / dpr,
-        );
+        _publicSelectedStopScreenPos = Offset(pt.x, pt.y);
       });
     } catch (_) {
       // Si le controller n'est pas prêt ou que la carte n'a pas été rendue,
@@ -3916,12 +3894,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       return;
     }
     try {
-      final bounds = await _mapController!.getVisibleRegion();
+      final bounds = _mapController!.camera.visibleBounds;
       if (!mounted) return;
-      final south = bounds.southwest.latitude;
-      final north = bounds.northeast.latitude;
-      final west = bounds.southwest.longitude;
-      final east = bounds.northeast.longitude;
+      final south = bounds.southWest.latitude;
+      final north = bounds.northEast.latitude;
+      final west = bounds.southWest.longitude;
+      final east = bounds.northEast.longitude;
       final dLat = north - south;
       final dLng = east - west;
       if (dLat == 0 || dLng == 0) return;
@@ -4053,7 +4031,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// reposition de la card de stop si elle est visible. Recompute les
   /// couches uniquement quand on franchit un seuil entier (évite les
   /// rebuilds frame-rate pendant le pinch).
-  void _onPublicCameraMove(CameraPosition pos) {
+  void _onPublicCameraMove(fm.MapCamera pos) {
     // Mémorise la position connue dans les 2 modes pour pouvoir la
     // restaurer au switch (cf. _setHomeMode).
     _lastKnownCamera = pos;
@@ -4095,13 +4073,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       if (p.longitude < minLng) minLng = p.longitude;
       if (p.longitude > maxLng) maxLng = p.longitude;
     }
-    _mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(minLat, minLng),
-          northeast: LatLng(maxLat, maxLng),
+    _mapController?.fitCamera(
+      fm.CameraFit.bounds(
+        bounds: fm.LatLngBounds(
+          ll.LatLng(maxLat, maxLng),
+          ll.LatLng(minLat, minLng),
         ),
-        80,
+        padding: const EdgeInsets.all(80),
       ),
     );
   }
@@ -4219,18 +4197,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   void _updateDestinationMarker(LatLng position) {
     // Le marqueur sera mis à jour automatiquement via le Consumer
     // car tripProvider.dropLocation a changé
-  }
-
-  void _applyMapStyleViaJS() {
-    try {
-      final window = js_util.globalThis;
-      final fn = js_util.getProperty(window, 'applyMisyMapStyle');
-      if (fn != null) {
-        js_util.callMethod(window, 'applyMisyMapStyle', []);
-      }
-    } catch (e) {
-      debugPrint('Error applying map style via JS: $e');
-    }
   }
 
   Widget _buildSearchCard() {
@@ -4825,9 +4791,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       });
 
       // Centrer la carte sur le point
-      _mapController?.animateCamera(
-        CameraUpdate.newLatLngZoom(latLng, 15),
-      );
+      _mapController?.move(gma.toLL(latLng), 15);
     } catch (e) {
       debugPrint('Erreur reverse geocoding: $e');
       // En cas d'erreur, utiliser juste les coordonnées
@@ -5109,8 +5073,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // Zoom pour afficher tout l'itinéraire
       if (polylinePoints.isNotEmpty && _mapController != null) {
         final bounds = _boundsFromLatLngList(polylinePoints);
-        _mapController!.animateCamera(
-          CameraUpdate.newLatLngBounds(bounds, 80),
+        _mapController?.fitCamera(
+          fm.CameraFit.bounds(
+              bounds: gma.toLLBounds(bounds),
+              padding: const EdgeInsets.all(80)),
         );
       }
 

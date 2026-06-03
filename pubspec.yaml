@@ -109,6 +109,8 @@ dependencies:
   flutter_map_dragmarker: ^7.0.0
   latlong2: ^0.9.1
   showcaseview: ^3.0.0
+  vector_map_tiles: ^8.0.0
+  vector_map_tiles_pmtiles: ^1.5.0
 
 dev_dependencies:
   win32: ^5.5.4
@@ -147,6 +149,7 @@ flutter:
     - assets/icons/
     - assets/fonts/
     - assets/map_styles/
+    - assets/map/
     - assets/audio/
     - assets/video/
     - assets/json_files/service_account_credential.json
