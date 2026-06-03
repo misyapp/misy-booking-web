@@ -1,22 +1,33 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/transit_strings.dart';
+import 'package:rider_ride_hailing_app/models/schematic_plan.dart';
 import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
-import 'package:rider_ride_hailing_app/services/network_diagram_layout.dart';
-import 'package:rider_ride_hailing_app/services/public_transport_service.dart';
-import 'package:rider_ride_hailing_app/widget/transport/network_diagram_painter.dart';
+import 'package:rider_ride_hailing_app/widget/transport/schematic_map_view.dart';
 
-/// Écran plein-page qui affiche le diagramme schématique du réseau
-/// taxi-be d'Antananarivo, à la manière d'un plan tramway. Pan/zoom via
-/// [InteractiveViewer], rendu via [NetworkDiagramPainter].
+/// Écran plein-page : plan SCHÉMATIQUE octilinéaire du réseau taxi-be
+/// d'Antananarivo, façon plan de métro (CTS).
 ///
-/// Le layout est calculé une fois au montage à partir du
-/// [PublicTransportService] déjà chargé. Si jamais le service n'est pas
-/// encore prêt (cas où l'utilisateur ouvre directement la page sans
-/// passer par le mode public), on déclenche `ensureLoaded` puis on
-/// recalcule.
+/// La mise en page est PRÉ-CALCULÉE hors-ligne par la chaîne LOOM puis exportée
+/// en JSON par `tools/schema/octi2json.py` (cf. `web/transport_schema/*.json`).
+/// Le rendu est fait par [SchematicMapView] (CustomPainter) avec ZOOM SÉMANTIQUE
+/// : au zoom, seules les positions s'écartent ; police des labels et largeur des
+/// traits restent constantes ; les noms d'arrêts apparaissent progressivement.
+///
+/// DEUX niveaux : plan GLOBAL (`misy_octilineaire.json`, avec carré « centre-
+/// ville » cliquable) + plan CENTRE (`misy_octilineaire_centre.json`).
 class TransportNetworkDiagramScreen extends StatefulWidget {
-  const TransportNetworkDiagramScreen({super.key});
+  final String planFile;
+  final bool isCentre;
+
+  const TransportNetworkDiagramScreen({
+    super.key,
+    this.planFile = 'misy_octilineaire.json',
+    this.isCentre = false,
+  });
 
   @override
   State<TransportNetworkDiagramScreen> createState() =>
@@ -25,23 +36,25 @@ class TransportNetworkDiagramScreen extends StatefulWidget {
 
 class _TransportNetworkDiagramScreenState
     extends State<TransportNetworkDiagramScreen> {
-  // Taille du canvas logique du diagramme. Choisie large pour donner de
-  // l'espace aux 40 lignes — l'InteractiveViewer pan/zoom permet de
-  // naviguer dedans.
-  static const Size _canvasSize = Size(2400, 1800);
+  late final Future<SchematicPlan> _planFuture = _load();
 
-  late Future<NetworkDiagramLayout> _layoutFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _layoutFuture = _ensureLayout();
+  Future<SchematicPlan> _load() async {
+    final url = Uri.base.resolve('transport_schema/${widget.planFile}');
+    final res = await http.get(url);
+    if (res.statusCode != 200) {
+      throw Exception('HTTP ${res.statusCode} pour ${widget.planFile}');
+    }
+    return SchematicPlan.fromJson(
+        jsonDecode(res.body) as Map<String, dynamic>);
   }
 
-  Future<NetworkDiagramLayout> _ensureLayout() async {
-    final svc = PublicTransportService.instance;
-    await svc.ensureLoaded();
-    return NetworkDiagramLayout.compute(svc, targetSize: _canvasSize);
+  void _openCentre() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => const TransportNetworkDiagramScreen(
+        planFile: 'misy_octilineaire_centre.json',
+        isCentre: true,
+      ),
+    ));
   }
 
   @override
@@ -54,7 +67,9 @@ class _TransportNetworkDiagramScreenState
         foregroundColor: const Color(0xFF1D3557),
         elevation: 1,
         title: Text(
-          TransitStrings.t('network.title', locale),
+          TransitStrings.t(
+              widget.isCentre ? 'network.centre.title' : 'network.title',
+              locale),
           style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w700,
@@ -67,38 +82,26 @@ class _TransportNetworkDiagramScreenState
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: FutureBuilder<NetworkDiagramLayout>(
-        future: _layoutFuture,
-        builder: (ctx, snap) {
-          if (snap.connectionState != ConnectionState.done) {
+      body: FutureBuilder<SchematicPlan>(
+        future: _planFuture,
+        builder: (context, snap) {
+          if (snap.hasError) {
+            return Center(
+                child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text('${snap.error}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Color(0xFF8194A8))),
+            ));
+          }
+          if (!snap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (snap.hasError || snap.data == null) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  TransitStrings.t('state.error', locale),
-                  style: const TextStyle(color: Colors.red),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            );
-          }
-          final layout = snap.data!;
-          return InteractiveViewer(
-            minScale: 0.3,
-            maxScale: 4.0,
-            boundaryMargin: const EdgeInsets.all(200),
-            constrained: false,
-            child: SizedBox(
-              width: layout.canvasSize.width,
-              height: layout.canvasSize.height,
-              child: CustomPaint(
-                painter: NetworkDiagramPainter(layout: layout),
-                size: layout.canvasSize,
-              ),
-            ),
+          return SchematicMapView(
+            plan: snap.data!,
+            showCentreRect: !widget.isCentre,
+            centreLabel: TransitStrings.t('network.centre', locale),
+            onCentreTap: _openCentre,
           );
         },
       ),

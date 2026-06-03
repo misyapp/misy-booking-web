@@ -276,6 +276,16 @@ class TransitStrings {
       AppLocale.mg: 'Hidio',
       AppLocale.en: 'Close',
     },
+    'network.centre': {
+      AppLocale.fr: 'Centre-ville',
+      AppLocale.mg: 'Afovoan-tanàna',
+      AppLocale.en: 'City centre',
+    },
+    'network.centre.title': {
+      AppLocale.fr: 'Centre-ville · Antananarivo',
+      AppLocale.mg: 'Afovoan-tanàna · Antananarivo',
+      AppLocale.en: 'City centre · Antananarivo',
+    },
 
     // ───────── Stop card ─────────
     'stop.lines.served': {
@@ -292,6 +302,16 @@ class TransitStrings {
       AppLocale.fr: 'Arrêt sans nom',
       AppLocale.mg: 'Fiantsonana tsy misy anarana',
       AppLocale.en: 'Unnamed stop',
+    },
+    'stop.line.one': {
+      AppLocale.fr: 'ligne',
+      AppLocale.mg: 'tsipika',
+      AppLocale.en: 'line',
+    },
+    'stop.line.many': {
+      AppLocale.fr: 'lignes',
+      AppLocale.mg: 'tsipika',
+      AppLocale.en: 'lines',
     },
 
     // ───────── États ─────────

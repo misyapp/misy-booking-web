@@ -80,6 +80,15 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // Position par défaut: Antananarivo, Madagascar (Ankadifotsy)
   static const LatLng _defaultPosition = LatLng(-18.9103, 47.5305);
 
+  // Bornage carte : zoom min/max + caméra limitée à ~40 km autour
+  // d'Antananarivo (≈ ±0.36° lat, ±0.38° lng à cette latitude).
+  static const double _minZoom = 11;
+  static const double _maxZoom = 18;
+  static final LatLngBounds _tanaBounds = LatLngBounds(
+    southwest: const LatLng(-19.2707, 47.1496),
+    northeast: const LatLng(-18.5499, 47.9114),
+  );
+
   // Subscription pour les chauffeurs en ligne
   StreamSubscription<QuerySnapshot>? _driversSubscription;
 
@@ -182,8 +191,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // donc elles scalent avec le zoom comme la polyline, au lieu d'un marker
   // bitmap à taille-écran fixe qui paraît énorme en vue réseau dézoomée.
   Set<Circle> _publicTransportCircles = {};
-  static const double _stopBeadRadiusM = 16; // bille d'arrêt courante
-  static const double _terminusRadiusM = 24; // terminus (plus gros)
   bool _publicTransportLoaded = false;
 
   // Ligne sélectionnée dans la liste (= mise en évidence sur la carte). Null
@@ -230,6 +237,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // dès qu'un itinéraire est calculé/sélectionné.
   Set<Polyline> _publicPreviewPolyline = {};
   Set<Marker> _publicPreviewMarkers = {};
+  /// Arrivée du trajet en cours de saisie. Non null = on MASQUE le réseau
+  /// (toutes les lignes) pour ne montrer que départ + arrivée (cf. _buildMap).
+  LatLng? _publicPreviewDest;
 
   /// Notifier pushé par le map.onTap en mode public, écouté par le
   /// calculateur d'itinéraire pour ajuster le dernier point posé (origin
@@ -252,6 +262,20 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// réelle d'une ligne), rendue en rayures multicolores. Précalculé par
   /// [_precomputeCorridors].
   List<_Corridor> _corridorSpines = const [];
+
+  /// Découpage aller/retour de CHAQUE ligne pour la VUE RÉSEAU, précalculé une
+  /// fois par [_precomputeMergedLines] (statique, ≠ zoom). Par ligne :
+  /// - `trunk`      : portions où aller≈retour (même chaussée) → 1 tronc large ;
+  /// - `allerSolo`  : portions de l'aller à sens unique (branches fines) ;
+  /// - `retourSolo` : portions du retour à sens unique (branches fines).
+  /// Le tronc reprend la géométrie de l'aller → aucun offset, aucune médiane.
+  Map<String,
+          ({
+            List<List<LatLng>> trunk,
+            List<List<LatLng>> allerSolo,
+            List<List<LatLng>> retourSolo
+          })> _mergedRuns =
+      const {};
 
   // Cache des coordonnées écran de chaque stop visible. Recalculé à chaque
   // onCameraIdle via une interpolation linéaire depuis getVisibleRegion
@@ -2491,9 +2515,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       if (_publicRoutePolylines.isEmpty) {
         // Pas d'itinéraire sélectionné → on montre le réseau complet
         // + éventuel preview O→D (pointillé) en cours de saisie.
-        allPolylines.addAll(_publicTransportPolylines);
-        allMarkers.addAll(_publicTransportMarkers);
-        allCircles.addAll(_publicTransportCircles);
+        // Tant qu'aucune arrivée n'est posée → réseau complet visible.
+        // Dès que l'arrivée est saisie → on MASQUE le réseau (toutes les
+        // lignes) pour ne montrer que le départ + l'arrivée.
+        if (_publicPreviewDest == null) {
+          allPolylines.addAll(_publicTransportPolylines);
+          allMarkers.addAll(_publicTransportMarkers);
+          allCircles.addAll(_publicTransportCircles);
+        }
         allPolylines.addAll(_publicPreviewPolyline);
         allMarkers.addAll(_publicPreviewMarkers);
       } else {
@@ -2543,6 +2572,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       controller: _mapController!,
       initialCenter: gma.toLL(_defaultPosition),
       initialZoom: 13,
+      // Bornes refonte transit : zoom 11–18 + caméra limitée autour de Tana.
+      minZoom: _minZoom,
+      maxZoom: _maxZoom,
+      cameraBounds: gma.toLLBounds(_tanaBounds),
       satellite: _currentMapType == MapType.satellite,
       onTap: (_, p) => _onMapTap(gma.toGM(p)),
       onPositionChanged: (cam, hasGesture) {
@@ -2650,6 +2683,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       _publicRouteMarkers = {};
       _publicPreviewPolyline = {};
       _publicPreviewMarkers = {};
+      _publicPreviewDest = null;
     });
     if (mode == HomeMode.publicTransport && !_publicTransportLoaded) {
       _loadPublicTransportLayers();
@@ -2708,6 +2742,19 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         consumeTapEvents: false,
       ));
     }
+    if (origin != null) {
+      // Pin sur la position GPS du lieu de DÉPART (icône verte, comme Course).
+      markers.add(Marker(
+        markerId: const MarkerId('public_preview_origin'),
+        position: origin,
+        icon: _pickupMarkerIcon ??
+            BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueGreen),
+        anchor: const Offset(0.5, 0.5),
+        zIndex: 251,
+        consumeTapEvents: false,
+      ));
+    }
     if (destination != null) {
       markers.add(Marker(
         markerId: const MarkerId('public_preview_dest'),
@@ -2723,6 +2770,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     setState(() {
       _publicPreviewPolyline = polylines;
       _publicPreviewMarkers = markers;
+      _publicPreviewDest = destination;
     });
 
     // Animation caméra.
@@ -2767,6 +2815,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       setState(() {
         _publicRoutePolylines = {};
         _publicRouteMarkers = {};
+        // Trajet effacé → on restaure le réseau complet.
+        _publicPreviewDest = null;
       });
       // Re-render le réseau au cas où on était en mode iso.
       _rebuildPublicTransportLayers();
@@ -2971,8 +3021,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     try {
       await PublicTransportService.instance.ensureLoaded();
       if (!mounted) return;
-      // Consolidation corridor désactivée (revert) → traits bruts empilés.
-      // _precomputeCorridors();
+      // Détection des corridors (≥2 lignes co-localisées) → rendu multicolore
+      // DANS LA LONGUEUR sur les portions partagées (cf. bloc corridor du
+      // rebuild). On n'utilise que la détection (_corridorSpines), PAS l'ancien
+      // rendu offset/bandes parallèles (rejeté).
+      _precomputeCorridors();
+      // Fusion aller/retour par ligne (vue réseau) : tronc partagé + branches.
+      _precomputeMergedLines();
       _precomputeBaseClusters();
       await _rebuildPublicTransportLayers();
       setState(() => _publicTransportLoaded = true);
@@ -3237,6 +3292,156 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _corridorSpines = spines;
   }
 
+  /// Pré-calcule (UNE fois, statique) pour chaque ligne le découpage
+  /// aller/retour utilisé par la vue réseau : tronc partagé (double sens même
+  /// chaussée) vs branches à sens unique. Cf. champ [_mergedRuns].
+  void _precomputeMergedLines() {
+    final svc = PublicTransportService.instance;
+    final result = <String,
+        ({
+          List<List<LatLng>> trunk,
+          List<List<LatLng>> allerSolo,
+          List<List<LatLng>> retourSolo
+        })>{};
+    for (final ln in svc.linesByImportance) {
+      final g = svc.getLineGroup(ln);
+      if (g == null) continue;
+      result[ln] = _segmentAllerRetour(
+        g.aller?.coordinates ?? const <LatLng>[],
+        g.retour?.coordinates ?? const <LatLng>[],
+      );
+    }
+    _mergedRuns = result;
+  }
+
+  /// Découpe l'aller et le retour d'UNE même ligne en :
+  /// - `trunk` : portions où le retour longe l'aller (≤ [_corridorMergeRadiusM],
+  ///   caps quasi-parallèles mod 180°) = même chaussée double sens → tracées
+  ///   UNE fois depuis la géométrie de l'aller ;
+  /// - `allerSolo` / `retourSolo` : portions à sens unique propres à chaque sens.
+  /// Aucun offset, aucune ligne médiane fabriquée (géométrie inchangée).
+  ({
+    List<List<LatLng>> trunk,
+    List<List<LatLng>> allerSolo,
+    List<List<LatLng>> retourSolo
+  }) _segmentAllerRetour(List<LatLng> aller, List<LatLng> retour) {
+    // Une seule direction présente → pas de fusion possible : c'est le tronc.
+    if (aller.length < 2 || retour.length < 2) {
+      final lone = aller.length >= 2 ? aller : retour;
+      return (
+        trunk: lone.length >= 2 ? [List<LatLng>.from(lone)] : <List<LatLng>>[],
+        allerSolo: const <List<LatLng>>[],
+        retourSolo: const <List<LatLng>>[],
+      );
+    }
+
+    final a = _densifyTrunk(aller);
+    final r = _densifyTrunk(retour);
+
+    const cell = _corridorMergeRadiusM;
+    List<int> cellOf(LatLng p) => [
+          (p.longitude * 111320.0 * cos(p.latitude * pi / 180) / cell).floor(),
+          (p.latitude * 111320.0 / cell).floor(),
+        ];
+    Map<String, List<_TrunkSample>> buildGrid(List<_TrunkSample> s) {
+      final g = <String, List<_TrunkSample>>{};
+      for (final e in s) {
+        final c = cellOf(e.pos);
+        g.putIfAbsent('${c[0]}_${c[1]}', () => []).add(e);
+      }
+      return g;
+    }
+
+    // Un échantillon « coïncide » s'il existe, dans l'autre sens, un point à
+    // ≤ rayon ET de cap quasi-parallèle (mod 180° → sens opposé accepté).
+    bool coincides(Map<String, List<_TrunkSample>> grid, _TrunkSample s) {
+      final c = cellOf(s.pos);
+      for (var dx = -1; dx <= 1; dx++) {
+        for (var dy = -1; dy <= 1; dy++) {
+          final bucket = grid['${c[0] + dx}_${c[1] + dy}'];
+          if (bucket == null) continue;
+          for (final e in bucket) {
+            if (_metersBetween(s.pos, e.pos) > _corridorMergeRadiusM) continue;
+            if (_bearingDiffMod180Trunk(s.bearing, e.bearing) >
+                _corridorBearingTolDeg) {
+              continue;
+            }
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    final gridA = buildGrid(a);
+    final gridR = buildGrid(r);
+    final sharedA = [for (final s in a) coincides(gridR, s)];
+    final sharedR = [for (final s in r) coincides(gridA, s)];
+
+    // Regroupe en runs contigus selon [want].
+    // - [stitchTo] null (aller) : on prolonge d'un point au raccord → les runs
+    //   tronc/branche se chevauchent d'un segment sur la MÊME géométrie (aller),
+    //   donc continuité parfaite.
+    // - [stitchTo] = aller (retour) : aux bords qui touchent une zone partagée,
+    //   on raccorde l'extrémité de la branche retour sur le TRONC (projection
+    //   sur l'aller) → plus de trait « coupé » flottant à ~25 m du tronc.
+    List<List<LatLng>> runsOf(List<_TrunkSample> s, List<bool> flag, bool want,
+        {List<LatLng>? stitchTo}) {
+      final runs = <List<LatLng>>[];
+      var i = 0;
+      while (i < s.length) {
+        if (flag[i] != want) {
+          i++;
+          continue;
+        }
+        var j = i;
+        while (j + 1 < s.length && flag[j + 1] == want) {
+          j++;
+        }
+        final pts = <LatLng>[];
+        if (stitchTo != null && i > 0 && flag[i - 1] != want) {
+          pts.add(_snapToPolyline(s[i].pos, stitchTo)); // raccord au tronc
+        }
+        for (var k = i; k <= j; k++) {
+          pts.add(s[k].pos);
+        }
+        if (stitchTo != null) {
+          if (j + 1 < s.length && flag[j + 1] != want) {
+            pts.add(_snapToPolyline(s[j + 1].pos, stitchTo)); // raccord au tronc
+          }
+        } else if (j + 1 < s.length) {
+          pts.add(s[j + 1].pos); // raccord continuité (même géométrie)
+        }
+        if (pts.length >= 2) runs.add(pts);
+        i = j + 1;
+      }
+      return runs;
+    }
+
+    return (
+      trunk: runsOf(a, sharedA, true), // aller partagé = tronc (chaussée pleine)
+      allerSolo: runsOf(a, sharedA, false), // aller seul = branche fine
+      retourSolo: runsOf(r, sharedR, false, stitchTo: aller), // raccordée au tronc
+      // (retour partagé non tracé : déjà couvert par le tronc de l'aller)
+    );
+  }
+
+  /// Mètres par pixel au [zoom] Google (lat Antananarivo ≈ -18.9°). Sert à
+  /// rendre les traits/billes en géométrie statique : largeur définie en
+  /// MÈTRES puis convertie en px → le trait épaissit en zoomant (≠ px fixe
+  /// ridiculement fin en zoom serré) et reste fin/visible en vue réseau.
+  double _metersPerPixel(double zoom) =>
+      156543.03392 * cos(-18.9 * pi / 180) / pow(2, zoom).toDouble();
+
+  /// Largeur géographique de référence (mètres) d'une ligne selon son tier
+  /// (≈ largeur de chaussée pour le tronc). La bille d'arrêt en dérive pour
+  /// rester proportionnelle au trait.
+  double _lineBaseMeters(int tier, bool isTele) {
+    if (tier == 1) return isTele ? 18 : 22; // téléphérique / train
+    if (tier == 2) return 15; // bus numéroté
+    return 10; // périurbain
+  }
+
   /// Pré-calcule UNE FOIS la liste des clusters d'arrêts (dédup name +
   /// proximité) avec snap à la polyline de leur ligne la plus importante.
   /// Cette opération est O(N²) mais ne dépend ni du zoom ni de la
@@ -3422,8 +3627,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // Les labels (numéro de ligne) n'apparaissent que plus haut pour ne
     // pas saturer.
     final showStops = _publicMapZoom >= 11;
-    final useLabels = _publicMapZoom >= 14.5;
-    final useBigLabels = _publicMapZoom >= 15.5;
+    // Pastilles n° de ligne + capsules de correspondance : cachées par défaut,
+    // affichées seulement TRÈS PROCHE (≥ 16) — ou, à tout zoom, sur l'arrêt
+    // cliqué/survolé (géré par la branche isActive plus bas). Les billes rondes
+    // restent visibles dès showStops.
+    final useLabels = _publicMapZoom >= 16;
+    final useBigLabels = _publicMapZoom >= 16.5;
 
     // Polylines visibles : on parcourt UNIQUEMENT les groupes filtrés.
     // Le clustering des stops, lui, est pré-calculé une fois (cf.
@@ -3434,7 +3643,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     ];
     // Bouts de tracé (terminus) à "fermer" par un gros point = dernier arrêt,
     // à la couleur de la ligne (dédup par position = 1ʳᵉ couleur rencontrée).
-    final termCaps = <({LatLng pos, Color color})>[];
+    final termCaps = <({LatLng pos, Color color, double radiusM})>[];
     for (final lineNumber in renderOrder) {
       if (!visible.contains(lineNumber)) continue;
       final group = svc.getLineGroup(lineNumber);
@@ -3462,87 +3671,166 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // sinon les corridors partagés noircissent ("boue").
       final bool drawCasing = isSelected || isTier1;
 
-      void addColored(String id, List<LatLng> pts) {
+      void addColored(String id, List<LatLng> pts, int w) {
         if (pts.length < 2) return;
         if (drawCasing) {
           polylines.add(Polyline(
             polylineId: PolylineId('pt_${lineNumber}_${id}_casing'),
             points: pts,
             color: Colors.white,
-            width: width + 3,
+            width: w + 3,
             zIndex: baseZ - 1,
             consumeTapEvents: false,
+            jointType: JointType.round,
+            startCap: Cap.roundCap,
+            endCap: Cap.roundCap,
           ));
         }
         polylines.add(Polyline(
           polylineId: PolylineId('pt_${lineNumber}_$id'),
           points: pts,
           color: color,
-          width: width,
+          width: w,
           zIndex: baseZ,
           consumeTapEvents: false,
+          jointType: JointType.round,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
         ));
       }
 
-      void addPolyline(TransportLine? line, String dir) {
-        if (line == null || line.coordinates.length < 2) return;
-        // Sélection : tracé brut plein, inchangé.
-        if (isSelected) {
-          addColored(dir, line.coordinates);
-          return;
-        }
-        // Vue réseau : seulement les portions individuelles (≤ 3 lignes). Les
-        // portions de corridor (> 3) sont rendues à part via _corridorSpines.
-        final runs = _lineRuns['${lineNumber}_$dir'];
-        if (runs == null) {
-          addColored(dir, line.coordinates);
-          return;
-        }
-        for (var ri = 0; ri < runs.length; ri++) {
-          addColored('${dir}_$ri', runs[ri].pts);
+      if (isSelected) {
+        // Vue ligne sélectionnée : tracé brut plein, aller + retour, INCHANGÉ.
+        if (group.aller != null) addColored('aller', group.aller!.coordinates, width);
+        if (group.retour != null) addColored('retour', group.retour!.coordinates, width);
+      } else {
+        // VUE RÉSEAU : aller et retour fusionnés. Sur les portions où ils
+        // empruntent la même chaussée (double sens), un SEUL tronc large
+        // (= largeur de la chaussée) au lieu de 2 traits superposés. Les
+        // portions à sens unique (couplets, boucles) restent en branches fines.
+        // Découpage pré-calculé une fois (_precomputeMergedLines), géométrie
+        // de l'aller pour le tronc → aucun offset, aucune géométrie fabriquée.
+        final merged = _mergedRuns[lineNumber];
+        // Largeurs en MÈTRES → px au zoom courant (géométrie statique) :
+        // bornées [plancher, plafond] pour rester visibles en vue réseau et
+        // ne pas exploser en zoom serré. Tronc = chaussée pleine (2 sens),
+        // branche sens unique = ~moitié.
+        final mpp = _metersPerPixel(_publicMapZoom);
+        final baseM = _lineBaseMeters(tier, isTele);
+        final trunkW = (baseM / mpp).clamp(2.5, 60.0).round();
+        final branchW = (baseM * 0.55 / mpp).clamp(2.0, 34.0).round();
+        if (merged == null) {
+          // Fallback (precompute pas encore prêt) : ancien comportement.
+          if (group.aller != null) addColored('aller', group.aller!.coordinates, width);
+          if (group.retour != null) addColored('retour', group.retour!.coordinates, width);
+        } else {
+          for (var i = 0; i < merged.trunk.length; i++) {
+            addColored('trunk_$i', merged.trunk[i], trunkW);
+          }
+          for (var i = 0; i < merged.allerSolo.length; i++) {
+            addColored('aSolo_$i', merged.allerSolo[i], branchW);
+          }
+          for (var i = 0; i < merged.retourSolo.length; i++) {
+            addColored('rSolo_$i', merged.retourSolo[i], branchW);
+          }
         }
       }
-
-      addPolyline(group.aller, 'aller');
-      addPolyline(group.retour, 'retour');
 
       // Bouts du tracé (= les 2 terminus) à fermer par un gros point.
       final capLine = group.aller ?? group.retour;
       if (capLine != null && capLine.coordinates.length >= 2) {
-        termCaps.add((pos: capLine.coordinates.first, color: color));
-        termCaps.add((pos: capLine.coordinates.last, color: color));
+        // Terminus un peu plus gros que la bille courante, même échelle ligne.
+        final capR = _lineBaseMeters(tier, isTele) * 0.95;
+        termCaps.add((pos: capLine.coordinates.first, color: color, radiusM: capR));
+        termCaps.add((pos: capLine.coordinates.last, color: color, radiusM: capR));
       }
     }
 
-    // Épines de corridor (> 3 lignes) : ARC-EN-CIEL sur la LARGEUR. Chaque
-    // ligne = une bande fine parallèle décalée perpendiculairement → largeur
-    // totale ∝ nb de lignes. Une seule épine lisse décalée N fois = propre
-    // (pas de gribouilli). Bandes adjacentes en pixels (offset = largeur de
-    // bande convertie en mètres au zoom courant). Vue réseau seulement.
+    // Corridors partagés (≥ 2 lignes co-localisées) : rendus en ARC-EN-CIEL
+    // DANS LA LONGUEUR. La portion partagée est découpée en N bandes CONTINUES
+    // successives (N = nb de lignes du corridor), chacune de la couleur d'une
+    // ligne, en séquence le long du tracé — PAS un damier répété, PAS d'offset
+    // (même géométrie). Posées par-dessus les traits colorés des lignes
+    // (zIndex 4 : au-dessus des bus 2/1, sous le structurant 5). Vue réseau.
     if (selected == null && _corridorSpines.isNotEmpty) {
-      const bandPx = 3; // largeur d'une bande (px)
-      // mètres par pixel au zoom courant (lat Antananarivo ≈ -18.9).
-      final mpp = 156543.03392 *
-          cos(-18.9 * pi / 180) /
-          pow(2, _publicMapZoom).toDouble();
-      final bandM = bandPx * mpp;
-      for (var ci = 0; ci < _corridorSpines.length; ci++) {
-        final cor = _corridorSpines[ci];
-        final colors = cor.colors;
-        final n = colors.length;
-        if (n == 0 || cor.pts.length < 2) continue;
+      final mppCor = _metersPerPixel(_publicMapZoom);
+      void addBand(String id, List<LatLng> p, Color c, int w) {
+        if (p.length < 2) return;
+        polylines.add(Polyline(
+          polylineId: PolylineId(id),
+          points: List<LatLng>.from(p),
+          color: c,
+          width: w,
+          zIndex: 4,
+          consumeTapEvents: false,
+          jointType: JointType.round,
+        ));
+      }
+
+      // 1) CHAÎNER les tronçons de corridor contigus (fin de l'un ≈ extrémité
+      //    du suivant) en longues polylignes → un seul arc-en-ciel CONTINU,
+      //    pas un damier de petits tronçons. Glouton par proximité (≤ 35 m).
+      const joinTolM = 35.0;
+      final used = List<bool>.filled(_corridorSpines.length, false);
+      final chains = <({List<LatLng> pts, List<Color> colors})>[];
+      for (var si = 0; si < _corridorSpines.length; si++) {
+        if (used[si]) continue;
+        used[si] = true;
+        if (_corridorSpines[si].pts.length < 2) continue;
+        final cPts = List<LatLng>.from(_corridorSpines[si].pts);
+        final cCols = <Color>[..._corridorSpines[si].colors];
+        var extended = true;
+        while (extended) {
+          extended = false;
+          for (var sj = 0; sj < _corridorSpines.length; sj++) {
+            if (used[sj] || _corridorSpines[sj].pts.length < 2) continue;
+            final sp = _corridorSpines[sj].pts;
+            if (_metersBetween(cPts.last, sp.first) <= joinTolM) {
+              cPts.addAll(sp.skip(1));
+            } else if (_metersBetween(cPts.last, sp.last) <= joinTolM) {
+              cPts.addAll(sp.reversed.skip(1));
+            } else if (_metersBetween(cPts.first, sp.last) <= joinTolM) {
+              cPts.insertAll(0, sp.take(sp.length - 1));
+            } else if (_metersBetween(cPts.first, sp.first) <= joinTolM) {
+              cPts.insertAll(0, sp.reversed.take(sp.length - 1));
+            } else {
+              continue;
+            }
+            for (final c in _corridorSpines[sj].colors) {
+              if (!cCols.contains(c)) cCols.add(c);
+            }
+            used[sj] = true;
+            extended = true;
+          }
+        }
+        chains.add((pts: cPts, colors: cCols));
+      }
+
+      // 2) UN SEUL BRIN, colorié d'un MIX dans la LARGEUR : la largeur totale
+      //    reste celle d'UNE ligne (on n'élargit pas, on ne décale pas le brin),
+      //    mais elle est divisée en N fines rayures parallèles (1 par ligne),
+      //    chacune courant le long du tracé. Si le brin est trop fin pour
+      //    toutes les couleurs → on n'en met que X (lignes les plus importantes).
+      final lineWM = _lineBaseMeters(2, false); // largeur d'UNE ligne
+      final lineWPx = lineWM / mppCor;
+      const minStripePx = 2.5; // rayure lisible minimale
+      final maxStripes = (lineWPx / minStripePx).floor().clamp(1, 99);
+      for (var ci = 0; ci < chains.length; ci++) {
+        final pts = chains[ci].pts;
+        final cols = chains[ci].colors;
+        if (cols.isEmpty || pts.length < 2) continue;
+        final n = cols.length < maxStripes ? cols.length : maxStripes;
+        if (n == 1) {
+          addBand('cor_${ci}_0', pts, cols.first, lineWPx.clamp(2.5, 60.0).round());
+          continue;
+        }
+        final stripeWM = lineWM / n; // rayures qui se partagent UNE largeur
+        final stripePx = (stripeWM / mppCor).clamp(1.5, 60.0).round();
         for (var k = 0; k < n; k++) {
-          final off = (k - (n - 1) / 2.0) * bandM;
-          final band =
-              off.abs() < 0.01 ? cor.pts : _offsetPolyline(cor.pts, off);
-          polylines.add(Polyline(
-            polylineId: PolylineId('cor_${ci}_$k'),
-            points: band,
-            color: colors[k],
-            width: bandPx,
-            zIndex: 1,
-            consumeTapEvents: false,
-          ));
+          // décalage DANS la largeur du brin (total = lineWM, brin non élargi)
+          final off = (k - (n - 1) / 2.0) * stripeWM;
+          final band = off.abs() < 0.01 ? pts : _offsetPolyline(pts, off);
+          addBand('cor_${ci}_$k', band, cols[k], stripePx);
         }
       }
     }
@@ -3604,10 +3892,17 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // TOUS les zooms (dès showStops) ; les badges (terminus), capsules
       // (correspondances) et gros labels (actif) viennent FLOTTER au-dessus
       // (markers, toujours rendus par-dessus les Circle), avec `withDot:false`.
+      // Bille PROPORTIONNELLE à la largeur (mètres) de la ligne primaire →
+      // même échelle que le trait, scale avec le zoom (Circle géographique).
+      final dotMeta = svc.metadataFor(agg.primaryLine);
+      final dotType = (dotMeta?.transportType ?? 'bus').toLowerCase();
+      final dotTele = dotType == 'telepherique' || dotType == 'tele';
+      final beadRadiusM =
+          _lineBaseMeters(dotMeta?.importanceTier ?? 2, dotTele) * 0.62;
       circles.add(Circle(
         circleId: CircleId('dot_${agg.key}'),
         center: stopPos,
-        radius: _stopBeadRadiusM,
+        radius: beadRadiusM,
         fillColor: Colors.white,
         strokeColor: agg.primaryColor,
         strokeWidth: 2,
@@ -3680,7 +3975,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         circles.add(Circle(
           circleId: CircleId('termcap_${ck}_outer'),
           center: pos,
-          radius: _terminusRadiusM,
+          radius: cap.radiusM,
           fillColor: cap.color,
           strokeColor: Colors.white,
           strokeWidth: 2,
@@ -3690,7 +3985,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         circles.add(Circle(
           circleId: CircleId('termcap_${ck}_core'),
           center: pos,
-          radius: _terminusRadiusM * 0.42,
+          radius: cap.radiusM * 0.42,
           fillColor: Colors.white,
           strokeColor: Colors.white,
           strokeWidth: 0,
@@ -4037,10 +4332,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _lastKnownCamera = pos;
     if (_homeMode != HomeMode.publicTransport) return;
     final newZoom = pos.zoom;
+    // Pas de 0,5 niveau : assez fin pour que la largeur des traits (en mètres
+    // → px) suive le zoom de façon fluide, sans rebuild à chaque micro-mouvement.
     final crossedZoomThreshold =
-        newZoom.floor() != _publicMapZoom.floor() ||
-            (newZoom >= 14.5) != (_publicMapZoom >= 14.5) ||
-            (newZoom >= 15.5) != (_publicMapZoom >= 15.5);
+        (newZoom * 2).floor() != (_publicMapZoom * 2).floor() ||
+            (newZoom >= 16) != (_publicMapZoom >= 16) ||
+            (newZoom >= 16.5) != (_publicMapZoom >= 16.5);
     _publicMapZoom = newZoom;
     if (crossedZoomThreshold) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
