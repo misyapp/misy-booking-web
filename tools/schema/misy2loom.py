@@ -14,6 +14,7 @@ pour que `topo` fusionne correctement les corridors partagés).
 import json
 import math
 import os
+import re
 import sys
 from collections import OrderedDict
 
@@ -60,15 +61,34 @@ def nearest_idx(pt, coords):
             best, bi = d, i
     return bi
 
+def line_base(num):
+    """Numéro de base d'une ligne : '133A'/'133B'→'133', '147 Bleu'→'147',
+    '147BIS'→'147'. Les lignes sans préfixe numérique (A, MAHITSY…) restent
+    elles-mêmes. → fusionne les variantes en un seul brin par numéro."""
+    m = re.match(r"^(\d+)", (num or "").strip())
+    return m.group(1) if m else (num or "").strip()
+
 def main():
     man = json.load(open(os.path.join(BUNDLE, "manifest.json")))
+
+    # Couleur par numéro de base : on privilégie la ligne « nue » (line_number
+    # == base) ; sinon la 1re variante rencontrée.
+    base_color = {}
+    for ln in man["lines"]:
+        num = ln["line_number"]
+        b = line_base(num)
+        col = ln.get("color", "0xFF1565C0")
+        hx = col[-6:] if col.startswith("0x") else col.lstrip("#")
+        if b not in base_color or num.strip() == b:
+            base_color[b] = hx
+
     edges = []  # {from,to,coords,lineid,label,color}
     for ln in man["lines"]:
         num = ln["line_number"]
-        color = ln.get("color", "0xFF1565C0")
-        hexcol = color[-6:] if color.startswith("0x") else color.lstrip("#")
-        lineid = "L_" + num.replace(" ", "_")
-        label = num
+        base = line_base(num)
+        hexcol = base_color.get(base, "1565C0")
+        lineid = "L_" + base.replace(" ", "_")
+        label = base
         # On utilise l'aller comme séquence canonique (le retour recouvre le
         # tronc ; topo fusionnera). Couvre l'essentiel pour un schéma V1.
         ap = ln.get("aller", {}).get("asset_path")
@@ -112,6 +132,20 @@ def main():
                 continue
             edges.append({"from": nodeids[i], "to": nodeids[i+1], "coords": seg,
                           "lineid": lineid, "label": label, "color": hexcol})
+
+    # --- Filtrage par ZONE (optionnel) : MISY_BBOX="W,S,E,N" -------------------
+    # Pour les plans zoomés (centre-ville…), on ne garde que le sous-graphe
+    # induit par les arrêts DANS la bbox → LOOM tourne sur un réseau réduit.
+    cl_by_id = {c["id"]: c for c in clusters}
+    bbox = os.environ.get("MISY_BBOX", "").strip()
+    if bbox:
+        W, S, E, N = (float(v) for v in bbox.split(","))
+
+        def _in(i):
+            x, y = cl_by_id[i]["pos"]
+            return W <= x <= E and S <= y <= N
+        edges = [e for e in edges if _in(e["from"]) and _in(e["to"])]
+        print("ZONE %s → %d arêtes" % (bbox, len(edges)), file=sys.stderr)
 
     feats = []
     used = set(e["from"] for e in edges) | set(e["to"] for e in edges)

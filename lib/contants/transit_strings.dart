@@ -276,6 +276,16 @@ class TransitStrings {
       AppLocale.mg: 'Hidio',
       AppLocale.en: 'Close',
     },
+    'network.centre': {
+      AppLocale.fr: 'Centre-ville',
+      AppLocale.mg: 'Afovoan-tanàna',
+      AppLocale.en: 'City centre',
+    },
+    'network.centre.title': {
+      AppLocale.fr: 'Centre-ville · Antananarivo',
+      AppLocale.mg: 'Afovoan-tanàna · Antananarivo',
+      AppLocale.en: 'City centre · Antananarivo',
+    },
 
     // ───────── Stop card ─────────
     'stop.lines.served': {
