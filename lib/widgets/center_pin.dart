@@ -164,10 +164,6 @@ class _BonhommePainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
     final fill = Paint()..color = color;
     final white = Paint()..color = Colors.white;
-    final whiteStroke = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0;
 
     // --- Ombre au sol : s'écrase quand le bonhomme se soulève.
     canvas.drawOval(
@@ -188,39 +184,53 @@ class _BonhommePainter extends CustomPainter {
     canvas.rotate(-5 * math.pi / 180 * t);
     canvas.translate(-cx, -62);
 
-    // Tête ronde détachée (gap blanc avec le buste, comme la référence).
-    final head = Offset(cx, 18);
-    const headR = 5.0;
+    // Tête ronde détachée (gap blanc avec le buste).
+    final head = Offset(cx, 17.5);
+    const headR = 5.6;
 
-    // Buste monobloc d'un seul tenant (pied unique, comme la référence) :
-    // coins hauts arrondis, base légèrement arrondie.
-    final silhouette = Path()
-      ..addRRect(RRect.fromLTRBAndCorners(
-        cx - 9, 25, cx + 9, 62,
-        topLeft: const Radius.circular(4.5),
-        topRight: const Radius.circular(4.5),
-        bottomLeft: const Radius.circular(3),
-        bottomRight: const Radius.circular(3),
-      ));
+    // Buste capsule + bras et jambes en membres courts arrondis (traits
+    // épais à bouts ronds), silhouette pleine bleu foncé cerclée de blanc.
+    final body = RRect.fromLTRBR(
+        cx - 6.2, 25, cx + 6.2, 50.5, const Radius.circular(6.2));
+    final shoulderL = Offset(cx - 4.6, 30);
+    final shoulderR = Offset(cx + 4.6, 30);
+    final hipL = Offset(cx - 2.8, 49);
+    final hipR = Offset(cx + 2.8, 49);
 
-    // Bras « attrapé » : surgit de l'épaule droite et se tend en diagonale
-    // haut-droite, dans l'espace libre à droite de la tête (jamais en
-    // travers — lisibilité à 28 px). Dessiné sous le buste pour paraître
-    // émerger de derrière l'épaule.
-    final hand = Offset(_lerp(cx + 8, cx + 16, t), _lerp(31, 11, t));
-    if (t > 0.05) {
-      final shoulder = Offset(cx + 6.5, 29);
-      canvas.drawLine(shoulder, hand, stroke(7.2, Colors.white));
-      canvas.drawLine(shoulder, hand, stroke(5.2, color));
+    // Membres : posé → ballant (jambes qui pendent, bras gauche s'écarte
+    // à peine, bras droit tendu vers le curseur).
+    final legL = Offset(cx - 3.4 + 1.2 * t, _lerp(60.5, 61.5, t));
+    final legR = Offset(cx + 3.4 - 0.6 * t, _lerp(60.5, 62.0, t));
+    final armL = Offset(_lerp(cx - 9.5, cx - 8.0, t), _lerp(42.5, 44.5, t));
+    // Bras droit : le long du corps → tendu en diagonale haut-droite, dans
+    // l'espace libre à droite de la tête (lisibilité à 28 px).
+    final hand = Offset(_lerp(cx + 9.5, cx + 16, t), _lerp(42.5, 11, t));
+
+    // 1) Halo blanc (contour) sous toute la silhouette.
+    canvas.drawCircle(head, headR + 1.5, white);
+    canvas.drawRRect(body.inflate(1.6), white);
+    for (final seg in [
+      (shoulderL, armL),
+      (shoulderR, hand),
+      (hipL, legL),
+      (hipR, legR),
+    ]) {
+      canvas.drawLine(seg.$1, seg.$2, stroke(7.8, Colors.white));
     }
 
-    // Halo blanc puis silhouette pleine.
-    canvas.drawPath(silhouette, whiteStroke);
-    canvas.drawPath(silhouette, fill);
-    canvas.drawCircle(head, headR + 1.5, white);
+    // 2) Silhouette pleine.
+    for (final seg in [
+      (shoulderL, armL),
+      (shoulderR, hand),
+      (hipL, legL),
+      (hipR, legR),
+    ]) {
+      canvas.drawLine(seg.$1, seg.$2, stroke(5.0, color));
+    }
+    canvas.drawRRect(body, fill);
     canvas.drawCircle(head, headR, fill);
 
-    // Main « attrapée » au bout du bras, cible du curseur.
+    // 3) Main « attrapée » au bout du bras levé, cible du curseur.
     if (t > 0.05) {
       canvas.drawCircle(hand, 3.3 * t, white);
       canvas.drawCircle(hand, 2.2 * t, fill);

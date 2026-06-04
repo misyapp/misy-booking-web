@@ -2847,7 +2847,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     if (_homeMode == mode) return;
     setState(() {
       _homeMode = mode;
-      _pinSelectingPickup = null; // sortie du mode sélection au pin
+      _exitPinSelection(); // sortie du mode sélection au pin (+ vue plan)
       _pinGrabbed = false;
       _publicSelectedLine = null;
       _publicSelectedStop = null;
@@ -5175,8 +5175,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// flottant « Confirmer le lieu… ». Re-cliquer le même bouton annule.
   void _startMapSelection(bool isPickup) {
     setState(() {
-      _pinSelectingPickup =
-          (_pinSelectingPickup == isPickup) ? null : isPickup;
+      if (_pinSelectingPickup == isPickup) {
+        _exitPinSelection(); // re-clic = annule (et revient en vue plan)
+      } else {
+        _pinSelectingPickup = isPickup;
+      }
     });
     // Aperçu immédiat de l'adresse du point courant (sans attendre un
     // premier déplacement) — le seuil 5 m est neutralisé pour ce settle.
@@ -5209,6 +5212,35 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Bascule plan ↔ satellite : placement précis du pin (toits,
+              // portails… mieux lisibles en imagerie Esri).
+              Tooltip(
+                message: _currentMapType == MapType.satellite
+                    ? 'Vue plan'
+                    : 'Vue satellite',
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => setState(() {
+                      _currentMapType = _currentMapType == MapType.satellite
+                          ? MapType.normal
+                          : MapType.satellite;
+                    }),
+                    customBorder: const CircleBorder(),
+                    child: Padding(
+                      padding: const EdgeInsets.all(9),
+                      child: Icon(
+                        _currentMapType == MapType.satellite
+                            ? Icons.map_outlined
+                            : Icons.satellite_alt_outlined,
+                        size: 18,
+                        color: const Color(0xFF1D1D1F),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
               Material(
                 color: enabled
                     ? const Color(0xFFFF5357)
@@ -5238,7 +5270,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: () => setState(() => _pinSelectingPickup = null),
+                  onTap: () => setState(_exitPinSelection),
                   customBorder: const CircleBorder(),
                   child: const Padding(
                     padding: EdgeInsets.all(9),
@@ -5254,6 +5286,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     );
   }
 
+  /// Sort du mode sélection au pin : annule la sélection en cours et
+  /// revient en vue plan (le satellite ne sert qu'au placement précis).
+  /// À appeler DANS un setState.
+  void _exitPinSelection() {
+    _pinSelectingPickup = null;
+    _currentMapType = MapType.normal;
+  }
+
   /// Valide le point GPS situé sous le pin central (centre de la carte)
   /// comme adresse du champ en cours de sélection. Inactif hors zone
   /// couverte (le bouton est déjà désactivé, ceinture-bretelles).
@@ -5261,7 +5301,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final isPickup = _pinSelectingPickup;
     if (isPickup == null || !_pinZoneCovered || _mapController == null) return;
     final center = _mapController!.camera.center;
-    setState(() => _pinSelectingPickup = null);
+    setState(_exitPinSelection);
     _setLocationFromLatLng(
         LatLng(center.latitude, center.longitude), isPickup);
   }
