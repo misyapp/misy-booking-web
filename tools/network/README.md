@@ -65,3 +65,23 @@ Override du chemin : `LOOM_BUILD=/chemin/vers/loom/build`.
   (le plan schématique repose sur la fusion par numéro de base).
 - Tier 1 (train, téléphérique) volontairement absent du JSON : le runtime
   les trace en ligne pleine au-dessus, hors faisceau (comportement historique).
+
+## Limites connues (v1, 05/06/2026)
+
+- **Corridors très denses** : densité max constatée = 26 lignes sur le même
+  tronc. Brins amincis en `64/k` px (min 2,5) au-delà de `denseK=6` →
+  ruban ≈ 117 px à l'écran (constant au zoom) : il déborde la rue, c'est
+  inhérent au choix « toutes les lignes visibles et ordonnées ».
+- **Billes d'arrêts** : snappées sur le tracé OSM brut, les rubans suivent
+  la géométrie `topo` (axe partagé) → décalage possible ≤ ~25 m à fort
+  zoom. v2 : snapper sur la géométrie LOOM.
+- **Antennes retour (sens uniques)** : LOOM ne voit que l'aller ; le retour
+  divergent est repris du découpage mergé runtime, sans offset — raccord au
+  tronc LOOM approximatif (≤ ~25 m) possible aux jonctions.
+- **Dézoom squelette (< 15)** : offsets LOOM neutralisés (une ligne seule
+  s'écarterait de sa rue) → les corridors « s'ouvrent » en rubans au
+  franchissement du zoom 15.
+- **Poids** : `network_strands.json` ≈ 720 Ko brut (~180 Ko gzip nginx),
+  chargé une fois par session TC.
+- **Génération** : topo+loom < 10 s sur le réseau entier ; non-déterministe
+  d'un run à l'autre (cf. Pièges).
