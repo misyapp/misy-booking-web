@@ -4038,8 +4038,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final svc = PublicTransportService.instance;
     final selected = _publicSelectedLine;
     final selectedStop = _publicSelectedStop;
-    final dpr =
-        MediaQuery.maybeOf(context)?.devicePixelRatio ?? 2.0;
     // m/px au zoom courant : sert à convertir les tailles ÉCRAN (traits,
     // billes, terminus, écarts de slot) en rayons/offsets géographiques.
     final mpp = _metersPerPixel(_publicMapZoom);
@@ -4428,7 +4426,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         final arrowColor = selMeta != null
             ? Color(selMeta.colorValue)
             : const Color(0xFF1565C0);
-        markers.addAll(await _buildDirectionArrows(group, arrowColor, dpr));
+        markers.addAll(_buildDirectionArrows(group, arrowColor));
       }
     }
 
@@ -4477,13 +4475,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// du retour, et inversement). Sur les tronçons à double sens (aller/retour
   /// superposés) on n'en met pas, pour éviter des flèches opposées illisibles.
   /// Révèle les boucles et sens uniques, style M réso.
-  Future<List<Marker>> _buildDirectionArrows(
-      TransportLineGroup group, Color color, double dpr) async {
+  List<Marker> _buildDirectionArrows(TransportLineGroup group, Color color) {
     final markers = <Marker>[];
     const divergeThreshM = 25.0; // au-delà : tronçon à sens unique
     const stepM = 170.0; // espacement entre 2 flèches
 
-    Future<void> addFor(List<LatLng> path, List<LatLng> other, String dir) async {
+    void addFor(List<LatLng> path, List<LatLng> other, String dir) {
       if (path.length < 2) return;
       var sinceLast = stepM; // pose une flèche dès le 1er point éligible
       for (var i = 0; i < path.length - 1; i++) {
@@ -4495,15 +4492,22 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         if (isOneWay && sinceLast >= stepM) {
           final bearing =
               _bearingBetween(a.latitude, a.longitude, b.latitude, b.longitude);
-          final icon = await StopMarkerFactory.createArrow(
-            color: color,
-            bearingDeg: bearing,
-            devicePixelRatio: dpr,
+          // WIDGET pur + Marker.rotation : l'adaptateur flutter_map ne lit
+          // pas les BitmapDescriptor (ex-createArrow → fallback POINT BLEU,
+          // vécu 05/06/2026) mais applique Transform.rotate depuis
+          // `rotation` sur les iconWidgets enregistrés.
+          final id = 'arrow_${group.lineNumber}_${dir}_$i';
+          _publicMarkerWidgets[id] = Center(
+            child: SizedBox(
+              width: 15,
+              height: 15,
+              child: CustomPaint(painter: _ArrowGlyphPainter(color)),
+            ),
           );
           markers.add(Marker(
-            markerId: MarkerId('arrow_${group.lineNumber}_${dir}_$i'),
+            markerId: MarkerId(id),
             position: a,
-            icon: icon,
+            rotation: bearing,
             anchor: const Offset(0.5, 0.5),
             zIndex: 7,
             consumeTapEvents: false,
@@ -4513,9 +4517,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       }
     }
 
-    await addFor(group.aller?.coordinates ?? const [],
+    addFor(group.aller?.coordinates ?? const [],
         group.retour?.coordinates ?? const [], 'aller');
-    await addFor(group.retour?.coordinates ?? const [],
+    addFor(group.retour?.coordinates ?? const [],
         group.aller?.coordinates ?? const [], 'retour');
     return markers;
   }
@@ -6347,4 +6351,37 @@ class _PublicStopAggregate {
     required this.primaryLine,
     required this.primaryColor,
   });
+}
+
+/// Chevron de sens (15×15, pointe vers le haut) — même géométrie que
+/// l'ex-`StopMarkerFactory.createArrow`, mais en widget pur : la rotation
+/// vers le cap est appliquée par l'adaptateur via `Marker.rotation`.
+class _ArrowGlyphPainter extends CustomPainter {
+  final Color color;
+  const _ArrowGlyphPainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.translate(size.width / 2, size.height / 2);
+    final r = size.width * 0.36;
+    final path = Path()
+      ..moveTo(0, -r)
+      ..lineTo(r * 0.95, r * 0.55)
+      ..lineTo(0, r * 0.16)
+      ..lineTo(-r * 0.95, r * 0.55)
+      ..close();
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.2
+        ..strokeJoin = StrokeJoin.round,
+    );
+    canvas.drawPath(path, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_ArrowGlyphPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
