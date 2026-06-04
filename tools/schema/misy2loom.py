@@ -22,6 +22,11 @@ BUNDLE = os.path.expanduser(
     "~/StudioProjects/misy_booking_web/assets/transport_lines_public")
 PROX_M = 35.0          # fusion par proximité
 SAME_NAME_M = 250.0    # fusion par nom identique
+# MISY_FULL_LINE_IDS=1 : une ligne LOOM PAR line_number (193A ≠ 193B, chacune
+# sa couleur) au lieu de la fusion par numéro de base. Utilisé par le pipeline
+# vue réseau géographique (tools/network) ; le plan schématique garde la
+# fusion (défaut).
+FULL_IDS = os.environ.get("MISY_FULL_LINE_IDS", "").strip() in ("1", "true", "yes")
 
 def hav(a, b):
     R = 6371000.0
@@ -86,9 +91,15 @@ def main():
     for ln in man["lines"]:
         num = ln["line_number"]
         base = line_base(num)
-        hexcol = base_color.get(base, "1565C0")
-        lineid = "L_" + base.replace(" ", "_")
-        label = base
+        if FULL_IDS:
+            col = ln.get("color", "0xFF1565C0")
+            hexcol = col[-6:] if col.startswith("0x") else col.lstrip("#")
+            lineid = "L_" + re.sub(r"[^A-Za-z0-9]+", "_", num.strip())
+            label = num.strip()   # = line_number exact (clé de lookup runtime)
+        else:
+            hexcol = base_color.get(base, "1565C0")
+            lineid = "L_" + base.replace(" ", "_")
+            label = base
         # On utilise l'aller comme séquence canonique (le retour recouvre le
         # tronc ; topo fusionnera). Couvre l'essentiel pour un schéma V1.
         ap = ln.get("aller", {}).get("asset_path")
