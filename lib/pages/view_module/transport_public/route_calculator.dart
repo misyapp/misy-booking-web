@@ -62,6 +62,11 @@ class RouteCalculator extends StatefulWidget {
   /// un leg marche dépassant [kLongWalkThresholdMinutes]. Si `null`, le
   /// bouton n'est pas affiché.
   final WalkLegToRideRequest? onRequestRideForWalk;
+  /// Pré-remplissage au montage (deep-link `?mode=transit&from*`/`to*`
+  /// depuis le widget de recherche de la section Transit du site).
+  /// Si les 2 points sont fournis, la recherche se lance toute seule.
+  final ({String label, LatLng pos})? initialOrigin;
+  final ({String label, LatLng pos})? initialDestination;
 
   const RouteCalculator({
     super.key,
@@ -70,6 +75,8 @@ class RouteCalculator extends StatefulWidget {
     this.onResultsVisibilityChanged,
     this.mapTapNotifier,
     this.onRequestRideForWalk,
+    this.initialOrigin,
+    this.initialDestination,
   });
 
   @override
@@ -114,6 +121,27 @@ class _RouteCalculatorState extends State<RouteCalculator> {
     _originFocus.addListener(_onFocusChange);
     _destFocus.addListener(_onFocusChange);
     widget.mapTapNotifier?.addListener(_handleMapTap);
+    // Pré-remplissage deep-link (widget de recherche du site) : pose les
+    // points comme si l'user les avait sélectionnés, puis lance la
+    // recherche si départ ET arrivée sont fournis (_calculate fait son
+    // propre ensureLoaded, pas besoin d'attendre le réseau ici).
+    final io = widget.initialOrigin;
+    final id = widget.initialDestination;
+    if (io != null) {
+      _originPos = io.pos;
+      _originCtrl.text = io.label;
+    }
+    if (id != null) {
+      _destPos = id.pos;
+      _destCtrl.text = id.label;
+    }
+    if (io != null || id != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _notifyPoints();
+        if (_originPos != null && _destPos != null) _calculate();
+      });
+    }
     PublicTransportService.instance.ensureLoaded().then((_) {
       if (!mounted) return;
       final activeText = _activeField == 'origin'

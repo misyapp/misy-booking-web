@@ -201,6 +201,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // = toutes les lignes (filtrées par zoom) affichées normalement.
   String? _publicSelectedLine;
 
+  /// Pré-remplissage du calculateur TC via deep-link `?mode=transit&from*`/
+  /// `to*` (widget de recherche de la section Transit du site). Consommés
+  /// une fois par RouteCalculator (auto-recherche si les 2 sont présents).
+  ({String label, LatLng pos})? _transitInitialOrigin;
+  ({String label, LatLng pos})? _transitInitialDestination;
+
   // Zoom courant de la carte. Suivi via [GoogleMap.onCameraMove] pour piloter
   // le filtrage zoom-dependent des lignes/stops.
   double _publicMapZoom = 15.5;
@@ -558,6 +564,26 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         // direct dans l'onglet Transport au montage du home.
         final mode = params['mode'];
         if (mode == 'transit' || mode == 'transport') {
+          // Pré-remplissage du calculateur depuis le widget de recherche du
+          // site (TransitSection beta/misy.app) : from/to + coords. Les
+          // params `from*`/`to*` sont DISTINCTS de pickup/destination pour
+          // ne pas déclencher l'auto-search du mode Course plus bas.
+          final fromLat = double.tryParse(params['fromLat'] ?? '');
+          final fromLng = double.tryParse(params['fromLng'] ?? '');
+          final toLat = double.tryParse(params['toLat'] ?? '');
+          final toLng = double.tryParse(params['toLng'] ?? '');
+          if (fromLat != null && fromLng != null) {
+            _transitInitialOrigin = (
+              label: params['from'] ?? '$fromLat, $fromLng',
+              pos: LatLng(fromLat, fromLng),
+            );
+          }
+          if (toLat != null && toLng != null) {
+            _transitInitialDestination = (
+              label: params['to'] ?? '$toLat, $toLng',
+              pos: LatLng(toLat, toLng),
+            );
+          }
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) _setHomeMode(HomeMode.publicTransport);
           });
@@ -1541,6 +1567,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         onPointsChanged: _onPublicPointsChanged,
         mapTapNotifier: _publicMapTapNotifier,
         onRequestRideForWalk: _onRequestRideForWalk,
+        initialOrigin: _transitInitialOrigin,
+        initialDestination: _transitInitialDestination,
       );
     }
 

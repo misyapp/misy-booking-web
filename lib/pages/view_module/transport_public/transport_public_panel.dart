@@ -45,6 +45,11 @@ class TransportPublicPanel extends StatefulWidget {
   /// Forwardé au [RouteCalculator] interne. Appelé quand l'utilisateur
   /// veut remplacer un leg marche long par une course Misy.
   final WalkLegToRideRequest? onRequestRideForWalk;
+  /// Pré-remplissage du calculateur (deep-link `?mode=transit&from*`/`to*`
+  /// depuis le widget de recherche du site). Si les 2 points sont fournis,
+  /// la recherche est lancée automatiquement au montage.
+  final ({String label, LatLng pos})? initialOrigin;
+  final ({String label, LatLng pos})? initialDestination;
 
   const TransportPublicPanel({
     super.key,
@@ -57,6 +62,8 @@ class TransportPublicPanel extends StatefulWidget {
     this.mapTapNotifier,
     this.topInset = 16,
     this.onRequestRideForWalk,
+    this.initialOrigin,
+    this.initialDestination,
   });
 
   @override
@@ -118,6 +125,8 @@ class _TransportPublicPanelState extends State<TransportPublicPanel> {
                               mapTapNotifier: widget.mapTapNotifier,
                               onRequestRideForWalk:
                                   widget.onRequestRideForWalk,
+                              initialOrigin: widget.initialOrigin,
+                              initialDestination: widget.initialDestination,
                             ),
                             if (!_hasResults) ...[
                               const Divider(height: 1, thickness: 1),
