@@ -1299,6 +1299,15 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   @override
   Widget build(BuildContext context) {
+    // Le bonhomme (pin central) ne vit que pendant la RECHERCHE d'adresses :
+    // dès qu'un trajet est affiché (choix véhicule, confirmation, suivi…),
+    // il disparaît — demande explicite 05/06/2026.
+    final tripStep = context
+        .select<TripProvider, CustomTripType?>((p) => p.currentStep);
+    final pinVisible = _homeMode == HomeMode.course &&
+        (tripStep == null ||
+            tripStep == CustomTripType.setYourDestination ||
+            tripStep == CustomTripType.choosePickupDropLocation);
     return Scaffold(
       body: LayoutBuilder(builder: (ctx, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
@@ -1318,7 +1327,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           Listener(
             behavior: HitTestBehavior.translucent,
             onPointerDown: (_) {
-              if (_homeMode == HomeMode.course && !_pinGrabbed) {
+              if (pinVisible && !_pinGrabbed) {
                 setState(() => _pinGrabbed = true);
               }
             },
@@ -1327,10 +1336,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             child: _buildMap(),
           ),
 
-          // Pin central : bonhomme bleu posé en permanence au centre de la
-          // zone visible (mode Course). La pointe = le point GPS visé
-          // (camera.center). IgnorePointer : ne bloque jamais les gestes.
-          if (_homeMode == HomeMode.course)
+          // Pin central : bonhomme bleu posé au centre de la zone visible,
+          // UNIQUEMENT pendant la recherche d'adresses (cf. pinVisible).
+          // La pointe = le point GPS visé (camera.center). IgnorePointer :
+          // ne bloque jamais les gestes.
+          if (pinVisible)
             Positioned.fill(
               child: IgnorePointer(
                 child: Center(
