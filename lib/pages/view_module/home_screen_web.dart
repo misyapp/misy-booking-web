@@ -3335,16 +3335,49 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         ? key.substring(0, key.length - 6)
         : key.substring(0, key.length - 7);
 
-    // Par échantillon de chaque (ligne, sens) : facteur de slot lissé puis
-    // vecteur latéral unitaire lissé.
+    // Par échantillon de chaque (ligne, sens) : facteur de slot (médiane +
+    // lissage) puis vecteur latéral via la TANGENTE CONTINUE du tracé.
     final vecAt = <String, List<({LatLng pos, double vLat, double vLng})>>{};
     samples.forEach((key, list) {
       final selfLine = lineOf(key);
-      final raw = List<double>.filled(list.length, 0);
-      for (var i = 0; i < list.length; i++) {
+      final n = list.length;
+
+      // Perpendiculaire CONTINUE le long du parcours : tangente lissée par
+      // différence centrale (fenêtre ±4 ≈ ±40 m, espace mètres) tournée de
+      // +90°. L'ancienne formule « cap mod 180° + 90 » avait une
+      // discontinuité pile sur les axes ~N-S (178° vs 2° → perpendiculaires
+      // OPPOSÉES d'un échantillon à l'autre) → brins qui sautaient de côté
+      // = TRESSAGE vu en prod le 05/06/2026.
+      final perpN = List<double>.filled(n, 0); // composante nord (m)
+      final perpE = List<double>.filled(n, 0); // composante est (m)
+      for (var i = 0; i < n; i++) {
+        final a = list[(i - 4).clamp(0, n - 1)].pos;
+        final b = list[(i + 4).clamp(0, n - 1)].pos;
+        var tE = (b.longitude - a.longitude) *
+            111320.0 *
+            cos(a.latitude * pi / 180);
+        var tN = (b.latitude - a.latitude) * 111320.0;
+        final len = sqrt(tE * tE + tN * tN);
+        if (len < 1e-6) {
+          if (i > 0) {
+            perpN[i] = perpN[i - 1];
+            perpE[i] = perpE[i - 1];
+          }
+          continue;
+        }
+        tE /= len;
+        tN /= len;
+        // Rotation +90° boussole : (N, E) → (−E, N).
+        perpN[i] = -tE;
+        perpE[i] = tN;
+      }
+
+      final raw = List<double>.filled(n, 0);
+      for (var i = 0; i < n; i++) {
         final s = list[i];
         final c = cellOf(s.pos);
         final set = <String>{selfLine};
+        final near = <_TrunkGridEntry>[];
         for (var dx = -1; dx <= 1; dx++) {
           for (var dy = -1; dy <= 1; dy++) {
             final bucket = grid['${c[0] + dx}_${c[1] + dy}'];
@@ -3358,6 +3391,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                 continue;
               }
               set.add(lineOf(e.key));
+              near.add(e);
             }
           }
         }
@@ -3365,32 +3399,66 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         final ordered = set.toList()
           ..sort((a, b) => prio(a).compareTo(prio(b)));
         final idx = ordered.indexOf(selfLine);
-        raw[i] = idx == 1 ? 1.0 : (idx == 2 ? -1.0 : 0.0);
+        var f = idx == 1 ? 1.0 : (idx == 2 ? -1.0 : 0.0);
+        if (f != 0) {
+          // Cohérence de CÔTÉ avec la ligne de référence du corridor
+          // (slot 0) : si on la longe à CONTRESENS, notre « droite » est sa
+          // « gauche » — sans ce flip, deux lignes saisies en sens inverse
+          // finissaient sur le même flanc (chevauchement/tressage).
+          final ref = ordered[0];
+          _TrunkGridEntry? best;
+          var bestD = double.infinity;
+          for (final e in near) {
+            if (lineOf(e.key) != ref) continue;
+            final d = _metersBetween(s.pos, e.pos);
+            if (d < bestD) {
+              bestD = d;
+              best = e;
+            }
+          }
+          if (best != null) {
+            final diff =
+                (((s.bearing - best.bearing) % 360) + 540) % 360 - 180;
+            if (diff.abs() > 90) f = -f; // antiparallèle à la référence
+          }
+        }
+        raw[i] = f;
+      }
+
+      // Hystérésis : médiane glissante (±4 ≈ 90 m) — une ligne qui ne longe
+      // l'axe que sur 2-3 échantillons ne fait plus zigzaguer le slot (les
+      // S permanents quand la composition du faisceau change sans arrêt).
+      final med = List<double>.filled(n, 0);
+      for (var i = 0; i < n; i++) {
+        final w = <double>[];
+        for (var j = i - 4; j <= i + 4; j++) {
+          if (j < 0 || j >= n) continue;
+          w.add(raw[j]);
+        }
+        w.sort();
+        med[i] = w[w.length ~/ 2];
       }
       // Lissage du facteur → transitions en biais douces (pas de marche).
-      final smooth = List<double>.filled(list.length, 0);
-      for (var i = 0; i < list.length; i++) {
+      final smooth = List<double>.filled(n, 0);
+      for (var i = 0; i < n; i++) {
         var sum = 0.0;
         var c = 0;
         for (var j = i - 6; j <= i + 6; j++) {
-          if (j < 0 || j >= list.length) continue;
-          sum += raw[j];
+          if (j < 0 || j >= n) continue;
+          sum += med[j];
           c++;
         }
         smooth[i] = sum / c;
       }
-      // Vecteur latéral (espace mètres) puis lissage vectoriel.
+      // Vecteur latéral = facteur × perpendiculaire continue, puis lissage
+      // vectoriel (fenêtre ±3).
       final vec = List<({LatLng pos, double vLat, double vLng})>.generate(
-        list.length,
-        (i) {
-          final bMod = ((list[i].bearing % 180) + 180) % 180;
-          final perp = (bMod + 90) * pi / 180.0;
-          return (
-            pos: list[i].pos,
-            vLat: smooth[i] * cos(perp),
-            vLng: smooth[i] * sin(perp),
-          );
-        },
+        n,
+        (i) => (
+          pos: list[i].pos,
+          vLat: smooth[i] * perpN[i],
+          vLng: smooth[i] * perpE[i],
+        ),
       );
       final out = <({LatLng pos, double vLat, double vLng})>[];
       for (var i = 0; i < vec.length; i++) {
@@ -3418,35 +3486,47 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       vecGrid[key] = g;
     });
 
-    ({double vLat, double vLng}) lookupVec(String key, LatLng p) {
+    ({double vLat, double vLng, int idx}) lookupVec(
+        String key, LatLng p, int lastIdx) {
       final list = vecAt[key];
       final g = vecGrid[key];
-      if (list == null || g == null) return (vLat: 0.0, vLng: 0.0);
+      if (list == null || g == null) return (vLat: 0.0, vLng: 0.0, idx: -1);
       final c = cellOf(p);
       var best = -1;
       var bestD = 30.0; // au-delà : hors tracé échantillonné → centre
-      for (var dx = -1; dx <= 1; dx++) {
-        for (var dy = -1; dy <= 1; dy++) {
-          final bucket = g['${c[0] + dx}_${c[1] + dy}'];
-          if (bucket == null) continue;
-          for (final i in bucket) {
-            final d = _metersBetween(p, list[i].pos);
-            if (d < bestD) {
-              bestD = d;
-              best = i;
+      // Continuité de parcours : on préfère un échantillon proche en INDEX
+      // du précédent (±80 ≈ 800 m). Sans ce filtre, dans les lacets de Tana
+      // (la même rue repasse à < 30 m), le plus-proche absolu attrapait le
+      // vecteur d'un AUTRE passage → pics/zigzags isolés.
+      for (var pass = 0; pass < 2; pass++) {
+        final constrain = pass == 0 && lastIdx >= 0;
+        for (var dx = -1; dx <= 1; dx++) {
+          for (var dy = -1; dy <= 1; dy++) {
+            final bucket = g['${c[0] + dx}_${c[1] + dy}'];
+            if (bucket == null) continue;
+            for (final i in bucket) {
+              if (constrain && (i - lastIdx).abs() > 80) continue;
+              final d = _metersBetween(p, list[i].pos);
+              if (d < bestD) {
+                bestD = d;
+                best = i;
+              }
             }
           }
         }
+        if (best >= 0) break; // pass contraint suffisant
       }
-      if (best < 0) return (vLat: 0.0, vLng: 0.0);
-      return (vLat: list[best].vLat, vLng: list[best].vLng);
+      if (best < 0) return (vLat: 0.0, vLng: 0.0, idx: lastIdx);
+      return (vLat: list[best].vLat, vLng: list[best].vLng, idx: best);
     }
 
     // Densifie chaque pièce de _mergedRuns (~20 m) et annote chaque point.
     List<_StrandPt> annotate(String key, List<LatLng> pts) {
       final out = <_StrandPt>[];
+      var last = -1;
       void add(LatLng p) {
-        final v = lookupVec(key, p);
+        final v = lookupVec(key, p, last);
+        last = v.idx;
         out.add(_StrandPt(p, v.vLat, v.vLng));
       }
 
