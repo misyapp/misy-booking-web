@@ -811,6 +811,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           : null;
       if (markerUrl != null && markerUrl.isNotEmpty) {
         gma.markerIconUrls['driver_$driverId'] = markerUrl;
+      } else {
+        // Icône non résolue → pin taxi générique. Tracer le coupable :
+        // vehicleType absent du doc ou inconnu de vehicleMap (type supprimé,
+        // ou course au démarrage si vehicleMap n'est pas encore chargée).
+        debugPrint('🚗 ⚠️ icône non résolue pour $driverId : '
+            'vehicleType=${driver.vehicleType}, '
+            'vehicleMap=${vehicleMap.length} entrées');
       }
 
       newMarkers.add(
