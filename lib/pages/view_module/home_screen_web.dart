@@ -18,6 +18,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:rider_ride_hailing_app/widgets/booking_map.dart';
 import 'package:rider_ride_hailing_app/widgets/center_pin.dart';
 import 'package:rider_ride_hailing_app/services/geo_zone_service.dart';
+import 'package:rider_ride_hailing_app/services/loom_network_service.dart';
 import 'package:rider_ride_hailing_app/utils/gmap_flutter_adapter.dart' as gma;
 import 'package:rider_ride_hailing_app/contants/my_colors.dart';
 import 'package:rider_ride_hailing_app/contants/my_image_url.dart';
@@ -263,18 +264,25 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// la sélection en cours.
   List<_PublicStopAggregate> _baseClusters = const [];
 
-  /// Tracés "faisceau-ready" de la VUE RÉSEAU, précalculés une fois par
-  /// [_precomputeStrandRuns] à partir de [_mergedRuns] : chaque pièce
-  /// (tronc/branches) est densifiée et annotée par point d'un vecteur
-  /// d'offset latéral unitaire (slot -1/0/+1 lissé). Au rebuild, l'offset
-  /// réel = vecteur × largeur de brin au zoom courant → les lignes
-  /// co-localisées s'écartent en ≤ 3 brins côte à côte, en restant des
-  /// polylignes CONTINUES (aucun trou). Vide → fallback tracé brut.
+  /// Tracés "faisceau-ready" de la VUE RÉSEAU, précalculés une fois à
+  /// partir de [_mergedRuns] : chaque pièce (tronc/branches) est densifiée
+  /// et annotée par point d'un vecteur d'offset latéral unitaire × slot.
+  /// Au rebuild, l'offset réel = vecteur × largeur de brin au zoom courant
+  /// → les lignes co-localisées s'écartent en brins côte à côte, en restant
+  /// des polylignes CONTINUES (aucun trou). Vide → fallback tracé brut.
+  ///
+  /// Deux sources possibles (cf. [_loadPublicTransportLayers]) :
+  /// - [_precomputeStrandRuns] : heuristique runtime (slots -1/0/+1, ≤ 3
+  ///   brins) — pièces marquées `k: 0` (comportement historique) ;
+  /// - [_populateStrandRunsFromLoom] (flag LOOM_NETWORK) : faisceaux LOOM
+  ///   pré-calculés au build — `k` = densité du corridor (jusqu'à ~26
+  ///   lignes côte à côte, brins amincis au-delà de
+  ///   [LoomNetworkService.denseK]).
   Map<String,
       ({
-        List<List<_StrandPt>> trunk,
-        List<List<_StrandPt>> allerSolo,
-        List<List<_StrandPt>> retourSolo
+        List<({int k, List<_StrandPt> pts})> trunk,
+        List<({int k, List<_StrandPt> pts})> allerSolo,
+        List<({int k, List<_StrandPt> pts})> retourSolo
       })> _strandRuns = const {};
 
   /// Découpage aller/retour de CHAQUE ligne pour la VUE RÉSEAU, précalculé une
@@ -3253,12 +3261,16 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       if (!mounted) return;
       // Fusion aller/retour par ligne (vue réseau) : tronc partagé + branches.
       _precomputeMergedLines();
-      // Faisceaux : co-localisation (≥2 lignes même axe) → profils de slot
-      // par ligne. Chaque ligne reste UNE polyligne continue qui s'écarte
-      // latéralement dans les zones partagées (≤ 3 brins côte à côte,
-      // prioritaire au centre, aucun trou). Produit 2026-06-04 v2 : remplace
-      // épines + arc-en-ciel (supprimés).
-      _precomputeStrandRuns();
+      // Faisceaux : derrière --dart-define=LOOM_NETWORK=true, ordonnancement
+      // PRO pré-calculé au build par LOOM (tools/network, corridors complets
+      // ordonnés, croisements minimisés) ; sinon — ou si le JSON est absent —
+      // heuristique runtime historique : co-localisation (≥2 lignes même axe)
+      // → profils de slot -1/0/+1, ≤ 3 brins côte à côte, aucun trou.
+      if (await LoomNetworkService.instance.ensureLoaded()) {
+        _populateStrandRunsFromLoom();
+      } else {
+        _precomputeStrandRuns();
+      }
       _precomputeBaseClusters();
       await _rebuildPublicTransportLayers();
       setState(() => _publicTransportLoaded = true);
@@ -3584,25 +3596,78 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
     final result = <String,
         ({
-          List<List<_StrandPt>> trunk,
-          List<List<_StrandPt>> allerSolo,
-          List<List<_StrandPt>> retourSolo
+          List<({int k, List<_StrandPt> pts})> trunk,
+          List<({int k, List<_StrandPt> pts})> allerSolo,
+          List<({int k, List<_StrandPt> pts})> retourSolo
         })>{};
     _mergedRuns.forEach((ln, runs) {
       if (svc.tierFor(ln) == 1) return; // tier 1 : tracé pur, pas de faisceau
       // Le tronc reprend la géométrie de l'aller ; fallback retour si la
-      // ligne n'a qu'un sens.
+      // ligne n'a qu'un sens. k: 0 = pièce heuristique (largeur/écart legacy).
       final ak =
           vecAt.containsKey('${ln}_aller') ? '${ln}_aller' : '${ln}_retour';
       final rk =
           vecAt.containsKey('${ln}_retour') ? '${ln}_retour' : ak;
       result[ln] = (
-        trunk: [for (final p in runs.trunk) annotate(ak, p)],
-        allerSolo: [for (final p in runs.allerSolo) annotate(ak, p)],
-        retourSolo: [for (final p in runs.retourSolo) annotate(rk, p)],
+        trunk: [for (final p in runs.trunk) (k: 0, pts: annotate(ak, p))],
+        allerSolo: [
+          for (final p in runs.allerSolo) (k: 0, pts: annotate(ak, p))
+        ],
+        retourSolo: [
+          for (final p in runs.retourSolo) (k: 0, pts: annotate(rk, p))
+        ],
       );
     });
     _strandRuns = result;
+  }
+
+  /// Peuple [_strandRuns] depuis les faisceaux LOOM pré-calculés au build
+  /// (flag LOOM_NETWORK, cf. [LoomNetworkService]) :
+  /// - `trunk` = runs LOOM (l'ALLER complet, géométrie `topo` partagée,
+  ///   vecteurs slot×perpendiculaire déjà "baked" — sémantique [_StrandPt]),
+  ///   `k` = densité max du corridor sur la pièce (amincissement au rendu) ;
+  /// - `retourSolo` = antennes du retour à sens unique reprises de
+  ///   [_mergedRuns] SANS offset (k: 0, vecteur nul) : LOOM ne connaît que
+  ///   l'aller, ces tronçons divergents resteraient invisibles sinon ;
+  /// - `allerSolo` = vide : l'aller est déjà couvert en entier par les runs
+  ///   LOOM (le dessiner en plus dédoublerait le trait).
+  /// Ligne absente du JSON → pas d'entrée → fallback tracé brut/mergé au
+  /// rendu (branche `strands == null`).
+  void _populateStrandRunsFromLoom() {
+    final svc = PublicTransportService.instance;
+    final loom = LoomNetworkService.instance;
+    final result = <String,
+        ({
+          List<({int k, List<_StrandPt> pts})> trunk,
+          List<({int k, List<_StrandPt> pts})> allerSolo,
+          List<({int k, List<_StrandPt> pts})> retourSolo
+        })>{};
+    for (final ln in svc.linesByImportance) {
+      if (svc.tierFor(ln) == 1) continue; // tier 1 : tracé pur au-dessus
+      final runs = loom.runsFor(ln);
+      if (runs == null || runs.isEmpty) continue;
+      final merged = _mergedRuns[ln];
+      result[ln] = (
+        trunk: [
+          for (final r in runs)
+            (
+              k: r.k,
+              pts: [
+                for (final p in r.pts)
+                  _StrandPt(LatLng(p[0], p[1]), p[2], p[3]),
+              ],
+            ),
+        ],
+        allerSolo: const [],
+        retourSolo: [
+          for (final pts in merged?.retourSolo ?? const <List<LatLng>>[])
+            (k: 0, pts: [for (final p in pts) _StrandPt(p, 0, 0)]),
+        ],
+      );
+    }
+    _strandRuns = result;
+    myCustomPrintStatement(
+        'LOOM network: ${result.length} lignes en faisceaux pré-calculés');
   }
 
   /// Applique l'offset latéral de faisceau à une pièce annotée :
@@ -4209,10 +4274,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         final strands = _strandRuns[lineNumber];
         final trunkPx = strokePx;
         final branchPx = (strokePx * 0.7).clamp(2.5, strokePx);
-        // Écart d'un slot = largeur du trait + sa bordure (px → m au zoom
-        // courant) : les brins restent côte à côte, bordures qui se touchent,
-        // à TOUS les zooms.
-        final slotWM = (trunkPx + 2) * mpp;
         if (strands == null) {
           // Fallback (precompute pas encore prêt / tier 1 hors faisceau) :
           // tracé brut plein.
@@ -4236,21 +4297,34 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             }
           }
         } else {
+          // Pièces (k, pts). k ≥ 2 = corridor LOOM partagé : largeur de brin
+          // UNIFORME (5 px bus standard, amincie en 64/k px au-delà de
+          // [LoomNetworkService.denseK] pour contenir la largeur du ruban à
+          // l'écran — corridor max ~26 lignes) et écart de slot calé sur
+          // CETTE largeur : les brins de toutes les lignes du corridor
+          // partagent le même k → ils s'alignent bord à bord quel que soit
+          // leur tier. k = 0 (heuristique / antennes) : largeurs et écart
+          // historiques de la ligne.
+          void addStrand(
+              String id, ({int k, List<_StrandPt> pts}) piece, double legacyPx) {
+            final bool shared = piece.k >= 2;
+            final double basePx =
+                piece.k > LoomNetworkService.instance.denseK
+                    ? (64.0 / piece.k).clamp(2.5, 5.0)
+                    : 5.0;
+            final double w = shared ? basePx : legacyPx;
+            final double wm = ((shared ? basePx : trunkPx) + 2) * mpp;
+            addColored(id, _applyStrandOffset(piece.pts, wm), w);
+          }
+
           for (var i = 0; i < strands.trunk.length; i++) {
-            addColored('trunk_$i', _applyStrandOffset(strands.trunk[i], slotWM),
-                trunkPx);
+            addStrand('trunk_$i', strands.trunk[i], trunkPx);
           }
           for (var i = 0; i < strands.allerSolo.length; i++) {
-            addColored(
-                'aSolo_$i',
-                _applyStrandOffset(strands.allerSolo[i], slotWM),
-                branchPx);
+            addStrand('aSolo_$i', strands.allerSolo[i], branchPx);
           }
           for (var i = 0; i < strands.retourSolo.length; i++) {
-            addColored(
-                'rSolo_$i',
-                _applyStrandOffset(strands.retourSolo[i], slotWM),
-                branchPx);
+            addStrand('rSolo_$i', strands.retourSolo[i], branchPx);
           }
         }
       }
