@@ -171,27 +171,16 @@ class PublicTransportService {
 
   static double _toRad(double deg) => deg * math.pi / 180.0;
 
-  /// Zoom sémantique (choix produit 2026-06-04, remplace le « tout visible »
-  /// du 2026-05-28) : plus on dézoome, moins on montre de lignes — façon
-  /// IDF Mobilités.
-  ///   < 12   : squelette seul (tier 1 + lettres + grands axes N-S / E-O) ;
-  ///   12–13  : + la moitié la plus longue des lignes tier 2 ;
-  ///   13–14  : + toutes les lignes tier 2 ;
-  ///   ≥ 14   : réseau complet (variantes locales tier 3 incluses).
+  /// Zoom sémantique, DEUX niveaux seulement (feedback 04/06 : « juste 2
+  /// niveaux de filtre ») :
+  ///   < 15  : squelette seul (tier 1 + lignes alphabétiques dont MAHITSY +
+  ///           le plus grand axe N-S + le plus grand axe E-O) ;
+  ///   ≥ 15  : réseau complet.
   /// La ligne sélectionnée est forcée visible par l'appelant quel que soit
   /// le zoom.
   Set<String> visibleLineNumbersForZoom(double zoom) {
-    if (zoom >= 14) return _linesByImportance.toSet();
-    final visible = <String>{..._backbone};
-    if (zoom < 12) return visible;
-    // _linesByImportance est déjà triée par longueur décroissante au sein
-    // d'un tier → take(n) garde les plus longues.
-    final tier2 = _linesByImportance
-        .where((ln) => tierFor(ln) == 2 && !_backbone.contains(ln))
-        .toList(growable: false);
-    final keep = zoom >= 13 ? tier2.length : (tier2.length + 1) ~/ 2;
-    visible.addAll(tier2.take(keep));
-    return visible;
+    if (zoom >= 15) return _linesByImportance.toSet();
+    return {..._backbone};
   }
 
   Future<void> _loadLine(LineMetadata m) async {

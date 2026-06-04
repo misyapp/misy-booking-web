@@ -164,6 +164,67 @@ class StopMarkerFactory {
     return descriptor;
   }
 
+  /// Badge d'arrêt CIRCULAIRE pour la vue « ligne sélectionnée » : disque
+  /// couleur de la ligne entouré d'une bordure blanche, libellé court centré
+  /// (numéro sur 3 chiffres ou initiale, cf. _shortLineLabel côté appelant).
+  /// Ancre = centre (0.5, 0.5). Cache par (label, couleur, dpr, big).
+  static Future<BitmapDescriptor> createCircleBadge({
+    required String label,
+    required Color color,
+    required double devicePixelRatio,
+    bool big = false,
+  }) async {
+    final key =
+        'circle_${label}_${color.value.toRadixString(16)}_${devicePixelRatio.toStringAsFixed(1)}_$big';
+    final cached = _cache[key];
+    if (cached != null) return cached;
+
+    final double baseD = big ? 27.0 : 21.0; // diamètre logique
+    final double baseBorder = big ? 2.6 : 2.2;
+    final double baseFont = big ? 9.5 : 7.5;
+    final d = baseD * devicePixelRatio;
+    final borderWidth = baseBorder * devicePixelRatio;
+    final fontSize = baseFont * devicePixelRatio;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final center = Offset(d / 2, d / 2);
+
+    // Disque blanc plein (= la bordure), puis disque couleur de la ligne.
+    canvas.drawCircle(center, d / 2, Paint()..color = Colors.white);
+    canvas.drawCircle(center, d / 2 - borderWidth, Paint()..color = color);
+
+    final textPainter = TextPainter(
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.center,
+      maxLines: 1,
+    )
+      ..text = TextSpan(
+        text: label,
+        style: TextStyle(
+          color: _bestTextColor(color),
+          fontWeight: FontWeight.w800,
+          fontSize: fontSize,
+          height: 1.0,
+          letterSpacing: -0.4,
+        ),
+      )
+      ..layout(maxWidth: d);
+    textPainter.paint(
+      canvas,
+      Offset((d - textPainter.width) / 2, (d - textPainter.height) / 2),
+    );
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(d.toInt(), d.toInt());
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    final bytes = byteData!.buffer.asUint8List();
+    final descriptor =
+        BitmapDescriptor.bytes(bytes, width: baseD, height: baseD);
+    _cache[key] = descriptor;
+    return descriptor;
+  }
+
   /// Tuile d'arrêt « plan de métro » : un point blanc posé sur le tracé +
   /// la pastille du n° de ligne décalée PERPENDICULAIREMENT au tracé. Le point
   /// sert d'ancre géographique (reste pile sur la polyline) ; la pastille flotte

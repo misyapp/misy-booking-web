@@ -203,7 +203,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   // Zoom courant de la carte. Suivi via [GoogleMap.onCameraMove] pour piloter
   // le filtrage zoom-dependent des lignes/stops.
-  double _publicMapZoom = 13.0;
+  double _publicMapZoom = 15.5;
 
   // Dernière position connue de la caméra (target + zoom + bearing + tilt),
   // suivie via [GoogleMap.onCameraMove] sur les deux modes. Réappliquée au
@@ -284,6 +284,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             List<List<LatLng>> retourSolo
           })> _mergedRuns =
       const {};
+
+  /// Widgets d'icônes des markers TRANSIT (badges circulaires d'arrêts,
+  /// capsules de correspondance, terminus), par markerId. L'adaptateur
+  /// flutter_map ne peut PAS lire les BitmapDescriptor de google_maps —
+  /// tout marker sans entrée ici (ni iconUrl) tombe dans le fallback point
+  /// bleu (cf. gma.toFmMarkers). Rempli par _rebuildPublicTransportLayers.
+  final Map<String, Widget> _publicMarkerWidgets = {};
 
   // Cache des coordonnées écran de chaque stop visible. Recalculé à chaque
   // onCameraIdle via une interpolation linéaire depuis getVisibleRegion
@@ -2738,7 +2745,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     return BookingMap(
       controller: _mapController!,
       initialCenter: gma.toLL(_defaultPosition),
-      initialZoom: 13,
+      // Zoom d'ouverture serré (échelle quartier, feedback 04/06) — vaut
+      // pour les DEUX modes (Course et Transport en commun).
+      initialZoom: 15.5,
       // Bornes refonte transit : zoom 11–18 + caméra limitée autour de Tana.
       minZoom: _minZoom,
       maxZoom: _maxZoom,
@@ -2761,8 +2770,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           fm.CircleLayer(circles: gma.toFmCircles(allCircles)),
         if (allMarkers.isNotEmpty)
           fm.MarkerLayer(
-              markers:
-                  gma.toFmMarkers(allMarkers, iconUrls: _driverIconUrls)),
+              markers: gma.toFmMarkers(allMarkers,
+                  iconUrls: _driverIconUrls,
+                  iconWidgets: _publicMarkerWidgets)),
       ],
     );
   }
@@ -2777,9 +2787,17 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   /// Gère le tap sur la carte (pour sélectionner une position)
   void _onMapTap(LatLng latLng) {
-    // Mode public : on délègue au calculateur d'itinéraire pour ajuster
-    // le dernier point posé (cf. RouteCalculator.mapTapNotifier).
+    // Mode public : un arrêt sous le curseur ? → ouvrir sa fiche (les onTap
+    // des Marker/Circle gmaps ne survivent PAS à l'adaptation flutter_map,
+    // on passe donc par la détection de hover). Sinon, on délègue au
+    // calculateur d'itinéraire pour ajuster le dernier point posé.
     if (_homeMode == HomeMode.publicTransport) {
+      final hovAgg =
+          _publicHoveredStop != null ? _publicStopsByKey[_publicHoveredStop] : null;
+      if (hovAgg != null) {
+        _onPublicStopTap(hovAgg);
+        return;
+      }
       _publicMapTapNotifier.value = latLng;
       return;
     }
@@ -3626,13 +3644,161 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   double _metersPerPixel(double zoom) =>
       156543.03392 * cos(-18.9 * pi / 180) / pow(2, zoom).toDouble();
 
-  /// Largeur géographique de référence (mètres) d'une ligne selon son tier
-  /// (≈ largeur de chaussée pour le tronc). La bille d'arrêt en dérive pour
-  /// rester proportionnelle au trait.
-  double _lineBaseMeters(int tier, bool isTele) {
-    if (tier == 1) return isTele ? 18 : 22; // téléphérique / train
-    if (tier == 2) return 15; // bus numéroté
-    return 10; // périurbain
+  /// Épaisseur ÉCRAN (px) du trait d'une ligne selon son tier — constante au
+  /// zoom (style plan de réseau pro, remplace les largeurs géographiques qui
+  /// « débordaient » des rues en zoom serré). La bille d'arrêt et les
+  /// terminus en dérivent pour rester proportionnels au trait.
+  double _lineStrokePx(int tier, bool isTele) {
+    if (tier == 1) return isTele ? 6.0 : 7.0; // téléphérique / train
+    if (tier == 2) return 5.0; // bus numéroté
+    return 3.5; // variantes locales
+  }
+
+  /// Libellé court d'un arrêt en vue « ligne sélectionnée » : numéro sur
+  /// 3 chiffres sans suffixe (« 9 » → « 009 », « 146 Rouge » → « 146 »,
+  /// « 147BIS » → « 147 ») ; lignes nommées sans chiffre → initiale
+  /// (« MAHITSY » → « M », « D » → « D »).
+  static String _shortLineLabel(String lineNumber) {
+    final digits = RegExp(r'\d+').firstMatch(lineNumber)?.group(0);
+    if (digits != null) return digits.padLeft(3, '0');
+    final trimmed = lineNumber.trim();
+    return trimmed.isEmpty ? '?' : trimmed[0].toUpperCase();
+  }
+
+  /// Badge circulaire d'arrêt : disque couleur de la ligne, bordure blanche,
+  /// libellé court centré. Widget pur — enregistré dans
+  /// [_publicMarkerWidgets] (l'adaptateur flutter_map ne lit pas les bitmaps).
+  static Widget _circleStopBadge(String label, Color color,
+      {required bool big}) {
+    final d = big ? 28.0 : 22.0;
+    final textColor = color.computeLuminance() > 0.6
+        ? const Color(0xFF1D3557)
+        : Colors.white;
+    return Center(
+      child: Container(
+        width: d,
+        height: d,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: big ? 2.6 : 2.2),
+          boxShadow: const [
+            BoxShadow(color: Color(0x44000000), blurRadius: 3),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: textColor,
+              fontWeight: FontWeight.w800,
+              fontSize: big ? 9.5 : 8.0,
+              height: 1.0,
+              letterSpacing: -0.4,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Rectangle de CORRESPONDANCE (vue réseau) : blanc, bords arrondis,
+  /// bordure sombre, orienté PERPENDICULAIREMENT au tracé pour recouvrir les
+  /// brins côte à côte ; longueur ∝ nb de lignes connectées (≤ 3 brins
+  /// affichés). Style plan de métro. Widget pur.
+  static Widget _interchangeRectBadge(int lineCount,
+      {required double bearingDeg, required bool big}) {
+    final strands = lineCount.clamp(2, 3);
+    final scale = big ? 1.2 : 1.0;
+    // Largeur = EXACTEMENT celle du faisceau : n brins × (trait 5 px +
+    // bordure noire 2 px), + la bordure du rect. Hauteur ≈ un trait + marge.
+    final w = (strands * 7.0 + 2.0) * scale;
+    final h = 8.0 * scale;
+    // Rect horizontal (axe long = est) tourné de [bearingDeg] : son axe long
+    // pointe alors vers (cap + 90°) = en travers du faisceau.
+    final angle = bearingDeg * pi / 180.0;
+    return Center(
+      child: Transform.rotate(
+        angle: angle,
+        child: Container(
+          width: w,
+          height: h,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(h / 2),
+            border: Border.all(color: const Color(0xFF1A1A1A), width: 1.6),
+            boxShadow: const [
+              BoxShadow(color: Color(0x33000000), blurRadius: 2),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Capsule de pastilles n° de ligne (terminus / correspondances, zoom
+  /// élevé) : jusqu'à 3 pastilles + « +N ». Widget pur, flotté au-dessus de
+  /// la bille par l'appelant (Transform.translate).
+  Widget _lineCapsuleBadge(List<String> lines, {required bool big}) {
+    final svc = PublicTransportService.instance;
+    final shown = lines.take(3).toList();
+    final extra = lines.length - shown.length;
+    final fs = big ? 9.0 : 7.5;
+
+    Widget chip(String ln) {
+      final meta = svc.metadataFor(ln);
+      final color =
+          meta != null ? Color(meta.colorValue) : const Color(0xFF1565C0);
+      final tc = color.computeLuminance() > 0.6
+          ? const Color(0xFF1D3557)
+          : Colors.white;
+      return Container(
+        padding: EdgeInsets.symmetric(
+            horizontal: big ? 4 : 3, vertical: big ? 2 : 1.5),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: Colors.white, width: 1.1),
+        ),
+        child: Text(
+          _shortLineLabel(ln),
+          style: TextStyle(
+            color: tc,
+            fontWeight: FontWeight.w800,
+            fontSize: fs,
+            height: 1.0,
+          ),
+        ),
+      );
+    }
+
+    return Center(
+      child: Wrap(
+        spacing: 2,
+        children: [
+          for (final ln in shown) chip(ln),
+          if (extra > 0)
+            Container(
+              padding: EdgeInsets.symmetric(
+                  horizontal: big ? 4 : 3, vertical: big ? 2 : 1.5),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF2F7),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.white, width: 1.1),
+              ),
+              child: Text(
+                '+$extra',
+                style: TextStyle(
+                  color: const Color(0xFF53606E),
+                  fontWeight: FontWeight.w800,
+                  fontSize: fs,
+                  height: 1.0,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   /// Pré-calcule UNE FOIS la liste des clusters d'arrêts (dédup name +
@@ -3794,6 +3960,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final selectedStop = _publicSelectedStop;
     final dpr =
         MediaQuery.maybeOf(context)?.devicePixelRatio ?? 2.0;
+    // m/px au zoom courant : sert à convertir les tailles ÉCRAN (traits,
+    // billes, terminus, écarts de slot) en rayons/offsets géographiques.
+    final mpp = _metersPerPixel(_publicMapZoom);
+    // Couleur de la ligne sélectionnée (badges circulaires des arrêts en vue
+    // ligne — corrige les points bleus génériques).
+    final selectedColor = selected != null
+        ? Color(svc.metadataFor(selected)?.colorValue ?? 0xFF1565C0)
+        : null;
 
     // Filtrage zoom-dependent (axes longs prioritaires à dezoom).
     // La ligne sélectionnée force sa visibilité même si le zoom l'aurait
@@ -3862,45 +4036,41 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       final type = (meta?.transportType ?? 'bus').toLowerCase();
       final isTele = type == 'telepherique' || type == 'tele';
       final isTier1 = tier == 1;
-      // Largeurs façon M réso : le structurant (tier 1) ressort des bus
-      // surtout grâce au liseré blanc (cf. drawCasing), pas besoin de l'épaissir
-      // à l'excès. Train (rail) un peu plus épais que le téléphérique.
-      final int base = isTier1
-          ? (isTele ? 6 : 8)
-          : (tier == 2 ? 5 : 3);
-      final int width = isSelected ? base + 2 : base;
+      // Largeurs ÉCRAN CONSTANTES, style plan de réseau pro (IDFM) : le trait
+      // garde la même épaisseur en pixels à tous les zooms — fini les rubans
+      // géographiques qui « débordent » des rues en zoom serré. Le
+      // structurant (tier 1) reste un peu plus épais que les bus.
+      final double strokePx = _lineStrokePx(tier, isTele);
+      final double width = isSelected ? strokePx + 2 : strokePx;
       // z-order : le SQUELETTE (lignes toujours affichées : tier 1, lettres,
       // grands axes — cf. PublicTransportService.backboneLines) passe TOUJOURS
-      // au-dessus des autres lignes (5). Puis faisceaux corridor (3-4, cf.
-      // bloc corridors), bus (2), variantes locales (1). La ligne sélectionnée
-      // passe au premier plan (6).
+      // au-dessus des autres lignes (5). Puis bus (2), variantes locales (1).
+      // La ligne sélectionnée passe au premier plan (6). NB : le vrai rendu
+      // suit l'ORDRE D'INSERTION (cf. renderOrder), le zIndex est indicatif.
       final bool isBackbone = svc.backboneLines.contains(lineNumber);
       final int baseZ = isSelected ? 6 : (isBackbone ? 5 : (tier == 2 ? 2 : 1));
-      // Casing blanc : fait RESSORTIR le structurant + la ligne sélectionnée
-      // (comme les trams M réso). Pas de casing sur les bus en vue réseau,
-      // sinon les corridors partagés noircissent ("boue").
-      final bool drawCasing = isSelected || isTier1;
 
-      void addColored(String id, List<LatLng> pts, int w) {
+      void addColored(String id, List<LatLng> pts, double w) {
         if (pts.length < 2) return;
-        if (drawCasing) {
-          polylines.add(Polyline(
-            polylineId: PolylineId('pt_${lineNumber}_${id}_casing'),
-            points: pts,
-            color: Colors.white,
-            width: w + 3,
-            zIndex: baseZ - 1,
-            consumeTapEvents: false,
-            jointType: JointType.round,
-            startCap: Cap.roundCap,
-            endCap: Cap.roundCap,
-          ));
-        }
+        // Bordure NOIRE FINE sous chaque trait (~1 px de chaque côté) :
+        // détoure proprement les brins côte à côte et les croisements,
+        // façon plan de métro.
+        polylines.add(Polyline(
+          polylineId: PolylineId('pt_${lineNumber}_${id}_casing'),
+          points: pts,
+          color: const Color(0xFF1A1A1A),
+          width: (w + 2).round(),
+          zIndex: baseZ - 1,
+          consumeTapEvents: false,
+          jointType: JointType.round,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
+        ));
         polylines.add(Polyline(
           polylineId: PolylineId('pt_${lineNumber}_$id'),
           points: pts,
           color: color,
-          width: w,
+          width: w.round(),
           zIndex: baseZ,
           consumeTapEvents: false,
           jointType: JointType.round,
@@ -3921,15 +4091,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         // brins côte à côte, polylignes CONTINUES (aucun trou), croisements
         // francs (prioritaire au-dessus par ordre d'insertion).
         final strands = _strandRuns[lineNumber];
-        // Largeurs en MÈTRES → px au zoom courant, planchers RELEVÉS pour
-        // que les brins restent LARGES et lisibles au dézoom. L'écart de
-        // slot suit la largeur ÉCRAN du tronc (px → m au zoom courant) →
-        // les brins restent côte à côte à tous les zooms.
-        final mpp = _metersPerPixel(_publicMapZoom);
-        final baseM = _lineBaseMeters(tier, isTele);
-        final trunkPx = (baseM / mpp).clamp(4.0, 60.0);
-        final branchPx = (baseM * 0.55 / mpp).clamp(3.5, 34.0);
-        final slotWM = trunkPx * mpp; // écart d'un slot, en mètres
+        final trunkPx = strokePx;
+        final branchPx = (strokePx * 0.7).clamp(2.5, strokePx);
+        // Écart d'un slot = largeur du trait + sa bordure (px → m au zoom
+        // courant) : les brins restent côte à côte, bordures qui se touchent,
+        // à TOUS les zooms.
+        final slotWM = (trunkPx + 2) * mpp;
         if (strands == null) {
           // Fallback (precompute pas encore prêt / tier 1 hors faisceau) :
           // tracé brut plein.
@@ -3943,31 +4110,31 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             }
           } else {
             for (var i = 0; i < merged.trunk.length; i++) {
-              addColored('trunk_$i', merged.trunk[i], trunkPx.round());
+              addColored('trunk_$i', merged.trunk[i], trunkPx);
             }
             for (var i = 0; i < merged.allerSolo.length; i++) {
-              addColored('aSolo_$i', merged.allerSolo[i], branchPx.round());
+              addColored('aSolo_$i', merged.allerSolo[i], branchPx);
             }
             for (var i = 0; i < merged.retourSolo.length; i++) {
-              addColored('rSolo_$i', merged.retourSolo[i], branchPx.round());
+              addColored('rSolo_$i', merged.retourSolo[i], branchPx);
             }
           }
         } else {
           for (var i = 0; i < strands.trunk.length; i++) {
             addColored('trunk_$i', _applyStrandOffset(strands.trunk[i], slotWM),
-                trunkPx.round());
+                trunkPx);
           }
           for (var i = 0; i < strands.allerSolo.length; i++) {
             addColored(
                 'aSolo_$i',
                 _applyStrandOffset(strands.allerSolo[i], slotWM),
-                branchPx.round());
+                branchPx);
           }
           for (var i = 0; i < strands.retourSolo.length; i++) {
             addColored(
                 'rSolo_$i',
                 _applyStrandOffset(strands.retourSolo[i], slotWM),
-                branchPx.round());
+                branchPx);
           }
         }
       }
@@ -3975,8 +4142,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // Bouts du tracé (= les 2 terminus) à fermer par un gros point.
       final capLine = group.aller ?? group.retour;
       if (capLine != null && capLine.coordinates.length >= 2) {
-        // Terminus un peu plus gros que la bille courante, même échelle ligne.
-        final capR = _lineBaseMeters(tier, isTele) * 0.95;
+        // Terminus un peu plus gros que le trait, en px → m au zoom courant.
+        final capR = strokePx * 0.95 * mpp;
         termCaps.add((pos: capLine.coordinates.first, color: color, radiusM: capR));
         termCaps.add((pos: capLine.coordinates.last, color: color, radiusM: capR));
       }
@@ -4008,44 +4175,93 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       }
     }
 
-    // Génération des markers custom — parallélisée. La factory cache par
-    // (label, color, dpr, style), donc seuls les nouveaux variants paient
-    // une rastérisation ; les autres reviennent du cache instantanément.
+    // Génération des markers — WIDGETS purs enregistrés dans
+    // _publicMarkerWidgets (l'adaptateur flutter_map ne peut pas lire les
+    // BitmapDescriptor : sans widget/iconUrl, un marker tombe dans le
+    // fallback POINT BLEU de gma.toFmMarkers).
     final markers = <Marker>{};
     final circles = <Circle>{};
     final hovered = _publicHoveredStop;
-    final markerFutures = <Future<Marker>>[];
+    _publicMarkerWidgets.clear();
     for (final agg in stopsByKey.values) {
       final isStopSelected = selectedStop == agg.key;
       final isStopHovered = !isStopSelected && hovered == agg.key;
       final isActive = isStopSelected || isStopHovered;
-      // Correspondance = ≥ 2 lignes, uniquement en vue réseau (hors sélection).
-      final isInterchange = selected == null && agg.lines.length >= 2;
+      // Correspondance = ≥ 2 lignes VISIBLES AU ZOOM COURANT (vue réseau).
+      // Compter les lignes filtrées gonflerait le rect au dézoom alors que
+      // les brins masqués n'existent plus à l'écran.
+      final visibleAtStop =
+          selected == null ? agg.lines.where(visible.contains).length : 0;
+      final isInterchange = selected == null && visibleAtStop >= 2;
 
       // Le point d'arrêt doit tomber EXACTEMENT au milieu du trait : la coord.
       // brute de l'arrêt est souvent au bord de la chaussée, on la snappe donc
-      // sur la polyligne réellement dessinée (ligne primaire). Sert aussi de
-      // base au cap pour orienter les tuiles flottées.
+      // sur la polyligne réellement dessinée (ligne primaire).
       final primaryCoords = _coordsForLine(agg.primaryLine);
       final stopPos = primaryCoords.length >= 2
           ? _snapToPolyline(agg.position, primaryCoords)
           : agg.position;
-      final bearing = _bearingAtPointOnPolyline(stopPos, primaryCoords);
 
-      // POINT D'ARRÊT TOUJOURS PRÉSENT : une bille GÉOGRAPHIQUE (Circle, rayon
-      // en mètres) posée pile sur le trait → elle scale avec le zoom comme la
-      // polyline (≠ marker bitmap à taille-écran fixe qui paraît énorme en vue
-      // réseau dézoomée). Cœur blanc + liseré couleur de la ligne. Présente à
-      // TOUS les zooms (dès showStops) ; les badges (terminus), capsules
-      // (correspondances) et gros labels (actif) viennent FLOTTER au-dessus
-      // (markers, toujours rendus par-dessus les Circle), avec `withDot:false`.
-      // Bille PROPORTIONNELLE à la largeur (mètres) de la ligne primaire →
-      // même échelle que le trait, scale avec le zoom (Circle géographique).
+      void addWidgetMarker(Widget icon,
+          {required double z, double dy = 0, String idSuffix = ''}) {
+        final id = 'stop_${agg.key}$idSuffix';
+        _publicMarkerWidgets[id] = dy == 0
+            ? icon
+            : Transform.translate(offset: Offset(0, dy), child: icon);
+        markers.add(Marker(
+          markerId: MarkerId(id),
+          position: stopPos,
+          anchor: const Offset(0.5, 0.5),
+          zIndex: z,
+          consumeTapEvents: true,
+          onTap: () => _onPublicStopTap(agg),
+        ));
+      }
+
+      // VUE LIGNE SÉLECTIONNÉE : chaque arrêt = badge CIRCULAIRE couleur de
+      // la ligne + bordure blanche + numéro court centré (3 chiffres sans
+      // suffixe, initiale pour les lignes nommées : MAHITSY → M). Remplace
+      // billes/badges génériques.
+      if (selected != null) {
+        addWidgetMarker(
+          _circleStopBadge(
+            _shortLineLabel(selected),
+            selectedColor ?? agg.primaryColor,
+            big: isActive,
+          ),
+          z: isActive ? 100 : 20,
+        );
+        continue;
+      }
+
+      // CORRESPONDANCE (vue réseau) : rectangle blanc bords arrondis posé en
+      // travers du faisceau, dimensionné par le nb de brins connectés —
+      // remplace la bille. La capsule des numéros flotte au-dessus au zoom
+      // élevé. Survol : rect agrandi + mini-carte ; clic : fiche complète.
+      if (isInterchange) {
+        final bearing = _bearingAtPointOnPolyline(stopPos, primaryCoords);
+        addWidgetMarker(
+          _interchangeRectBadge(visibleAtStop,
+              bearingDeg: bearing, big: isActive),
+          z: isActive ? 90 : 15,
+        );
+        if (!isActive && useLabels) {
+          addWidgetMarker(
+            _lineCapsuleBadge(agg.lines.toList()..sort(), big: useBigLabels),
+            z: 30,
+            dy: -16,
+            idSuffix: '_cap',
+          );
+        }
+        continue;
+      }
+
       final dotMeta = svc.metadataFor(agg.primaryLine);
       final dotType = (dotMeta?.transportType ?? 'bus').toLowerCase();
       final dotTele = dotType == 'telepherique' || dotType == 'tele';
+      // Bille proportionnelle au trait (px constants → m au zoom courant).
       final beadRadiusM =
-          _lineBaseMeters(dotMeta?.importanceTier ?? 2, dotTele) * 0.62;
+          _lineStrokePx(dotMeta?.importanceTier ?? 2, dotTele) * 0.62 * mpp;
       // Survol/sélection : la bille grossit (feedback immédiat sous le
       // curseur, style IDFM) et passe au-dessus de ses voisines.
       circles.add(Circle(
@@ -4065,55 +4281,29 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // suffisent. La fiche complète (StopCard) ne s'ouvre qu'au clic.
       if (isStopHovered) continue;
 
-      // Arrêt sélectionné (clic) : gros badge flotté au-dessus du point.
+      // Arrêt sélectionné (clic) : badge circulaire agrandi de la ligne
+      // primaire, posé sur le point.
       if (isStopSelected) {
-        markerFutures.add(StopMarkerFactory.createPinnedLabel(
-          label: agg.primaryLine,
-          color: agg.primaryColor,
-          devicePixelRatio: dpr,
-          bearingDeg: bearing,
-          style: StopMarkerStyle.largeLabel,
-          withDot: false,
-        ).then((m) => Marker(
-              markerId: MarkerId('stop_${agg.key}'),
-              position: stopPos,
-              icon: m.descriptor,
-              anchor: m.anchor,
-              zIndex: 100,
-              consumeTapEvents: true,
-              onTap: () => _onPublicStopTap(agg),
-            )));
-        continue;
-      }
-
-      // Correspondance : capsule des lignes flottée au-dessus du point.
-      if (isInterchange && useLabels) {
-        markerFutures.add(_buildPublicPoleMarker(agg, dpr, useBigLabels));
+        addWidgetMarker(
+          _circleStopBadge(
+            _shortLineLabel(agg.primaryLine),
+            agg.primaryColor,
+            big: true,
+          ),
+          z: 100,
+        );
         continue;
       }
 
       // Terminus : badge numéro flotté au-dessus du point (le rond reste).
       if (useLabels && agg.isTerminus) {
-        markerFutures.add(StopMarkerFactory.createPinnedLabel(
-          label: agg.primaryLine,
-          color: agg.primaryColor,
-          devicePixelRatio: dpr,
-          bearingDeg: bearing,
-          style: useBigLabels ? StopMarkerStyle.bigLabel : StopMarkerStyle.label,
-          withDot: false,
-        ).then((m) => Marker(
-              markerId: MarkerId('stop_${agg.key}'),
-              position: stopPos,
-              icon: m.descriptor,
-              anchor: m.anchor,
-              zIndex: 10,
-              consumeTapEvents: true,
-              onTap: () => _onPublicStopTap(agg),
-            )));
+        addWidgetMarker(
+          _lineCapsuleBadge([agg.primaryLine], big: useBigLabels),
+          z: 10,
+          dy: -12,
+        );
       }
     }
-    final builtMarkers = await Future.wait(markerFutures);
-    markers.addAll(builtMarkers);
 
     // Caps de terminus : un gros point au bout de chaque tracé pour le fermer
     // (= dernier arrêt). Dédupliqués par position (terminus partagés).

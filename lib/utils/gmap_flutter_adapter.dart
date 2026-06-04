@@ -48,10 +48,14 @@ List<fm.Polyline> toFmPolylines(Iterable<gmaps.Polyline> polylines) {
 List<fm.Marker> toFmMarkers(
   Iterable<gmaps.Marker> markers, {
   Map<String, String> iconUrls = const {},
+  Map<String, Widget> iconWidgets = const {},
 }) {
   return markers.map((m) {
     final id = m.markerId.value;
-    Widget child = _markerWidget(id, iconUrls[id]);
+    // [iconWidgets] : widget d'icône fourni directement par l'écran (badges
+    // d'arrêts transit…) — prioritaire sur les URLs et les fallbacks par id.
+    final custom = iconWidgets[id];
+    Widget child = custom ?? _markerWidget(id, iconUrls[id]);
     if (m.rotation != 0) {
       child = Transform.rotate(
         angle: m.rotation * math.pi / 180,
@@ -60,8 +64,10 @@ List<fm.Marker> toFmMarkers(
     }
     return fm.Marker(
       point: toLL(m.position),
-      width: 40,
-      height: 40,
+      // Boîte plus large pour les widgets custom (capsules multi-badges) —
+      // le child reste centré sur le point.
+      width: custom != null ? 120 : 40,
+      height: custom != null ? 60 : 40,
       alignment: Alignment.center,
       child: child,
     );
@@ -69,6 +75,21 @@ List<fm.Marker> toFmMarkers(
 }
 
 Widget _markerWidget(String id, String? iconUrl) {
+  if (id.startsWith('route_stop')) {
+    // Arrêt intermédiaire d'un itinéraire : bille blanche cerclée sombre
+    // (le BitmapDescriptor de l'écran n'est pas lisible ici).
+    return Center(
+      child: Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          border: Border.all(color: const Color(0xFF1A1A1A), width: 2),
+        ),
+      ),
+    );
+  }
   if (iconUrl != null && iconUrl.isNotEmpty) {
     return Image.network(
       iconUrl,
