@@ -164,6 +164,44 @@ class ReverseGeocoder {
     return resolved;
   }
 
+  /// Reverse geocode « budget » 100 % Nominatim (ne touche JAMAIS Google) :
+  /// pour les usages à haute fréquence comme l'aperçu live du pin central
+  /// (appelé à chaque relâchement de la carte). Nominatim self-hosted
+  /// d'abord, OSM public en secours. Partage le cache de [reverseGeocode] —
+  /// le confirm qui suit le même point est donc gratuit et cohérent.
+  Future<String> reverseGeocodeNominatim({
+    required double latitude,
+    required double longitude,
+  }) async {
+    final cacheKey = _resultKey(latitude, longitude);
+    final cached = _resultCache[cacheKey];
+    if (cached != null) return cached;
+
+    final config = await _getConfig();
+    String? resolved = await _tryNominatim(
+      latitude,
+      longitude,
+      config.nominatimUrl,
+      bearerToken: config.nominatimBearerToken,
+      label: 'self-hosted',
+    );
+    resolved ??= await _tryNominatim(
+      latitude,
+      longitude,
+      'https://nominatim.openstreetmap.org',
+      bearerToken: '',
+      label: 'OSM-public',
+    );
+    resolved ??=
+        'Position GPS (${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)})';
+
+    if (_resultCache.length >= _resultCacheMaxSize) {
+      _resultCache.remove(_resultCache.keys.first);
+    }
+    _resultCache[cacheKey] = resolved;
+    return resolved;
+  }
+
   Future<String?> _tryProvider(
     String provider,
     double lat,

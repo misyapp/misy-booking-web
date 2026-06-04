@@ -14,7 +14,10 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:provider/provider.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:rider_ride_hailing_app/widgets/booking_map.dart';
+import 'package:rider_ride_hailing_app/widgets/center_pin.dart';
+import 'package:rider_ride_hailing_app/services/geo_zone_service.dart';
 import 'package:rider_ride_hailing_app/utils/gmap_flutter_adapter.dart' as gma;
 import 'package:rider_ride_hailing_app/contants/my_colors.dart';
 import 'package:rider_ride_hailing_app/contants/my_image_url.dart';
@@ -94,6 +97,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // Markers pour la carte (chauffeurs)
   Set<Marker> _driverMarkers = {};
 
+  // Icônes réseau des chauffeurs par markerId (`driver_<uid>` → URL sprite du
+  // type de véhicule), passées à gma.toFmMarkers. Map d'INSTANCE : un état
+  // global se ferait purger par une autre instance d'écran (hot reload).
+  final Map<String, String> _driverIconUrls = {};
+
   // Animation des markers - stockage des positions actuelles et cibles
   final Map<String, LatLng> _currentDriverPositions = {};
   final Map<String, LatLng> _targetDriverPositions = {};
@@ -158,9 +166,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // Flags pour éviter de fermer les suggestions pendant l'interaction
   bool _isHoveringPickupSuggestions = false;
   bool _isHoveringDestinationSuggestions = false;
-
-  // Mode sélection sur carte: 'pickup', 'destination', ou null
-  String? _selectingLocationFor;
 
   // Planification de course: null = immédiate, sinon = date/heure planifiée
   DateTime? _scheduledDateTime;
@@ -252,15 +257,19 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// la sélection en cours.
   List<_PublicStopAggregate> _baseClusters = const [];
 
-  /// Portions INDIVIDUELLES colorées de chaque (ligne, sens) — clé
-  /// '${lineNumber}_${dir}' — là où ≤ 3 lignes co-localisées. Précalculé par
-  /// [_precomputeCorridors]. Vide → fallback sur le tracé brut entier.
-  Map<String, List<_LineRun>> _lineRuns = const {};
-
-  /// Épines des corridors (> 3 lignes) : une polyligne par corridor (géométrie
-  /// réelle d'une ligne), rendue en rayures multicolores. Précalculé par
-  /// [_precomputeCorridors].
-  List<_Corridor> _corridorSpines = const [];
+  /// Tracés "faisceau-ready" de la VUE RÉSEAU, précalculés une fois par
+  /// [_precomputeStrandRuns] à partir de [_mergedRuns] : chaque pièce
+  /// (tronc/branches) est densifiée et annotée par point d'un vecteur
+  /// d'offset latéral unitaire (slot -1/0/+1 lissé). Au rebuild, l'offset
+  /// réel = vecteur × largeur de brin au zoom courant → les lignes
+  /// co-localisées s'écartent en ≤ 3 brins côte à côte, en restant des
+  /// polylignes CONTINUES (aucun trou). Vide → fallback tracé brut.
+  Map<String,
+      ({
+        List<List<_StrandPt>> trunk,
+        List<List<_StrandPt>> allerSolo,
+        List<List<_StrandPt>> retourSolo
+      })> _strandRuns = const {};
 
   /// Découpage aller/retour de CHAQUE ligne pour la VUE RÉSEAU, précalculé une
   /// fois par [_precomputeMergedLines] (statique, ≠ zoom). Par ligne :
@@ -283,6 +292,23 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   final Map<String, Offset> _publicStopScreenPositions = {};
   Size _publicMapAreaSize = Size.zero;
 
+  // ─── Pin central (mode Course) : bonhomme posé au centre de la carte ───
+  // L'utilisateur tient la carte (pointer down → bras levé).
+  bool _pinGrabbed = false;
+  // Le point sous le pin est dans une geozone couverte (sinon « zone non
+  // desservie » + boutons carte désactivés).
+  bool _pinZoneCovered = true;
+  // Settle de fin de mouvement (drag, molette, pinch) → reload chauffeurs.
+  Timer? _pinIdleDebounce;
+  // Dernier point traité au settle (seuil anti-bruit ~5 m).
+  ll.LatLng? _lastPinSettle;
+  // Sélection au pin en cours : null = aucune, true = prise en charge,
+  // false = dépose. L'utilisateur déplace la carte librement puis valide
+  // via le bouton flottant « Confirmer le lieu… ».
+  bool? _pinSelectingPickup;
+  // Garde anti-réponses croisées de l'aperçu d'adresse (Nominatim async).
+  int _pinPreviewSeq = 0;
+
   @override
   void initState() {
     super.initState();
@@ -293,6 +319,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _restorePendingScheduledBooking();
     _createCustomMarkers();
     _checkTransportEditorRole();
+    _initSilentGeolocation();
 
     // Écouter les changements de TripProvider pour reset l'UI après course
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -310,6 +337,94 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final admin = await AdminAuthService.instance.isTransportAdmin();
     if (mounted && admin != _isTransportAdmin) {
       setState(() => _isTransportAdmin = admin);
+    }
+  }
+
+  /// Centrage initial silencieux : si la permission GPS est DÉJÀ accordée
+  /// (aucun popup — on ne passe pas par `getCurrentLocation()` qui fait
+  /// `requestPermission`) et que la position tombe dans une geozone couverte
+  /// (Madagascar), on centre la carte dessus + recharge les chauffeurs.
+  /// Sinon la carte reste sur Antananarivo (`_defaultPosition`).
+  Future<void> _initSilentGeolocation() async {
+    try {
+      final perm = await Geolocator.checkPermission();
+      if (perm != LocationPermission.always &&
+          perm != LocationPermission.whileInUse) {
+        return;
+      }
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      final zone =
+          await GeoZoneService.getZoneForLocation(pos.latitude, pos.longitude);
+      if (zone == null || !mounted) return;
+      _mapController?.move(ll.LatLng(pos.latitude, pos.longitude), 15);
+      _reloadDriversNearPosition(LatLng(pos.latitude, pos.longitude));
+      _lastPinSettle = ll.LatLng(pos.latitude, pos.longitude);
+      if (!_pinZoneCovered) setState(() => _pinZoneCovered = true);
+    } catch (e) {
+      debugPrint('Géoloc silencieuse ignorée: $e');
+    }
+  }
+
+  /// Relâche la prise (pointer up/cancel) : le bras du bonhomme redescend et
+  /// on traite le point sous le pin (le debounce de `onPositionChanged`
+  /// couvre l'inertie du fling et les mouvements sans pointer — molette).
+  void _releasePinGrab() {
+    if (!_pinGrabbed) return;
+    setState(() => _pinGrabbed = false);
+    _schedulePinSettle();
+  }
+
+  /// (Re)lance le debounce de settle — appelé au relâchement et à chaque
+  /// mouvement de caméra gestuel en mode Course.
+  void _schedulePinSettle() {
+    _pinIdleDebounce?.cancel();
+    _pinIdleDebounce = Timer(const Duration(milliseconds: 350), _onPinSettle);
+  }
+
+  /// Settle du pin central : fin de mouvement carte en mode Course (relâché
+  /// du drag, fin de molette/pinch). Recharge les 8 chauffeurs les plus
+  /// proches du point sous le pin et met à jour la couverture geozone.
+  Future<void> _onPinSettle() async {
+    if (_homeMode != HomeMode.course || _mapController == null) return;
+    final center = _mapController!.camera.center;
+
+    // Seuil anti-bruit : ignorer un settle à <5 m du précédent.
+    if (_lastPinSettle != null &&
+        const ll.Distance().as(ll.LengthUnit.Meter, _lastPinSettle!, center) <
+            5) {
+      return;
+    }
+    _lastPinSettle = center;
+
+    _reloadDriversNearPosition(LatLng(center.latitude, center.longitude));
+
+    // Sélection en cours : aperçu live de l'adresse sous le pin dans le
+    // champ correspondant (reverse Nominatim uniquement — haute fréquence,
+    // jamais Google). La validation reste sur « Confirmer le lieu… ».
+    final selecting = _pinSelectingPickup;
+    if (selecting != null) {
+      final seq = ++_pinPreviewSeq;
+      ReverseGeocoder.instance
+          .reverseGeocodeNominatim(
+              latitude: center.latitude, longitude: center.longitude)
+          .then((address) {
+        if (!mounted ||
+            seq != _pinPreviewSeq ||
+            _pinSelectingPickup != selecting) {
+          return;
+        }
+        (selecting ? _pickupController : _destinationController).text =
+            address;
+      });
+    }
+
+    final zone = await GeoZoneService.getZoneForLocation(
+        center.latitude, center.longitude);
+    final covered = zone != null;
+    if (mounted && covered != _pinZoneCovered) {
+      setState(() => _pinZoneCovered = covered);
     }
   }
 
@@ -786,14 +901,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// Reconstruit les markers avec les positions actuelles.
   ///
   /// Côté flutter_map le `BitmapDescriptor` Google est opaque : l'icône réelle
-  /// du type de véhicule est déclarée à l'adaptateur via `gma.markerIconUrls`
-  /// (id préfixé `driver_`), qui rend l'image réseau avec le heading conservé.
+  /// du type de véhicule est déclarée via [_driverIconUrls] (id préfixé
+  /// `driver_`), passée à `gma.toFmMarkers` qui rend l'image réseau avec le
+  /// heading conservé.
   Future<void> _rebuildDriverMarkers() async {
     if (!mounted) return;
 
     // Purge les icônes des chauffeurs disparus du pool.
-    gma.markerIconUrls.removeWhere((id, _) =>
-        id.startsWith('driver_') &&
+    _driverIconUrls.removeWhere((id, _) =>
         !_currentDriverPositions.containsKey(id.substring('driver_'.length)));
 
     Set<Marker> newMarkers = {};
@@ -806,11 +921,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       if (driver == null) continue;
 
       final heading = _currentDriverHeadings[driverId] ?? 0.0;
-      final markerUrl = driver.vehicleType != null
-          ? vehicleMap[driver.vehicleType]?.marker
-          : null;
+      final markerUrl = _resolveDriverMarkerUrl(driver);
       if (markerUrl != null && markerUrl.isNotEmpty) {
-        gma.markerIconUrls['driver_$driverId'] = markerUrl;
+        _driverIconUrls['driver_$driverId'] = markerUrl;
       } else {
         // Icône non résolue → pin taxi générique. Tracer le coupable :
         // vehicleType absent du doc ou inconnu de vehicleMap (type supprimé,
@@ -837,6 +950,32 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         _driverMarkers = newMarkers;
       });
     }
+  }
+
+  /// Résout l'URL du sprite du type de véhicule d'un chauffeur :
+  /// 1) `vehicleType` (id) → vehicleMap (chemin nominal) ;
+  /// 2) secours données corrompues (vehicleType null après un changement de
+  ///    véhicule driverapp qui écrit un objet incomplet) : id puis nom depuis
+  ///    le `vehicleDetails.vehicleType` embarqué.
+  String? _resolveDriverMarkerUrl(DriverModal driver) {
+    final byId = vehicleMap[driver.vehicleType]?.marker;
+    if (byId != null && byId.isNotEmpty) return byId;
+
+    final embedded = driver.vehicleData?.vehicleType;
+    if (embedded == null) return null;
+    final embeddedId = embedded['id']?.toString();
+    final byEmbeddedId =
+        embeddedId != null ? vehicleMap[embeddedId]?.marker : null;
+    if (byEmbeddedId != null && byEmbeddedId.isNotEmpty) return byEmbeddedId;
+
+    final name = embedded['name']?.toString().trim().toLowerCase();
+    if (name == null || name.isEmpty) return null;
+    for (final v in vehicleMap.values) {
+      if (v.name.trim().toLowerCase() == name && v.marker.isNotEmpty) {
+        return v.marker;
+      }
+    }
+    return null;
   }
 
   /// Calcule le heading à partir du mouvement entre deux positions
@@ -1135,6 +1274,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _driversSubscription?.cancel();
     _animationTimer?.cancel();
     _polylineAnimationTimer?.cancel();
+    _pinIdleDebounce?.cancel();
     _mapController?.dispose();
     _pickupController.dispose();
     _destinationController.dispose();
@@ -1165,16 +1305,57 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         }
         return Stack(
         children: [
-          // Carte Google Maps pleine page
-          _buildMap(),
+          // Carte pleine page. Le Listener observe (sans consommer) les
+          // pointeurs qui atteignent la carte : il pilote l'animation du pin
+          // central (la souris « attrape la main » du bonhomme au drag).
+          Listener(
+            behavior: HitTestBehavior.translucent,
+            onPointerDown: (_) {
+              if (_homeMode == HomeMode.course && !_pinGrabbed) {
+                setState(() => _pinGrabbed = true);
+              }
+            },
+            onPointerUp: (_) => _releasePinGrab(),
+            onPointerCancel: (_) => _releasePinGrab(),
+            child: _buildMap(),
+          ),
+
+          // Pin central : bonhomme bleu posé en permanence au centre de la
+          // zone visible (mode Course). La pointe = le point GPS visé
+          // (camera.center). IgnorePointer : ne bloque jamais les gestes.
+          if (_homeMode == HomeMode.course)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Center(
+                  child: CenterPin(
+                    grabbed: _pinGrabbed,
+                    covered: _pinZoneCovered,
+                  ),
+                ),
+              ),
+            ),
+
+          // Sélection au pin en cours : CTA flottant « Confirmer le lieu… ».
+          // L'utilisateur décale la carte autant qu'il veut, puis valide.
+          if (_homeMode == HomeMode.course && _pinSelectingPickup != null)
+            Positioned(
+              bottom: 28,
+              left: 0,
+              right: 0,
+              child: Center(child: _buildPinConfirmBar()),
+            ),
 
           // Détection de hover en mode public : MouseRegion translucent qui
           // ne bloque pas les pointer events (clicks Google Maps OK), mais
-          // capture la position du curseur pour grossir le marker survolé.
+          // capture la position du curseur pour grossir la bille survolée
+          // (+ mini-carte). Curseur main quand un arrêt est sous la souris.
           if (_homeMode == HomeMode.publicTransport)
             Positioned.fill(
               child: MouseRegion(
                 opaque: false,
+                cursor: _publicHoveredStop != null
+                    ? SystemMouseCursors.click
+                    : MouseCursor.defer,
                 onHover: (event) =>
                     _handlePublicMapHover(event.localPosition),
                 onExit: (_) => _clearPublicMapHover(),
@@ -1213,6 +1394,36 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                   onLineTap: (lineNumber) {
                     _onPublicLineSelected(lineNumber);
                   },
+                );
+              },
+            ),
+
+          // Mini-carte de SURVOL : aperçu compact (nom + pilules lignes)
+          // flotté au-dessus de la bille survolée, via le cache pixel-écran
+          // du hover. Non interactive (IgnorePointer) — la fiche complète
+          // ci-dessus ne s'ouvre qu'au clic.
+          if (_homeMode == HomeMode.publicTransport &&
+              _publicHoveredStop != null &&
+              _publicHoveredStop != _publicSelectedStop &&
+              _publicStopsByKey[_publicHoveredStop] != null &&
+              _publicStopScreenPositions[_publicHoveredStop] != null)
+            Builder(
+              builder: (ctx) {
+                final agg = _publicStopsByKey[_publicHoveredStop]!;
+                final anchor =
+                    _publicStopScreenPositions[_publicHoveredStop]!;
+                return Positioned(
+                  left: (anchor.dx - StopMiniCard.width / 2)
+                      .clamp(8.0, size.width - StopMiniCard.width - 8.0),
+                  bottom: (size.height - anchor.dy + 10)
+                      .clamp(8.0, size.height - 8.0),
+                  width: StopMiniCard.width,
+                  child: IgnorePointer(
+                    child: StopMiniCard(
+                      stopName: agg.name,
+                      lineNumbers: agg.lines.toList()..sort(),
+                    ),
+                  ),
                 );
               },
             ),
@@ -2537,6 +2748,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       onPositionChanged: (cam, hasGesture) {
         _onPublicCameraMove(cam);
         _onPublicCameraIdle();
+        // Mode Course : tout mouvement gestuel (drag, fling, molette, pinch)
+        // relance le debounce de settle du pin central.
+        if (_homeMode == HomeMode.course && hasGesture) {
+          _schedulePinSettle();
+        }
       },
       children: [
         if (allPolylines.isNotEmpty)
@@ -2544,7 +2760,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         if (allCircles.isNotEmpty)
           fm.CircleLayer(circles: gma.toFmCircles(allCircles)),
         if (allMarkers.isNotEmpty)
-          fm.MarkerLayer(markers: gma.toFmMarkers(allMarkers)),
+          fm.MarkerLayer(
+              markers:
+                  gma.toFmMarkers(allMarkers, iconUrls: _driverIconUrls)),
       ],
     );
   }
@@ -2574,10 +2792,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       return;
     }
 
-    if (_selectingLocationFor != null) {
-      final isPickup = _selectingLocationFor == 'pickup';
-      _setLocationFromLatLng(latLng, isPickup);
-    }
+    // (Le choix d'un point précis passe désormais par le pin central +
+    // bouton carte du champ — plus de mode « cliquez sur la carte ».)
   }
 
   // ─────────────────────── Mode public (Transport en commun) ───────────────────────
@@ -2631,6 +2847,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     if (_homeMode == mode) return;
     setState(() {
       _homeMode = mode;
+      _pinSelectingPickup = null; // sortie du mode sélection au pin
+      _pinGrabbed = false;
       _publicSelectedLine = null;
       _publicSelectedStop = null;
       _publicSelectedStopScreenPos = null;
@@ -2977,10 +3195,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     try {
       await PublicTransportService.instance.ensureLoaded();
       if (!mounted) return;
-      // Détection des corridors (≥2 lignes co-localisées) → rendu multicolore
-      // DANS LA LONGUEUR sur les portions partagées (cf. bloc corridor du
-      // rebuild). On n'utilise que la détection (_corridorSpines), PAS l'ancien
-      // rendu offset/bandes parallèles (rejeté).
+      // Détection des corridors (≥2 lignes co-localisées) → rendu en FAISCEAU
+      // de ≤ 3 brins côte à côte par-dessus les autres lignes (cf. bloc
+      // corridor du rebuild). Produit 2026-06-04 : remplace l'arc-en-ciel
+      // dans la largeur (supprimé).
       _precomputeCorridors();
       // Fusion aller/retour par ligne (vue réseau) : tronc partagé + branches.
       _precomputeMergedLines();
@@ -3035,9 +3253,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   /// Décale une polyligne perpendiculairement de [offM] mètres (cap local
-  /// fenêtré ±2 points → lisse). Sert à étaler une épine en bandes parallèles
-  /// (arc-en-ciel sur la largeur). Une seule épine à direction cohérente →
-  /// pas de flip, bandes propres.
+  /// fenêtré ±2 points → lisse). Sert à étaler une épine de corridor en
+  /// brins parallèles côte à côte (faisceau). Une seule épine à direction
+  /// cohérente → pas de flip, brins propres.
   List<LatLng> _offsetPolyline(List<LatLng> pts, double offM) {
     final out = <LatLng>[];
     for (var i = 0; i < pts.length; i++) {
@@ -3056,10 +3274,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     return out;
   }
 
-  /// Corridors > 3 lignes → une ÉPINE unique (géométrie réelle d'une ligne,
+  /// Corridors ≥ 2 lignes → une ÉPINE unique (géométrie réelle d'une ligne,
   /// choisie par importance, claim par rayon pour qu'un terre-plein = 1 seul
-  /// corridor), rendue en rayures multicolores. Ailleurs (≤ 3 lignes) → traits
-  /// individuels colorés (+ dédup aller/retour). Aucun offset → pas de gribouilli.
+  /// corridor), rendue en faisceau ≤ 3 brins côte à côte au rebuild. Ailleurs
+  /// → traits individuels colorés (+ dédup aller/retour).
   void _precomputeCorridors() {
     final svc = PublicTransportService.instance;
     final byImportance = svc.linesByImportance;
@@ -3217,8 +3435,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               lineRuns.putIfAbsent(key, () => []).add(_LineRun(pts, false, 0));
             }
           } else {
-            // Épine de corridor : couleurs = lignes co-localisées triées par
-            // importance ; largeur ∝ nb de lignes.
+            // Épine de corridor : lignes co-localisées triées par importance.
+            // Le rendu (faisceau ≤ 3 brins) repriorise backbone-first.
             if (pts.length >= 2) {
               final union = <String>{};
               var maxc = 0;
@@ -3229,11 +3447,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               final sortedLines = union.toList()
                 ..sort((x, y) =>
                     (rank[x] ?? (1 << 30)).compareTo(rank[y] ?? (1 << 30)));
-              final colors = [
-                for (final l in sortedLines)
-                  Color(svc.metadataFor(l)?.colorValue ?? 0xFF1565C0)
-              ];
-              spines.add(_Corridor(pts, colors, maxc));
+              spines.add(_Corridor(pts, sortedLines, maxc));
               for (var k = i; k <= j; k++) {
                 claimAround(list[k].pos);
               }
@@ -3593,10 +3807,23 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // Polylines visibles : on parcourt UNIQUEMENT les groupes filtrés.
     // Le clustering des stops, lui, est pré-calculé une fois (cf.
     // _precomputeBaseClusters) et on filtre juste par lignes visibles.
+    //
+    // ⚠️ L'ordre d'INSERTION = l'ordre de rendu flutter_map (le zIndex des
+    // Polyline n'est pas interprété par l'adaptateur). On insère donc du
+    // moins prioritaire au plus prioritaire : variantes → bus par importance
+    // croissante → SQUELETTE (lignes toujours affichées) en dernier. Aux
+    // croisements, le prioritaire passe AU-DESSUS ; chevauchement assumé.
     final byImportance = svc.linesByImportance;
-    final renderOrder = [
-      for (var i = byImportance.length - 1; i >= 0; i--) byImportance[i],
-    ];
+    final backboneSet = svc.backboneLines;
+    final rankOf = <String, int>{
+      for (var i = 0; i < byImportance.length; i++) byImportance[i]: i,
+    };
+    final renderOrder = byImportance.toList()
+      ..sort((a, b) {
+        final ba = backboneSet.contains(a), bb = backboneSet.contains(b);
+        if (ba != bb) return ba ? 1 : -1; // squelette inséré en dernier
+        return (rankOf[b] ?? 0).compareTo(rankOf[a] ?? 0); // moins important d'abord
+      });
     // Bouts de tracé (terminus) à "fermer" par un gros point = dernier arrêt,
     // à la couleur de la ligne (dédup par position = 1ʳᵉ couleur rencontrée).
     final termCaps = <({LatLng pos, Color color, double radiusM})>[];
@@ -3619,9 +3846,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           ? (isTele ? 6 : 8)
           : (tier == 2 ? 5 : 3);
       final int width = isSelected ? base + 2 : base;
-      // z-order : structurant tout en haut (5), puis bus (2), périurbain (1).
-      // La ligne sélectionnée passe au premier plan (6).
-      final int baseZ = isSelected ? 6 : (isTier1 ? 5 : (tier == 2 ? 2 : 1));
+      // z-order : le SQUELETTE (lignes toujours affichées : tier 1, lettres,
+      // grands axes — cf. PublicTransportService.backboneLines) passe TOUJOURS
+      // au-dessus des autres lignes (5). Puis faisceaux corridor (3-4, cf.
+      // bloc corridors), bus (2), variantes locales (1). La ligne sélectionnée
+      // passe au premier plan (6).
+      final bool isBackbone = svc.backboneLines.contains(lineNumber);
+      final int baseZ = isSelected ? 6 : (isBackbone ? 5 : (tier == 2 ? 2 : 1));
       // Casing blanc : fait RESSORTIR le structurant + la ligne sélectionnée
       // (comme les trams M réso). Pas de casing sur les bus en vue réseau,
       // sinon les corridors partagés noircissent ("boue").
@@ -3660,34 +3891,60 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         if (group.aller != null) addColored('aller', group.aller!.coordinates, width);
         if (group.retour != null) addColored('retour', group.retour!.coordinates, width);
       } else {
-        // VUE RÉSEAU : aller et retour fusionnés. Sur les portions où ils
-        // empruntent la même chaussée (double sens), un SEUL tronc large
-        // (= largeur de la chaussée) au lieu de 2 traits superposés. Les
-        // portions à sens unique (couplets, boucles) restent en branches fines.
-        // Découpage pré-calculé une fois (_precomputeMergedLines), géométrie
-        // de l'aller pour le tronc → aucun offset, aucune géométrie fabriquée.
-        final merged = _mergedRuns[lineNumber];
-        // Largeurs en MÈTRES → px au zoom courant (géométrie statique) :
-        // bornées [plancher, plafond] pour rester visibles en vue réseau et
-        // ne pas exploser en zoom serré. Tronc = chaussée pleine (2 sens),
-        // branche sens unique = ~moitié.
+        // VUE RÉSEAU : aller et retour fusionnés (tronc + branches, cf.
+        // _precomputeMergedLines), pièces annotées d'un vecteur d'offset
+        // latéral (cf. _precomputeStrandRuns) : dans les zones où ≥ 2 lignes
+        // partagent l'axe, chaque ligne glisse sur SON slot (-1/0/+1) → ≤ 3
+        // brins côte à côte, polylignes CONTINUES (aucun trou), croisements
+        // francs (prioritaire au-dessus par ordre d'insertion).
+        final strands = _strandRuns[lineNumber];
+        // Largeurs en MÈTRES → px au zoom courant, planchers RELEVÉS pour
+        // que les brins restent LARGES et lisibles au dézoom. L'écart de
+        // slot suit la largeur ÉCRAN du tronc (px → m au zoom courant) →
+        // les brins restent côte à côte à tous les zooms.
         final mpp = _metersPerPixel(_publicMapZoom);
         final baseM = _lineBaseMeters(tier, isTele);
-        final trunkW = (baseM / mpp).clamp(2.5, 60.0).round();
-        final branchW = (baseM * 0.55 / mpp).clamp(2.0, 34.0).round();
-        if (merged == null) {
-          // Fallback (precompute pas encore prêt) : ancien comportement.
-          if (group.aller != null) addColored('aller', group.aller!.coordinates, width);
-          if (group.retour != null) addColored('retour', group.retour!.coordinates, width);
+        final trunkPx = (baseM / mpp).clamp(4.0, 60.0);
+        final branchPx = (baseM * 0.55 / mpp).clamp(3.5, 34.0);
+        final slotWM = trunkPx * mpp; // écart d'un slot, en mètres
+        if (strands == null) {
+          // Fallback (precompute pas encore prêt / tier 1 hors faisceau) :
+          // tracé brut plein.
+          final merged = _mergedRuns[lineNumber];
+          if (merged == null) {
+            if (group.aller != null) {
+              addColored('aller', group.aller!.coordinates, width);
+            }
+            if (group.retour != null) {
+              addColored('retour', group.retour!.coordinates, width);
+            }
+          } else {
+            for (var i = 0; i < merged.trunk.length; i++) {
+              addColored('trunk_$i', merged.trunk[i], trunkPx.round());
+            }
+            for (var i = 0; i < merged.allerSolo.length; i++) {
+              addColored('aSolo_$i', merged.allerSolo[i], branchPx.round());
+            }
+            for (var i = 0; i < merged.retourSolo.length; i++) {
+              addColored('rSolo_$i', merged.retourSolo[i], branchPx.round());
+            }
+          }
         } else {
-          for (var i = 0; i < merged.trunk.length; i++) {
-            addColored('trunk_$i', merged.trunk[i], trunkW);
+          for (var i = 0; i < strands.trunk.length; i++) {
+            addColored('trunk_$i', _applyStrandOffset(strands.trunk[i], slotWM),
+                trunkPx.round());
           }
-          for (var i = 0; i < merged.allerSolo.length; i++) {
-            addColored('aSolo_$i', merged.allerSolo[i], branchW);
+          for (var i = 0; i < strands.allerSolo.length; i++) {
+            addColored(
+                'aSolo_$i',
+                _applyStrandOffset(strands.allerSolo[i], slotWM),
+                branchPx.round());
           }
-          for (var i = 0; i < merged.retourSolo.length; i++) {
-            addColored('rSolo_$i', merged.retourSolo[i], branchW);
+          for (var i = 0; i < strands.retourSolo.length; i++) {
+            addColored(
+                'rSolo_$i',
+                _applyStrandOffset(strands.retourSolo[i], slotWM),
+                branchPx.round());
           }
         }
       }
@@ -3699,95 +3956,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         final capR = _lineBaseMeters(tier, isTele) * 0.95;
         termCaps.add((pos: capLine.coordinates.first, color: color, radiusM: capR));
         termCaps.add((pos: capLine.coordinates.last, color: color, radiusM: capR));
-      }
-    }
-
-    // Corridors partagés (≥ 2 lignes co-localisées) : rendus en ARC-EN-CIEL
-    // DANS LA LONGUEUR. La portion partagée est découpée en N bandes CONTINUES
-    // successives (N = nb de lignes du corridor), chacune de la couleur d'une
-    // ligne, en séquence le long du tracé — PAS un damier répété, PAS d'offset
-    // (même géométrie). Posées par-dessus les traits colorés des lignes
-    // (zIndex 4 : au-dessus des bus 2/1, sous le structurant 5). Vue réseau.
-    if (selected == null && _corridorSpines.isNotEmpty) {
-      final mppCor = _metersPerPixel(_publicMapZoom);
-      void addBand(String id, List<LatLng> p, Color c, int w) {
-        if (p.length < 2) return;
-        polylines.add(Polyline(
-          polylineId: PolylineId(id),
-          points: List<LatLng>.from(p),
-          color: c,
-          width: w,
-          zIndex: 4,
-          consumeTapEvents: false,
-          jointType: JointType.round,
-        ));
-      }
-
-      // 1) CHAÎNER les tronçons de corridor contigus (fin de l'un ≈ extrémité
-      //    du suivant) en longues polylignes → un seul arc-en-ciel CONTINU,
-      //    pas un damier de petits tronçons. Glouton par proximité (≤ 35 m).
-      const joinTolM = 35.0;
-      final used = List<bool>.filled(_corridorSpines.length, false);
-      final chains = <({List<LatLng> pts, List<Color> colors})>[];
-      for (var si = 0; si < _corridorSpines.length; si++) {
-        if (used[si]) continue;
-        used[si] = true;
-        if (_corridorSpines[si].pts.length < 2) continue;
-        final cPts = List<LatLng>.from(_corridorSpines[si].pts);
-        final cCols = <Color>[..._corridorSpines[si].colors];
-        var extended = true;
-        while (extended) {
-          extended = false;
-          for (var sj = 0; sj < _corridorSpines.length; sj++) {
-            if (used[sj] || _corridorSpines[sj].pts.length < 2) continue;
-            final sp = _corridorSpines[sj].pts;
-            if (_metersBetween(cPts.last, sp.first) <= joinTolM) {
-              cPts.addAll(sp.skip(1));
-            } else if (_metersBetween(cPts.last, sp.last) <= joinTolM) {
-              cPts.addAll(sp.reversed.skip(1));
-            } else if (_metersBetween(cPts.first, sp.last) <= joinTolM) {
-              cPts.insertAll(0, sp.take(sp.length - 1));
-            } else if (_metersBetween(cPts.first, sp.first) <= joinTolM) {
-              cPts.insertAll(0, sp.reversed.take(sp.length - 1));
-            } else {
-              continue;
-            }
-            for (final c in _corridorSpines[sj].colors) {
-              if (!cCols.contains(c)) cCols.add(c);
-            }
-            used[sj] = true;
-            extended = true;
-          }
-        }
-        chains.add((pts: cPts, colors: cCols));
-      }
-
-      // 2) UN SEUL BRIN, colorié d'un MIX dans la LARGEUR : la largeur totale
-      //    reste celle d'UNE ligne (on n'élargit pas, on ne décale pas le brin),
-      //    mais elle est divisée en N fines rayures parallèles (1 par ligne),
-      //    chacune courant le long du tracé. Si le brin est trop fin pour
-      //    toutes les couleurs → on n'en met que X (lignes les plus importantes).
-      final lineWM = _lineBaseMeters(2, false); // largeur d'UNE ligne
-      final lineWPx = lineWM / mppCor;
-      const minStripePx = 2.5; // rayure lisible minimale
-      final maxStripes = (lineWPx / minStripePx).floor().clamp(1, 99);
-      for (var ci = 0; ci < chains.length; ci++) {
-        final pts = chains[ci].pts;
-        final cols = chains[ci].colors;
-        if (cols.isEmpty || pts.length < 2) continue;
-        final n = cols.length < maxStripes ? cols.length : maxStripes;
-        if (n == 1) {
-          addBand('cor_${ci}_0', pts, cols.first, lineWPx.clamp(2.5, 60.0).round());
-          continue;
-        }
-        final stripeWM = lineWM / n; // rayures qui se partagent UNE largeur
-        final stripePx = (stripeWM / mppCor).clamp(1.5, 60.0).round();
-        for (var k = 0; k < n; k++) {
-          // décalage DANS la largeur du brin (total = lineWM, brin non élargi)
-          final off = (k - (n - 1) / 2.0) * stripeWM;
-          final band = off.abs() < 0.01 ? pts : _offsetPolyline(pts, off);
-          addBand('cor_${ci}_$k', band, cols[k], stripePx);
-        }
       }
     }
 
@@ -3855,20 +4023,27 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       final dotTele = dotType == 'telepherique' || dotType == 'tele';
       final beadRadiusM =
           _lineBaseMeters(dotMeta?.importanceTier ?? 2, dotTele) * 0.62;
+      // Survol/sélection : la bille grossit (feedback immédiat sous le
+      // curseur, style IDFM) et passe au-dessus de ses voisines.
       circles.add(Circle(
         circleId: CircleId('dot_${agg.key}'),
         center: stopPos,
-        radius: beadRadiusM,
+        radius: isActive ? beadRadiusM * 1.7 : beadRadiusM,
         fillColor: Colors.white,
         strokeColor: agg.primaryColor,
-        strokeWidth: 2,
-        zIndex: 8,
+        strokeWidth: isActive ? 3 : 2,
+        zIndex: isActive ? 9 : 8,
         consumeTapEvents: true,
         onTap: () => _onPublicStopTap(agg),
       ));
 
-      // Arrêt actif (tap/survol) : gros badge flotté au-dessus du point.
-      if (isActive) {
+      // Arrêt survolé (non cliqué) : pas de badge flotté — la bille grossie
+      // + la mini-carte overlay (cf. StopMiniCard dans le Stack du build)
+      // suffisent. La fiche complète (StopCard) ne s'ouvre qu'au clic.
+      if (isStopHovered) continue;
+
+      // Arrêt sélectionné (clic) : gros badge flotté au-dessus du point.
+      if (isStopSelected) {
         markerFutures.add(StopMarkerFactory.createPinnedLabel(
           label: agg.primaryLine,
           color: agg.primaryColor,
@@ -3881,7 +4056,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               position: stopPos,
               icon: m.descriptor,
               anchor: m.anchor,
-              zIndex: isStopSelected ? 100 : 50,
+              zIndex: 100,
               consumeTapEvents: true,
               onTap: () => _onPublicStopTap(agg),
             )));
@@ -4858,18 +5033,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     required Function(String) onChanged,
     required VoidCallback onClear,
   }) {
-    final isSelecting = _selectingLocationFor == (isPickup ? 'pickup' : 'destination');
-
     return Container(
       decoration: BoxDecoration(
         // Style Apple - fond léger
-        color: isSelecting
-            ? const Color(0xFFFF5357).withOpacity(0.08)
-            : const Color(0xFFF5F5F7),
+        color: const Color(0xFFF5F5F7),
         borderRadius: BorderRadius.circular(10),
-        border: isSelecting
-            ? Border.all(color: const Color(0xFFFF5357).withOpacity(0.4), width: 1.5)
-            : Border.all(color: Colors.grey.withOpacity(0.15)),
+        border: Border.all(color: Colors.grey.withOpacity(0.15)),
       ),
       child: Row(
         children: [
@@ -4903,11 +5072,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                 letterSpacing: -0.2,
               ),
               decoration: InputDecoration(
-                hintText: isSelecting ? 'Touchez la carte...' : hint,
-                hintStyle: TextStyle(
+                hintText: hint,
+                hintStyle: const TextStyle(
                   fontSize: 14,
                   letterSpacing: -0.2,
-                  color: isSelecting ? const Color(0xFFFF5357) : const Color(0xFF86868B),
+                  color: Color(0xFF86868B),
                 ),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
@@ -4934,19 +5103,26 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             ),
           ),
 
-          // Bouton Sélectionner sur la carte
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () => _startMapSelection(isPickup),
-              borderRadius: BorderRadius.circular(20),
-              hoverColor: Colors.grey.withOpacity(0.1),
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Icon(
-                  Icons.map_outlined,
-                  size: 18,
-                  color: isSelecting ? const Color(0xFFFF5357) : const Color(0xFF86868B),
+          // Bouton « choisir au pin » : entre en mode sélection (la carte se
+          // déplace librement sous le bonhomme, validation par le CTA
+          // « Confirmer le lieu… »). Rouge quand la sélection est active.
+          Tooltip(
+            message: 'Choisir le point sous le pin',
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => _startMapSelection(isPickup),
+                borderRadius: BorderRadius.circular(20),
+                hoverColor: Colors.grey.withOpacity(0.1),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(
+                    Icons.map_outlined,
+                    size: 18,
+                    color: _pinSelectingPickup == isPickup
+                        ? const Color(0xFFFF5357)
+                        : const Color(0xFF86868B),
+                  ),
                 ),
               ),
             ),
@@ -4971,22 +5147,100 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     );
   }
 
-  /// Active le mode sélection sur carte
+  /// Entre en mode « sélection au pin » pour le champ demandé : l'utilisateur
+  /// déplace la carte librement sous le bonhomme, puis valide via le bouton
+  /// flottant « Confirmer le lieu… ». Re-cliquer le même bouton annule.
   void _startMapSelection(bool isPickup) {
     setState(() {
-      _selectingLocationFor = isPickup ? 'pickup' : 'destination';
+      _pinSelectingPickup =
+          (_pinSelectingPickup == isPickup) ? null : isPickup;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          isPickup
-              ? 'Cliquez sur la carte pour définir le lieu de prise en charge'
-              : 'Cliquez sur la carte pour définir la destination',
+    // Aperçu immédiat de l'adresse du point courant (sans attendre un
+    // premier déplacement) — le seuil 5 m est neutralisé pour ce settle.
+    if (_pinSelectingPickup != null) {
+      _lastPinSettle = null;
+      _schedulePinSettle();
+    }
+  }
+
+  /// CTA flottant du mode sélection au pin : « Confirmer le lieu de prise en
+  /// charge / de dépose » + croix d'annulation. Désactivé hors zone couverte
+  /// (« Zone non desservie » déjà affichée sous le pin).
+  Widget _buildPinConfirmBar() {
+    final isPickup = _pinSelectingPickup ?? true;
+    final enabled = _pinZoneCovered;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.85),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: Colors.black.withOpacity(0.06)),
+            boxShadow: const [
+              BoxShadow(color: Color(0x33000000), blurRadius: 18),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Material(
+                color: enabled
+                    ? const Color(0xFFFF5357)
+                    : const Color(0xFFC7C7CC),
+                borderRadius: BorderRadius.circular(999),
+                child: InkWell(
+                  onTap: enabled ? _confirmPinSelection : null,
+                  borderRadius: BorderRadius.circular(999),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 11),
+                    child: Text(
+                      isPickup
+                          ? 'Confirmer le lieu de prise en charge'
+                          : 'Confirmer le lieu de dépose',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => setState(() => _pinSelectingPickup = null),
+                  customBorder: const CircleBorder(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(9),
+                    child:
+                        Icon(Icons.close, size: 18, color: Color(0xFF86868B)),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        duration: const Duration(seconds: 3),
-        backgroundColor: MyColors.primaryColor,
       ),
     );
+  }
+
+  /// Valide le point GPS situé sous le pin central (centre de la carte)
+  /// comme adresse du champ en cours de sélection. Inactif hors zone
+  /// couverte (le bouton est déjà désactivé, ceinture-bretelles).
+  void _confirmPinSelection() {
+    final isPickup = _pinSelectingPickup;
+    if (isPickup == null || !_pinZoneCovered || _mapController == null) return;
+    final center = _mapController!.camera.center;
+    setState(() => _pinSelectingPickup = null);
+    _setLocationFromLatLng(
+        LatLng(center.latitude, center.longitude), isPickup);
   }
 
   /// Utilise la position GPS actuelle pour le champ spécifié
@@ -5040,7 +5294,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             'address': address,
           };
         }
-        _selectingLocationFor = null;
       });
 
       // Centrer la carte sur le point
@@ -5065,7 +5318,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             'address': address,
           };
         }
-        _selectingLocationFor = null;
       });
     }
   }
@@ -5698,14 +5950,15 @@ class _LineRun {
   const _LineRun(this.pts, this.trunk, this.count);
 }
 
-/// Épine d'un corridor (> 3 lignes) : géométrie réelle d'une ligne, rendue en
-/// rayures des [colors] (couleurs des lignes du corridor, triées par
+/// Épine d'un corridor (≥ 2 lignes co-localisées) : géométrie réelle d'une
+/// ligne, rendue en faisceau ≤ 3 brins côte à côte ([lines] triées par
 /// importance). [count] = nb de lignes max le long du corridor (→ largeur).
 class _Corridor {
   final List<LatLng> pts;
-  final List<Color> colors;
+  /// Numéros des lignes co-localisées, triés par importance décroissante.
+  final List<String> lines;
   final int count;
-  const _Corridor(this.pts, this.colors, this.count);
+  const _Corridor(this.pts, this.lines, this.count);
 }
 
 /// Stop "brut" en sortie d'un GeoJSON, avant clustering par proximité.

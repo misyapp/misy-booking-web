@@ -36,21 +36,22 @@ List<fm.Polyline> toFmPolylines(Iterable<gmaps.Polyline> polylines) {
   }).toList();
 }
 
-/// Icônes réseau par `markerId` : le `BitmapDescriptor` Google est opaque
-/// (non récupérable côté flutter_map), donc les écrans déclarent ici l'URL
-/// de l'image réelle à rendre (ex. icône du type de véhicule des chauffeurs)
-/// avant de passer leurs markers à [toFmMarkers].
-final Map<String, String> markerIconUrls = {};
-
 /// Marqueurs Google → marqueurs flutter_map (widgets). L'icône Google est un
 /// `BitmapDescriptor` opaque (non récupérable), donc on reconstruit un widget
-/// d'après le `markerId` (sémantique connue du funnel) ou [markerIconUrls].
+/// d'après le `markerId` (sémantique connue du funnel) ou [iconUrls] —
+/// l'écran appelant fournit l'URL de l'image réelle par markerId (ex. icône
+/// du type de véhicule des chauffeurs). Map passée par l'appelant (état de
+/// l'écran), PAS un global : deux instances d'écran (hot reload, multi-cartes)
+/// ne doivent pas se purger mutuellement leurs icônes.
 /// La `rotation` Google (heading des véhicules) est conservée. Le rendu est
 /// net (widget Flutter) et plus simple que le pipeline canvas→bytes.
-List<fm.Marker> toFmMarkers(Iterable<gmaps.Marker> markers) {
+List<fm.Marker> toFmMarkers(
+  Iterable<gmaps.Marker> markers, {
+  Map<String, String> iconUrls = const {},
+}) {
   return markers.map((m) {
     final id = m.markerId.value;
-    Widget child = _markerWidget(id);
+    Widget child = _markerWidget(id, iconUrls[id]);
     if (m.rotation != 0) {
       child = Transform.rotate(
         angle: m.rotation * math.pi / 180,
@@ -67,8 +68,7 @@ List<fm.Marker> toFmMarkers(Iterable<gmaps.Marker> markers) {
   }).toList();
 }
 
-Widget _markerWidget(String id) {
-  final iconUrl = markerIconUrls[id];
+Widget _markerWidget(String id, String? iconUrl) {
   if (iconUrl != null && iconUrl.isNotEmpty) {
     return Image.network(
       iconUrl,
