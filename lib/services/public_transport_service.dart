@@ -112,17 +112,35 @@ class PublicTransportService {
     _computeBackbone(latSpanKm, lngSpanKm);
   }
 
+  /// Lignes épinglées au squelette (choix produit 2026-06-05) : visibles
+  /// même au dézoom, en plus du tier 1 / des alphabétiques / des 2 axes.
+  /// Les noms doivent matcher EXACTEMENT les `line_number` du manifest
+  /// (J et D matchent déjà la regex alphabétique — gardés ici par intention).
+  static const Set<String> _backbonePinned = {
+    'J',
+    'D',
+    '194 Vert Ambanidia',
+    '194 Rouge',
+    '193A',
+    '180A',
+    '159A',
+  };
+
   /// Squelette toujours visible : tier 1 + lignes ALPHABÉTIQUES (suburbaines
   /// à lettre D, J… et lignes nommées comme MAHITSY — jamais masquées, choix
-  /// produit 2026-06-04) + LA plus longue ligne d'axe Nord-Sud et LA plus
-  /// longue d'axe Est-Ouest (étendue du tracé en km, hors variantes tier 3 ;
-  /// UNE seule par axe).
+  /// produit 2026-06-04) + lignes épinglées [_backbonePinned] + LA plus
+  /// longue ligne d'axe Nord-Sud et LA plus longue d'axe Est-Ouest (étendue
+  /// du tracé en km, hors variantes tier 3 ; UNE seule par axe).
   void _computeBackbone(
       Map<String, double> latSpanKm, Map<String, double> lngSpanKm) {
     final backbone = <String>{};
     final alpha = RegExp(r'^[A-Za-z]+$');
     for (final ln in _linesByImportance) {
-      if (tierFor(ln) == 1 || alpha.hasMatch(ln)) backbone.add(ln);
+      if (tierFor(ln) == 1 ||
+          alpha.hasMatch(ln) ||
+          _backbonePinned.contains(ln)) {
+        backbone.add(ln);
+      }
     }
     String? topAxis(Map<String, double> span) {
       String? best;
