@@ -4781,7 +4781,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
   }
 
-  /// Zoom la caméra sur les bounds d'une ligne donnée (aller + retour).
+  /// Zoom la caméra sur les bounds d'une ligne donnée (aller + retour),
+  /// dans la ZONE VISIBLE de la carte : le panel TC (Positioned left:16,
+  /// largeur 320) masque la gauche de l'écran — sans padding asymétrique,
+  /// l'extrémité ouest des lignes Est-Ouest finissait sous le panel.
+  /// Sur écran étroit (panel quasi pleine largeur), fallback symétrique.
   void _zoomToPublicLine(String lineNumber) {
     final group = PublicTransportService.instance.getLineGroup(lineNumber);
     if (group == null || _mapController == null) return;
@@ -4798,13 +4802,19 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       if (p.longitude < minLng) minLng = p.longitude;
       if (p.longitude > maxLng) maxLng = p.longitude;
     }
+    const panelRightEdge = 16.0 + 320.0; // left inset + largeur du panel
+    final screenW = MediaQuery.of(context).size.width;
+    final wideEnough = screenW - panelRightEdge > 360;
+    final padding = wideEnough
+        ? const EdgeInsets.fromLTRB(panelRightEdge + 32, 72, 48, 56)
+        : const EdgeInsets.all(48);
     _mapController?.fitCamera(
       fm.CameraFit.bounds(
         bounds: fm.LatLngBounds(
           ll.LatLng(maxLat, maxLng),
           ll.LatLng(minLat, minLng),
         ),
-        padding: const EdgeInsets.all(80),
+        padding: padding,
       ),
     );
   }
