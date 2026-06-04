@@ -145,15 +145,30 @@ class _BookingMapState extends State<BookingMap> {
   }
 
   /// Fond raster : satellite Esri, sinon tuiles charte (tileserver-gl / pré-rendu).
-  Widget _rasterBasemap() => TileLayer(
-        urlTemplate: widget.satellite
-            ? MapTilesConfig.esriSatelliteUrl
-            : MapTilesConfig.rasterTileUrlTemplate,
-        maxNativeZoom: widget.satellite ? 19 : 14,
+  /// tileserver-gl rastérise le style à TOUS les zooms (overzoom serveur des
+  /// données vectorielles z14, TileJSON maxzoom 20) → `maxNativeZoom: 19`,
+  /// sinon flutter_map étire les tuiles z14 (carte/labels flous, zoom « mort »).
+  /// `{r}` + `retinaMode` servent les tuiles @2x sur écrans haute densité.
+  Widget _rasterBasemap() {
+    if (widget.satellite) {
+      return TileLayer(
+        urlTemplate: MapTilesConfig.esriSatelliteUrl,
+        maxNativeZoom: 19,
         maxZoom: 19,
         userAgentPackageName: 'app.misy.book',
         tileProvider: NetworkTileProvider(),
       );
+    }
+    return TileLayer(
+      urlTemplate: MapTilesConfig.rasterTileUrlTemplate
+          .replaceFirst('.png', '{r}.png'),
+      retinaMode: RetinaMode.isHighDensity(context),
+      maxNativeZoom: 19,
+      maxZoom: 19,
+      userAgentPackageName: 'app.misy.book',
+      tileProvider: NetworkTileProvider(),
+    );
+  }
 
   Widget _map(Widget basemap) => FlutterMap(
         mapController: widget.controller,

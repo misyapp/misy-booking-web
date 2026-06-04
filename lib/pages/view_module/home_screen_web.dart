@@ -23,7 +23,6 @@ import 'package:rider_ride_hailing_app/extenstions/booking_type_extenstion.dart'
 import 'package:rider_ride_hailing_app/extenstions/payment_type_etxtenstion.dart';
 import 'package:rider_ride_hailing_app/modal/driver_modal.dart';
 import 'package:rider_ride_hailing_app/modal/total_time_distance_modal.dart';
-import 'package:rider_ride_hailing_app/provider/google_map_provider.dart';
 import 'package:rider_ride_hailing_app/provider/trip_provider.dart';
 import 'package:rider_ride_hailing_app/provider/auth_provider.dart';
 import 'package:rider_ride_hailing_app/services/firestore_services.dart';
@@ -660,8 +659,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _subscribeToOnlineDrivers();
   }
 
-  final Map<String, BitmapDescriptor> _vehicleIconCache = {};
-
   Future<void> _updateDriverMarkers(List<Map<String, dynamic>> drivers) async {
     if (!mounted) return;
 
@@ -786,30 +783,18 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     return (from + diff * progress) % 360;
   }
 
-  /// Reconstruit les markers avec les positions actuelles
+  /// Reconstruit les markers avec les positions actuelles.
+  ///
+  /// Côté flutter_map le `BitmapDescriptor` Google est opaque : l'icône réelle
+  /// du type de véhicule est déclarée à l'adaptateur via `gma.markerIconUrls`
+  /// (id préfixé `driver_`), qui rend l'image réseau avec le heading conservé.
   Future<void> _rebuildDriverMarkers() async {
     if (!mounted) return;
 
-    // Pré-charger toutes les icônes en parallèle
-    final Map<String, BitmapDescriptor> iconsByVehicleType = {};
-    final vehicleTypes = _driversData.values
-        .map((d) => d.vehicleType)
-        .where((t) => t != null)
-        .cast<String>()
-        .toSet();
-
-    await Future.wait(vehicleTypes.map((type) async {
-      try {
-        iconsByVehicleType[type] = await _getVehicleIcon(type);
-      } catch (e) {
-        debugPrint('Erreur chargement icône $type: $e');
-      }
-    }));
-
-    if (!mounted) return;
-
-    // Icône par défaut
-    final defaultIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan);
+    // Purge les icônes des chauffeurs disparus du pool.
+    gma.markerIconUrls.removeWhere((id, _) =>
+        id.startsWith('driver_') &&
+        !_currentDriverPositions.containsKey(id.substring('driver_'.length)));
 
     Set<Marker> newMarkers = {};
 
@@ -821,15 +806,17 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       if (driver == null) continue;
 
       final heading = _currentDriverHeadings[driverId] ?? 0.0;
-      final icon = (driver.vehicleType != null && iconsByVehicleType.containsKey(driver.vehicleType))
-          ? iconsByVehicleType[driver.vehicleType]!
-          : defaultIcon;
+      final markerUrl = driver.vehicleType != null
+          ? vehicleMap[driver.vehicleType]?.marker
+          : null;
+      if (markerUrl != null && markerUrl.isNotEmpty) {
+        gma.markerIconUrls['driver_$driverId'] = markerUrl;
+      }
 
       newMarkers.add(
         Marker(
-          markerId: MarkerId(driverId),
+          markerId: MarkerId('driver_$driverId'),
           position: position,
-          icon: icon,
           flat: true,
           anchor: const Offset(0.5, 0.5),
           rotation: heading,
@@ -882,44 +869,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   double _degreesToRadians(double degrees) => degrees * pi / 180;
   double _radiansToDegrees(double radians) => radians * 180 / pi;
-
-  static const int _markerSize = 28; // Taille réduite style Uber
-
-  Future<BitmapDescriptor> _getVehicleIcon(String? vehicleType) async {
-    debugPrint('🚗 _getVehicleIcon appelé avec vehicleType: $vehicleType');
-    debugPrint('🚗   vehicleMap.isEmpty: ${vehicleMap.isEmpty}, keys: ${vehicleMap.keys.toList()}');
-
-    if (vehicleType == null || vehicleMap.isEmpty || !vehicleMap.containsKey(vehicleType)) {
-      debugPrint('🚗   → Utilisation marker cyan par défaut (type non trouvé)');
-      return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan);
-    }
-
-    final cacheKey = '${vehicleType}_$_markerSize';
-
-    if (_vehicleIconCache.containsKey(cacheKey)) {
-      debugPrint('🚗   → Icône depuis cache pour $vehicleType');
-      return _vehicleIconCache[cacheKey]!;
-    }
-
-    try {
-      final vehicleInfo = vehicleMap[vehicleType];
-      debugPrint('🚗   vehicleInfo: ${vehicleInfo?.name}, marker URL: ${vehicleInfo?.marker}');
-      if (vehicleInfo?.marker != null && vehicleInfo!.marker.isNotEmpty) {
-        final mapProvider = Provider.of<GoogleMapProvider>(context, listen: false);
-        final icon = await mapProvider.createResizedMarkerFromNetwork(
-          vehicleInfo.marker,
-          targetWidth: _markerSize,
-        );
-        _vehicleIconCache[cacheKey] = icon;
-        debugPrint('🚗 ✅ Icône chargée pour $vehicleType (${_markerSize}px)');
-        return icon;
-      }
-    } catch (e) {
-      debugPrint('🚗 ❌ Erreur chargement icône $vehicleType: $e');
-    }
-
-    return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan);
-  }
 
   /// Crée le marker rond blanc avec contour noir pour le pickup
   Future<void> _createCustomMarkers() async {

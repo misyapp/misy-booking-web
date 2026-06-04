@@ -42,8 +42,13 @@ Cible actuelle : **VPS OVH** `51.254.141.103` (hostname `newsletter.misy.email`)
 
 ### Étape 1: Build Flutter
 
+⚠️ **Toujours passer `RASTER_TILE_URL`** : sans ce define, la carte part en
+rendu vectoriel client (`vector_map_tiles`), **cassé en dart2js** (Uint64 +
+`path_provider`). Le `{r}` des tuiles retina est géré dans le code.
+
 ```bash
-flutter build web --release
+flutter build web --release \
+  --dart-define=RASTER_TILE_URL='https://tiles.misy.app/styles/misy/{z}/{x}/{y}.png'
 ```
 
 ### Étape 2: Upload des fichiers via rsync

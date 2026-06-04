@@ -4,6 +4,8 @@
 // logique : les positions/itinéraires restent typés `gmaps.LatLng` (gratuit, on
 // n'instancie AUCUN widget GoogleMap), et on convertit en couches `flutter_map`
 // au moment du rendu uniquement.
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
@@ -34,24 +36,50 @@ List<fm.Polyline> toFmPolylines(Iterable<gmaps.Polyline> polylines) {
   }).toList();
 }
 
+/// Icônes réseau par `markerId` : le `BitmapDescriptor` Google est opaque
+/// (non récupérable côté flutter_map), donc les écrans déclarent ici l'URL
+/// de l'image réelle à rendre (ex. icône du type de véhicule des chauffeurs)
+/// avant de passer leurs markers à [toFmMarkers].
+final Map<String, String> markerIconUrls = {};
+
 /// Marqueurs Google → marqueurs flutter_map (widgets). L'icône Google est un
 /// `BitmapDescriptor` opaque (non récupérable), donc on reconstruit un widget
-/// d'après le `markerId` (sémantique connue du funnel). Le rendu est net
-/// (widget Flutter) et plus simple que le pipeline canvas→bytes.
+/// d'après le `markerId` (sémantique connue du funnel) ou [markerIconUrls].
+/// La `rotation` Google (heading des véhicules) est conservée. Le rendu est
+/// net (widget Flutter) et plus simple que le pipeline canvas→bytes.
 List<fm.Marker> toFmMarkers(Iterable<gmaps.Marker> markers) {
   return markers.map((m) {
     final id = m.markerId.value;
+    Widget child = _markerWidget(id);
+    if (m.rotation != 0) {
+      child = Transform.rotate(
+        angle: m.rotation * math.pi / 180,
+        child: child,
+      );
+    }
     return fm.Marker(
       point: toLL(m.position),
       width: 40,
       height: 40,
       alignment: Alignment.center,
-      child: _markerWidget(id),
+      child: child,
     );
   }).toList();
 }
 
 Widget _markerWidget(String id) {
+  final iconUrl = markerIconUrls[id];
+  if (iconUrl != null && iconUrl.isNotEmpty) {
+    return Image.network(
+      iconUrl,
+      width: 28,
+      height: 28,
+      fit: BoxFit.contain,
+      // Image indisponible → pin taxi (même fallback que les ids `driver*`).
+      errorBuilder: (_, __, ___) =>
+          const _Pin(icon: Icons.local_taxi, color: Color(0xFF111111)),
+    );
+  }
   if (id.startsWith('pickup') || id.contains('origin')) {
     return _dot(const Color(0xFF1DBF73));
   }

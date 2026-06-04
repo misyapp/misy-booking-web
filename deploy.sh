@@ -11,7 +11,8 @@ echo "======================================"
 # Vérifier que le build existe
 if [ ! -d "build/web" ]; then
     echo "❌ Erreur: Le répertoire build/web n'existe pas"
-    echo "Veuillez d'abord exécuter: flutter build web --release"
+    echo "Veuillez d'abord exécuter (RASTER_TILE_URL obligatoire, cf. DEPLOYMENT_WEB.md):"
+    echo "  flutter build web --release --dart-define=RASTER_TILE_URL='https://tiles.misy.app/styles/misy/{z}/{x}/{y}.png'"
     exit 1
 fi
 
