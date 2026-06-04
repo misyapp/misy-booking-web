@@ -36,6 +36,14 @@ class PublicTransportService {
 
   List<String> get linesByImportance => _linesByImportance;
 
+  /// Squelette du réseau : lignes affichées à TOUS les niveaux de zoom.
+  /// = tier 1 (train, téléphérique) + lignes à lettre (suburbaines D, J…)
+  /// + les plus grands axes Nord-Sud et Est-Ouest du réseau (par étendue
+  /// géographique du tracé). Calculé une fois par [_computeBackbone].
+  Set<String> _backbone = const {};
+
+  Set<String> get backboneLines => _backbone;
+
 
   /// Charge le manifest + tous les GeoJSON. Idempotent grâce au futur partagé.
   Future<void> ensureLoaded() {
@@ -65,12 +73,31 @@ class PublicTransportService {
   /// affichés, les petites lignes locales n'apparaissent qu'au zoom élevé).
   void _computeImportance() {
     final scored = <MapEntry<String, double>>[];
+    // Étendue géographique (km) du tracé de chaque ligne sur les deux axes,
+    // pour identifier les grands axes Nord-Sud / Est-Ouest du squelette.
+    final latSpanKm = <String, double>{};
+    final lngSpanKm = <String, double>{};
     for (final group in _linesCache.values) {
       var total = 0.0;
+      double? minLat, maxLat, minLng, maxLng;
       for (final line in group.lines) {
         total += _polylineLengthKm(line.coordinates);
+        for (final p in line.coordinates) {
+          if (minLat == null || p.latitude < minLat) minLat = p.latitude;
+          if (maxLat == null || p.latitude > maxLat) maxLat = p.latitude;
+          if (minLng == null || p.longitude < minLng) minLng = p.longitude;
+          if (maxLng == null || p.longitude > maxLng) maxLng = p.longitude;
+        }
       }
       scored.add(MapEntry(group.lineNumber, total));
+      if (minLat != null) {
+        final midLat = (minLat + maxLat!) / 2;
+        final midLng = (minLng! + maxLng!) / 2;
+        latSpanKm[group.lineNumber] =
+            _haversineKm(LatLng(minLat, midLng), LatLng(maxLat, midLng));
+        lngSpanKm[group.lineNumber] =
+            _haversineKm(LatLng(midLat, minLng), LatLng(midLat, maxLng));
+      }
     }
     // Tri principal par tier d'importance (1 = structurant en tête), puis par
     // longueur décroissante au sein d'un même tier. Le tier pilote ainsi
@@ -82,6 +109,40 @@ class PublicTransportService {
       return b.value.compareTo(a.value);
     });
     _linesByImportance = scored.map((e) => e.key).toList(growable: false);
+    _computeBackbone(latSpanKm, lngSpanKm);
+  }
+
+  /// Squelette toujours visible : tier 1 + lignes ALPHABÉTIQUES (suburbaines
+  /// à lettre D, J… et lignes nommées comme MAHITSY — jamais masquées, choix
+  /// produit 2026-06-04) + LA plus longue ligne d'axe Nord-Sud et LA plus
+  /// longue d'axe Est-Ouest (étendue du tracé en km, hors variantes tier 3 ;
+  /// UNE seule par axe).
+  void _computeBackbone(
+      Map<String, double> latSpanKm, Map<String, double> lngSpanKm) {
+    final backbone = <String>{};
+    final alpha = RegExp(r'^[A-Za-z]+$');
+    for (final ln in _linesByImportance) {
+      if (tierFor(ln) == 1 || alpha.hasMatch(ln)) backbone.add(ln);
+    }
+    String? topAxis(Map<String, double> span) {
+      String? best;
+      var bestV = 0.0;
+      for (final ln in _linesByImportance) {
+        if (tierFor(ln) > 2 || backbone.contains(ln)) continue;
+        final v = span[ln] ?? 0;
+        if (v > bestV) {
+          bestV = v;
+          best = ln;
+        }
+      }
+      return best;
+    }
+
+    final northSouth = topAxis(latSpanKm);
+    if (northSouth != null) backbone.add(northSouth);
+    final eastWest = topAxis(lngSpanKm);
+    if (eastWest != null) backbone.add(eastWest);
+    _backbone = backbone;
   }
 
   /// Tier d'importance d'une ligne (1/2/3), 2 par défaut.
@@ -110,12 +171,27 @@ class PublicTransportService {
 
   static double _toRad(double deg) => deg * math.pi / 180.0;
 
-  /// Toutes les lignes sont affichées quel que soit le zoom (choix produit
-  /// 2026-05-28 : on veut voir le réseau complet en permanence, pas de cap
-  /// anti-fouillis). Le paramètre [zoom] est conservé pour la compatibilité
-  /// des appelants mais n'a plus d'effet sur le sous-ensemble retourné.
+  /// Zoom sémantique (choix produit 2026-06-04, remplace le « tout visible »
+  /// du 2026-05-28) : plus on dézoome, moins on montre de lignes — façon
+  /// IDF Mobilités.
+  ///   < 12   : squelette seul (tier 1 + lettres + grands axes N-S / E-O) ;
+  ///   12–13  : + la moitié la plus longue des lignes tier 2 ;
+  ///   13–14  : + toutes les lignes tier 2 ;
+  ///   ≥ 14   : réseau complet (variantes locales tier 3 incluses).
+  /// La ligne sélectionnée est forcée visible par l'appelant quel que soit
+  /// le zoom.
   Set<String> visibleLineNumbersForZoom(double zoom) {
-    return _linesByImportance.toSet();
+    if (zoom >= 14) return _linesByImportance.toSet();
+    final visible = <String>{..._backbone};
+    if (zoom < 12) return visible;
+    // _linesByImportance est déjà triée par longueur décroissante au sein
+    // d'un tier → take(n) garde les plus longues.
+    final tier2 = _linesByImportance
+        .where((ln) => tierFor(ln) == 2 && !_backbone.contains(ln))
+        .toList(growable: false);
+    final keep = zoom >= 13 ? tier2.length : (tier2.length + 1) ~/ 2;
+    visible.addAll(tier2.take(keep));
+    return visible;
   }
 
   Future<void> _loadLine(LineMetadata m) async {

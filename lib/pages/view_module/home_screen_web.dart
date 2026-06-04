@@ -3195,13 +3195,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     try {
       await PublicTransportService.instance.ensureLoaded();
       if (!mounted) return;
-      // Détection des corridors (≥2 lignes co-localisées) → rendu en FAISCEAU
-      // de ≤ 3 brins côte à côte par-dessus les autres lignes (cf. bloc
-      // corridor du rebuild). Produit 2026-06-04 : remplace l'arc-en-ciel
-      // dans la largeur (supprimé).
-      _precomputeCorridors();
       // Fusion aller/retour par ligne (vue réseau) : tronc partagé + branches.
       _precomputeMergedLines();
+      // Faisceaux : co-localisation (≥2 lignes même axe) → profils de slot
+      // par ligne. Chaque ligne reste UNE polyligne continue qui s'écarte
+      // latéralement dans les zones partagées (≤ 3 brins côte à côte,
+      // prioritaire au centre, aucun trou). Produit 2026-06-04 v2 : remplace
+      // épines + arc-en-ciel (supprimés).
+      _precomputeStrandRuns();
       _precomputeBaseClusters();
       await _rebuildPublicTransportLayers();
       setState(() => _publicTransportLoaded = true);
@@ -3210,8 +3211,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
   }
 
-  // ───────── Corridors multicolores (consolidation > 3 lignes) ─────────
-  static const int _corridorMinLines = 2; // arc-en-ciel dès 2 lignes (réglable)
+  // ───────── Faisceaux de lignes co-localisées (vue réseau) ─────────
   static const double _corridorSampleStepM = 10.0;
   static const double _corridorMergeRadiusM = 25.0; // englobe un terre-plein
   static const double _corridorBearingTolDeg = 25.0;
@@ -3252,43 +3252,36 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     return d;
   }
 
-  /// Décale une polyligne perpendiculairement de [offM] mètres (cap local
-  /// fenêtré ±2 points → lisse). Sert à étaler une épine de corridor en
-  /// brins parallèles côte à côte (faisceau). Une seule épine à direction
-  /// cohérente → pas de flip, brins propres.
-  List<LatLng> _offsetPolyline(List<LatLng> pts, double offM) {
-    final out = <LatLng>[];
-    for (var i = 0; i < pts.length; i++) {
-      final a = pts[i - 2 < 0 ? 0 : i - 2];
-      final b = pts[i + 2 >= pts.length ? pts.length - 1 : i + 2];
-      final perp =
-          (_bearingBetween(a.latitude, a.longitude, b.latitude, b.longitude) +
-                  90.0) *
-              pi /
-              180.0;
-      final dLat = (offM * cos(perp)) / 111320.0;
-      final dLng =
-          (offM * sin(perp)) / (111320.0 * cos(pts[i].latitude * pi / 180));
-      out.add(LatLng(pts[i].latitude + dLat, pts[i].longitude + dLng));
-    }
-    return out;
-  }
-
-  /// Corridors ≥ 2 lignes → une ÉPINE unique (géométrie réelle d'une ligne,
-  /// choisie par importance, claim par rayon pour qu'un terre-plein = 1 seul
-  /// corridor), rendue en faisceau ≤ 3 brins côte à côte au rebuild. Ailleurs
-  /// → traits individuels colorés (+ dédup aller/retour).
-  void _precomputeCorridors() {
+  /// Pré-calcule (UNE fois) les tracés "faisceau-ready" de la vue réseau.
+  /// Détection par échantillonnage (~10 m) des zones où ≥ 2 lignes partagent
+  /// le même axe (rayon 25 m, caps ±25° mod 180°) ; chaque ligne y reçoit un
+  /// SLOT (-1 / 0 / +1 : prioritaire au centre — squelette d'abord, puis
+  /// importance — suivantes de part et d'autre, au-delà de 3 → centre,
+  /// dessous). Facteurs lissés (fenêtre ±6 ≈ 60 m) puis convertis en
+  /// vecteurs latéraux unitaires (perpendiculaire CANONIQUE mod 180° → deux
+  /// lignes antiparallèles s'écartent du même côté), eux-mêmes lissés
+  /// (fenêtre ±3, amortit le flip de cap à 0/180°). Enfin chaque pièce de
+  /// [_mergedRuns] est densifiée (~20 m) et annotée du vecteur du plus
+  /// proche échantillon. Résultat : des polylignes CONTINUES (aucun trou)
+  /// qui s'écartent en brins côte à côte dans les zones partagées et se
+  /// croisent franchement ailleurs — l'offset réel est appliqué au rebuild
+  /// ∝ largeur de brin au zoom courant (cf. [_applyStrandOffset]).
+  void _precomputeStrandRuns() {
     final svc = PublicTransportService.instance;
     final byImportance = svc.linesByImportance;
+    final backbone = svc.backboneLines;
     final rank = <String, int>{
       for (var i = 0; i < byImportance.length; i++) byImportance[i]: i,
     };
+    // Priorité de slot : squelette (lignes toujours affichées) d'abord →
+    // au centre, puis importance (longueur).
+    int prio(String l) =>
+        (backbone.contains(l) ? 0 : 1 << 20) + (rank[l] ?? (1 << 19));
 
     final samples = <String, List<_TrunkSample>>{};
     for (final ln in byImportance) {
-      // Tier 1 (téléphérique, train urbain) = HORS logique corridor : jamais
-      // consolidé ni compté ; tracé en ligne pleine (pas de runs → fallback).
+      // Tier 1 (téléphérique, train urbain) = HORS faisceau : jamais décalé
+      // ni compté ; tracé en ligne pleine par-dessus.
       if (svc.tierFor(ln) == 1) continue;
       final g = svc.getLineGroup(ln);
       if (g == null) continue;
@@ -3301,8 +3294,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       }
     }
     if (samples.isEmpty) {
-      _lineRuns = const {};
-      _corridorSpines = const [];
+      _strandRuns = const {};
       return;
     }
 
@@ -3325,19 +3317,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         ? key.substring(0, key.length - 6)
         : key.substring(0, key.length - 7);
 
-    // Par échantillon : ensemble des LIGNES distinctes co-localisées (terre-plein
-    // englobé par le rayon 25 m → une double voie = 1), comptage lissé, et
-    // chevauchement du retour avec son propre aller (dédup).
-    final coAt = <String, List<Set<String>>>{};
-    final cntS = <String, List<int>>{};
-    final dupAt = <String, List<bool>>{};
+    // Par échantillon de chaque (ligne, sens) : facteur de slot lissé puis
+    // vecteur latéral unitaire lissé.
+    final vecAt = <String, List<({LatLng pos, double vLat, double vLng})>>{};
     samples.forEach((key, list) {
       final selfLine = lineOf(key);
-      final isRetour = key.endsWith('_retour');
-      final allerKey = '${selfLine}_aller';
-      final co = <Set<String>>[];
-      final cnt = List<int>.filled(list.length, 1);
-      final du = List<bool>.filled(list.length, false);
+      final raw = List<double>.filled(list.length, 0);
       for (var i = 0; i < list.length; i++) {
         final s = list[i];
         final c = cellOf(s.pos);
@@ -3347,119 +3332,157 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             final bucket = grid['${c[0] + dx}_${c[1] + dy}'];
             if (bucket == null) continue;
             for (final e in bucket) {
-              if (_metersBetween(s.pos, e.pos) > _corridorMergeRadiusM) continue;
+              if (_metersBetween(s.pos, e.pos) > _corridorMergeRadiusM) {
+                continue;
+              }
               if (_bearingDiffMod180Trunk(s.bearing, e.bearing) >
                   _corridorBearingTolDeg) {
                 continue;
               }
-              if (isRetour && e.key == allerKey) du[i] = true;
               set.add(lineOf(e.key));
             }
           }
         }
-        co.add(set);
-        cnt[i] = set.length;
+        if (set.length < 2) continue; // seul sur l'axe → centre (0)
+        final ordered = set.toList()
+          ..sort((a, b) => prio(a).compareTo(prio(b)));
+        final idx = ordered.indexOf(selfLine);
+        raw[i] = idx == 1 ? 1.0 : (idx == 2 ? -1.0 : 0.0);
       }
-      final sm = List<int>.filled(list.length, 1);
+      // Lissage du facteur → transitions en biais douces (pas de marche).
+      final smooth = List<double>.filled(list.length, 0);
       for (var i = 0; i < list.length; i++) {
-        var sum = 0, c = 0;
-        for (var j = i - 2; j <= i + 2; j++) {
+        var sum = 0.0;
+        var c = 0;
+        for (var j = i - 6; j <= i + 6; j++) {
           if (j < 0 || j >= list.length) continue;
-          sum += cnt[j];
+          sum += raw[j];
           c++;
         }
-        sm[i] = (sum / c).round();
+        smooth[i] = sum / c;
       }
-      coAt[key] = co;
-      cntS[key] = sm;
-      dupAt[key] = du;
+      // Vecteur latéral (espace mètres) puis lissage vectoriel.
+      final vec = List<({LatLng pos, double vLat, double vLng})>.generate(
+        list.length,
+        (i) {
+          final bMod = ((list[i].bearing % 180) + 180) % 180;
+          final perp = (bMod + 90) * pi / 180.0;
+          return (
+            pos: list[i].pos,
+            vLat: smooth[i] * cos(perp),
+            vLng: smooth[i] * sin(perp),
+          );
+        },
+      );
+      final out = <({LatLng pos, double vLat, double vLng})>[];
+      for (var i = 0; i < vec.length; i++) {
+        var sLat = 0.0, sLng = 0.0;
+        var c = 0;
+        for (var j = i - 3; j <= i + 3; j++) {
+          if (j < 0 || j >= vec.length) continue;
+          sLat += vec[j].vLat;
+          sLng += vec[j].vLng;
+          c++;
+        }
+        out.add((pos: vec[i].pos, vLat: sLat / c, vLng: sLng / c));
+      }
+      vecAt[key] = out;
     });
 
-    // Claim par importance + rayon : la ligne la plus importante pose l'épine
-    // d'un corridor et réclame les cellules autour (terre-plein + autres lignes
-    // du même axe) ; les suivantes remplissent les portions encore libres.
-    final claimed = <String>{};
-    bool isClaimed(LatLng p) {
-      final c = cellOf(p);
-      return claimed.contains('${c[0]}_${c[1]}');
-    }
+    // Index spatial des vecteurs par (ligne, sens) pour annoter les pièces.
+    final vecGrid = <String, Map<String, List<int>>>{};
+    vecAt.forEach((key, list) {
+      final g = <String, List<int>>{};
+      for (var i = 0; i < list.length; i++) {
+        final c = cellOf(list[i].pos);
+        g.putIfAbsent('${c[0]}_${c[1]}', () => []).add(i);
+      }
+      vecGrid[key] = g;
+    });
 
-    void claimAround(LatLng p) {
+    ({double vLat, double vLng}) lookupVec(String key, LatLng p) {
+      final list = vecAt[key];
+      final g = vecGrid[key];
+      if (list == null || g == null) return (vLat: 0.0, vLng: 0.0);
       final c = cellOf(p);
+      var best = -1;
+      var bestD = 30.0; // au-delà : hors tracé échantillonné → centre
       for (var dx = -1; dx <= 1; dx++) {
         for (var dy = -1; dy <= 1; dy++) {
-          claimed.add('${c[0] + dx}_${c[1] + dy}');
-        }
-      }
-    }
-
-    final lineRuns = <String, List<_LineRun>>{};
-    final spines = <_Corridor>[];
-
-    int catOf(String key, int i, bool isRetour, List<int> cn, List<bool> du,
-        List<_TrunkSample> list) {
-      if (cn[i] >= _corridorMinLines) {
-        return isClaimed(list[i].pos) ? 0 : 2; // corridor : épine si non réclamé
-      }
-      if (isRetour && du[i]) return 0; // dédup aller/retour
-      return 1; // individuel coloré
-    }
-
-    for (final ln in byImportance) {
-      for (final dir in const ['aller', 'retour']) {
-        final key = '${ln}_$dir';
-        final list = samples[key];
-        if (list == null) continue;
-        final isRetour = dir == 'retour';
-        final cn = cntS[key]!;
-        final du = dupAt[key]!;
-        final co = coAt[key]!;
-
-        var i = 0;
-        while (i < list.length) {
-          final cat = catOf(key, i, isRetour, cn, du, list);
-          if (cat == 0) {
-            i++;
-            continue;
-          }
-          var j = i;
-          while (j + 1 < list.length &&
-              catOf(key, j + 1, isRetour, cn, du, list) == cat) {
-            j++;
-          }
-          final pts = <LatLng>[for (var k = i; k <= j; k++) list[k].pos];
-          if (j + 1 < list.length) pts.add(list[j + 1].pos); // raccord
-
-          if (cat == 1) {
-            if (pts.length >= 2) {
-              lineRuns.putIfAbsent(key, () => []).add(_LineRun(pts, false, 0));
-            }
-          } else {
-            // Épine de corridor : lignes co-localisées triées par importance.
-            // Le rendu (faisceau ≤ 3 brins) repriorise backbone-first.
-            if (pts.length >= 2) {
-              final union = <String>{};
-              var maxc = 0;
-              for (var k = i; k <= j; k++) {
-                union.addAll(co[k]);
-                if (co[k].length > maxc) maxc = co[k].length;
-              }
-              final sortedLines = union.toList()
-                ..sort((x, y) =>
-                    (rank[x] ?? (1 << 30)).compareTo(rank[y] ?? (1 << 30)));
-              spines.add(_Corridor(pts, sortedLines, maxc));
-              for (var k = i; k <= j; k++) {
-                claimAround(list[k].pos);
-              }
+          final bucket = g['${c[0] + dx}_${c[1] + dy}'];
+          if (bucket == null) continue;
+          for (final i in bucket) {
+            final d = _metersBetween(p, list[i].pos);
+            if (d < bestD) {
+              bestD = d;
+              best = i;
             }
           }
-          i = j + 1;
         }
       }
+      if (best < 0) return (vLat: 0.0, vLng: 0.0);
+      return (vLat: list[best].vLat, vLng: list[best].vLng);
     }
 
-    _lineRuns = lineRuns;
-    _corridorSpines = spines;
+    // Densifie chaque pièce de _mergedRuns (~20 m) et annote chaque point.
+    List<_StrandPt> annotate(String key, List<LatLng> pts) {
+      final out = <_StrandPt>[];
+      void add(LatLng p) {
+        final v = lookupVec(key, p);
+        out.add(_StrandPt(p, v.vLat, v.vLng));
+      }
+
+      for (var i = 0; i < pts.length - 1; i++) {
+        final a = pts[i], b = pts[i + 1];
+        final segLen = _metersBetween(a, b);
+        final steps = (segLen / 20.0).ceil().clamp(1, 100000);
+        for (var s = 0; s < steps; s++) {
+          final t = s / steps;
+          add(LatLng(a.latitude + (b.latitude - a.latitude) * t,
+              a.longitude + (b.longitude - a.longitude) * t));
+        }
+      }
+      if (pts.isNotEmpty) add(pts.last);
+      return out;
+    }
+
+    final result = <String,
+        ({
+          List<List<_StrandPt>> trunk,
+          List<List<_StrandPt>> allerSolo,
+          List<List<_StrandPt>> retourSolo
+        })>{};
+    _mergedRuns.forEach((ln, runs) {
+      if (svc.tierFor(ln) == 1) return; // tier 1 : tracé pur, pas de faisceau
+      // Le tronc reprend la géométrie de l'aller ; fallback retour si la
+      // ligne n'a qu'un sens.
+      final ak =
+          vecAt.containsKey('${ln}_aller') ? '${ln}_aller' : '${ln}_retour';
+      final rk =
+          vecAt.containsKey('${ln}_retour') ? '${ln}_retour' : ak;
+      result[ln] = (
+        trunk: [for (final p in runs.trunk) annotate(ak, p)],
+        allerSolo: [for (final p in runs.allerSolo) annotate(ak, p)],
+        retourSolo: [for (final p in runs.retourSolo) annotate(rk, p)],
+      );
+    });
+    _strandRuns = result;
+  }
+
+  /// Applique l'offset latéral de faisceau à une pièce annotée :
+  /// out = pos + (vLat, vLng) × [slotWM]. Vecteur nul → point inchangé.
+  static List<LatLng> _applyStrandOffset(List<_StrandPt> pts, double slotWM) {
+    return [
+      for (final p in pts)
+        (p.vLat == 0 && p.vLng == 0)
+            ? p.pos
+            : LatLng(
+                p.pos.latitude + (slotWM * p.vLat) / 111320.0,
+                p.pos.longitude +
+                    (slotWM * p.vLng) /
+                        (111320.0 * cos(p.pos.latitude * pi / 180)),
+              ),
+    ];
   }
 
   /// Pré-calcule (UNE fois, statique) pour chaque ligne le découpage
@@ -5941,24 +5964,14 @@ class _TrunkGridEntry {
   const _TrunkGridEntry(this.key, this.bearing, this.pos);
 }
 
-/// Portion individuelle colorée d'une ligne. [trunk] non utilisé désormais
-/// (les corridors > 3 lignes passent par [_Corridor]).
-class _LineRun {
-  final List<LatLng> pts;
-  final bool trunk;
-  final int count;
-  const _LineRun(this.pts, this.trunk, this.count);
-}
-
-/// Épine d'un corridor (≥ 2 lignes co-localisées) : géométrie réelle d'une
-/// ligne, rendue en faisceau ≤ 3 brins côte à côte ([lines] triées par
-/// importance). [count] = nb de lignes max le long du corridor (→ largeur).
-class _Corridor {
-  final List<LatLng> pts;
-  /// Numéros des lignes co-localisées, triés par importance décroissante.
-  final List<String> lines;
-  final int count;
-  const _Corridor(this.pts, this.lines, this.count);
+/// Point d'une pièce de tracé "faisceau-ready" : position de base + vecteur
+/// latéral unitaire×slot (espace mètres, lissé — cf. _precomputeStrandRuns).
+/// Offset réel au rebuild : pos + (vLat, vLng) × largeur de brin au zoom.
+class _StrandPt {
+  final LatLng pos;
+  final double vLat;
+  final double vLng;
+  const _StrandPt(this.pos, this.vLat, this.vLng);
 }
 
 /// Stop "brut" en sortie d'un GeoJSON, avant clustering par proximité.

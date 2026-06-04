@@ -203,6 +203,122 @@ class StopCard extends StatelessWidget {
   }
 }
 
+/// Mini-carte de SURVOL (hover desktop) : aperçu compact — nom de l'arrêt +
+/// pilules des lignes desservantes — flotté au-dessus de la bille survolée.
+/// Non interactive (l'appelant l'enveloppe d'un IgnorePointer) : la fiche
+/// complète [StopCard] ne s'ouvre qu'au clic. Style aligné sur StopCard.
+class StopMiniCard extends StatelessWidget {
+  final String stopName;
+  final List<String> lineNumbers;
+
+  const StopMiniCard({
+    super.key,
+    required this.stopName,
+    required this.lineNumbers,
+  });
+
+  static const double width = 240;
+  static const Color _ink = Color(0xFF1D3557);
+  static const int _maxBadges = 8;
+
+  @override
+  Widget build(BuildContext context) {
+    final locale = context.watch<LocaleProvider>().locale;
+    final svc = PublicTransportService.instance;
+    final displayName = stopName.trim().isEmpty
+        ? TransitStrings.t('stop.unnamed', locale)
+        : stopName;
+    final shown = lineNumbers.take(_maxBadges).toList();
+    final overflow = lineNumbers.length - shown.length;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Material(
+          color: Colors.white,
+          elevation: 10,
+          borderRadius: BorderRadius.circular(12),
+          shadowColor: Colors.black.withOpacity(0.18),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    height: 1.15,
+                    color: _ink,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: [
+                    for (final ln in shown) _miniBadge(svc, ln),
+                    if (overflow > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2.5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEFF2F7),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: Text(
+                          '+$overflow',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 10.5,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Pointeur vers la bille survolée.
+        CustomPaint(
+          size: const Size(20, 10),
+          painter: _ArrowPainter(pointDown: true),
+        ),
+      ],
+    );
+  }
+
+  Widget _miniBadge(PublicTransportService svc, String lineNumber) {
+    final meta = svc.metadataFor(lineNumber);
+    final color =
+        meta != null ? Color(meta.colorValue) : const Color(0xFF1565C0);
+    final textColor =
+        color.computeLuminance() > 0.6 ? _ink : Colors.white;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Text(
+        lineNumber,
+        style: TextStyle(
+          color: textColor,
+          fontWeight: FontWeight.w800,
+          fontSize: 10.5,
+          letterSpacing: -0.3,
+        ),
+      ),
+    );
+  }
+}
+
 class _ArrowPainter extends CustomPainter {
   final bool pointDown;
   _ArrowPainter({required this.pointDown});
