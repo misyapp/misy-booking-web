@@ -285,6 +285,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         List<({int k, List<_StrandPt> pts})> retourSolo
       })> _strandRuns = const {};
 
+  /// True quand [_strandRuns] vient des faisceaux LOOM (slots jusqu'à
+  /// ±12,5) : au dézoom squelette les offsets sont neutralisés (cf.
+  /// [_rebuildPublicTransportLayers]).
+  bool _strandsFromLoom = false;
+
   /// Découpage aller/retour de CHAQUE ligne pour la VUE RÉSEAU, précalculé une
   /// fois par [_precomputeMergedLines] (statique, ≠ zoom). Par ligne :
   /// - `trunk`      : portions où aller≈retour (même chaussée) → 1 tronc large ;
@@ -3619,6 +3624,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       );
     });
     _strandRuns = result;
+    _strandsFromLoom = false;
   }
 
   /// Peuple [_strandRuns] depuis les faisceaux LOOM pré-calculés au build
@@ -3666,6 +3672,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       );
     }
     _strandRuns = result;
+    _strandsFromLoom = true;
     myCustomPrintStatement(
         'LOOM network: ${result.length} lignes en faisceaux pré-calculés');
   }
@@ -4271,7 +4278,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         // partagent l'axe, chaque ligne glisse sur SON slot (-1/0/+1) → ≤ 3
         // brins côte à côte, polylignes CONTINUES (aucun trou), croisements
         // francs (prioritaire au-dessus par ordre d'insertion).
-        final strands = _strandRuns[lineNumber];
+        // Au DÉZOOM squelette (< 15), les slots LOOM (jusqu'à ±12,5 ≈ 90 px)
+        // écarteraient une ligne de sa rue alors que ses voisines de corridor
+        // sont masquées → tracé mergé sans offset (strands == null). Pas de
+        // gate pour l'heuristique : son squelette est prioritaire au centre
+        // (slot 0), aucun artefact.
+        final strands = (_strandsFromLoom && _publicMapZoom < 15)
+            ? null
+            : _strandRuns[lineNumber];
         final trunkPx = strokePx;
         final branchPx = (strokePx * 0.7).clamp(2.5, strokePx);
         if (strands == null) {
