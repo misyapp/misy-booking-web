@@ -1,10 +1,12 @@
 import 'package:country_code_picker/country_code_picker.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:rider_ride_hailing_app/contants/transit_strings.dart';
+import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/global_data.dart';
 import 'package:rider_ride_hailing_app/contants/language_strings.dart';
 import 'package:rider_ride_hailing_app/contants/my_image_url.dart';
@@ -720,7 +722,8 @@ class _WebAuthScreenState extends State<WebAuthScreen> {
 
   Future<void> _onGoogleTap() async {
     EasyLoading.show(
-      status: 'Connexion avec Google...',
+      status: TransitStrings.t('web.authGoogle',
+          Provider.of<LocaleProvider>(context, listen: false).locale),
       maskType: EasyLoadingMaskType.black,
       dismissOnTap: false,
     );
@@ -739,7 +742,8 @@ class _WebAuthScreenState extends State<WebAuthScreen> {
 
   Future<void> _onFacebookTap() async {
     EasyLoading.show(
-      status: 'Connexion avec Facebook...',
+      status: TransitStrings.t('web.authFacebook',
+          Provider.of<LocaleProvider>(context, listen: false).locale),
       maskType: EasyLoadingMaskType.black,
       dismissOnTap: false,
     );

@@ -311,7 +311,7 @@ class RouteItineraryScreen extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 3),
             child: Text(
-              '${step.intermediateStops.length} arrêt${step.intermediateStops.length > 1 ? "s" : ""} · ${step.durationMinutes} ${TransitStrings.t('route.minutes.short', locale)}',
+              '${step.intermediateStops.length} ${TransitStrings.t(step.intermediateStops.length > 1 ? 'lines.stops.short' : 'lines.stops.one', locale)} · ${step.durationMinutes} ${TransitStrings.t('route.minutes.short', locale)}',
               style: const TextStyle(
                 fontSize: 11,
                 color: Color(0xFF6B7280),

@@ -41,6 +41,7 @@ import 'package:rider_ride_hailing_app/pages/auth_module/web_auth_screen.dart'
     show WebAuthMode, WebAuthScreen;
 import 'package:rider_ride_hailing_app/contants/transit_strings.dart' show AppLocale;
 import 'package:rider_ride_hailing_app/pages/auth_module/edit_profile_screen.dart';
+import 'package:rider_ride_hailing_app/contants/transit_strings.dart';
 import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/phone_number_screen.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/my_booking_screen.dart';
@@ -578,6 +579,24 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       }
 
       if (params.isNotEmpty) {
+        // Langue du visiteur transmise par le site vitrine (?lang=it|pl|de|
+        // mg|fr|en) : l'app s'ouvre dans la langue de la page d'origine.
+        // setLocale persiste le choix (SharedPreferences misy_locale).
+        final langParam = params['lang'];
+        if (langParam != null) {
+          for (final l in AppLocale.values) {
+            if (l.name == langParam) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  Provider.of<LocaleProvider>(context, listen: false)
+                      .setLocale(l);
+                }
+              });
+              break;
+            }
+          }
+        }
+
         // Deep-link "Transport en commun" depuis le site (tuile "Découvrir
         // le transport en commun" → book.misy.app/?mode=transit) : bascule
         // direct dans l'onglet Transport au montage du home.
@@ -1557,8 +1576,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       debugPrint('Erreur localisation: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Erreur lors de la localisation'),
+          SnackBar(
+            content: Text(TransitStrings.t('web.errLocation',
+                Provider.of<LocaleProvider>(context, listen: false).locale)),
           ),
         );
       }
@@ -1807,6 +1827,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// (univers TC, distinct du corail courses — même convention que le site).
   Widget _buildTransitOptionTile(TripProvider tripProvider) {
     const indigo = Color(0xFF4F46E5);
+    final locale = context.watch<LocaleProvider>().locale;
     return InkWell(
       onTap: () => _openTransitFromCourse(tripProvider),
       borderRadius: BorderRadius.circular(12),
@@ -1830,17 +1851,17 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               child: const Icon(Icons.directions_bus_filled, color: indigo),
             ),
             const SizedBox(width: 12),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Transport en commun',
-                    style: TextStyle(fontWeight: FontWeight.w600),
+                    TransitStrings.t('mode.public', locale),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   Text(
-                    'Taxi-be — voir l\'itinéraire',
-                    style: TextStyle(fontSize: 12, color: indigo),
+                    TransitStrings.t('web.transitTileSub', locale),
+                    style: const TextStyle(fontSize: 12, color: indigo),
                   ),
                 ],
               ),
@@ -1853,6 +1874,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   Widget _buildVehicleSelectionPanel(TripProvider tripProvider) {
+    final locale = context.watch<LocaleProvider>().locale;
     // Tuile TC proposée seulement si départ ET arrivée sont dans la zone
     // couverte par le réseau taxi-be (Grand Tana).
     double? parse(dynamic v) => double.tryParse('${v ?? ''}');
@@ -1901,10 +1923,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                         constraints: const BoxConstraints(),
                       ),
                       const SizedBox(width: 8),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Choisir un véhicule',
-                          style: TextStyle(
+                          TransitStrings.t('web.chooseVehicle', locale),
+                          style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
@@ -2078,9 +2100,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                      child: const Text(
-                        'Commander',
-                        style: TextStyle(
+                      child: Text(
+                        TransitStrings.t('web.order', locale),
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
@@ -2476,7 +2498,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       } else if (mounted) {
         debugPrint('❌ Échec création booking');
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Erreur lors de la création de la course')),
+          SnackBar(
+              content: Text(TransitStrings.t('web.errCreateRide',
+                  Provider.of<LocaleProvider>(context, listen: false).locale))),
         );
       }
     } catch (e) {
@@ -2524,6 +2548,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   Widget _buildProfileButton() {
+    final locale = context.watch<LocaleProvider>().locale;
     // En mode Transport en commun, expose le menu "Contribuer" (raccourcis
     // éditeur / admin pour les claims correspondants, sans S'inscrire — pas
     // de notion de compte rider à ce moment-là).
@@ -2550,9 +2575,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                       borderRadius: BorderRadius.circular(20),
                     ),
                   ),
-                  child: const Text(
-                    'Connexion',
-                    style: TextStyle(
+                  child: Text(
+                    TransitStrings.t('web.signIn', locale),
+                    style: const TextStyle(
                       color: Colors.black87,
                       fontWeight: FontWeight.w500,
                     ),
@@ -2569,7 +2594,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   ),
-                  child: const Text("S'inscrire"),
+                  child: Text(TransitStrings.t('web.signUp', locale)),
                 ),
               ],
             );
@@ -2654,13 +2679,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               const PopupMenuDivider(),
               ..._buildLanguageMenuItems(context),
               const PopupMenuDivider(),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'logout',
                 child: Row(
                   children: [
-                    Icon(Icons.logout, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('Déconnexion', style: TextStyle(color: Colors.red)),
+                    const Icon(Icons.logout, color: Colors.red),
+                    const SizedBox(width: 8),
+                    Text(TransitStrings.t('web.signOut', locale),
+                        style: const TextStyle(color: Colors.red)),
                   ],
                 ),
               ),
@@ -2679,6 +2705,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       AppLocale.fr: 'Français',
       AppLocale.mg: 'Malagasy',
       AppLocale.en: 'English',
+      AppLocale.it: 'Italiano',
+      AppLocale.pl: 'Polski',
+      AppLocale.de: 'Deutsch',
     };
     return [
       for (final loc in AppLocale.values)
@@ -2718,6 +2747,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// /admin (si claim admin) + déconnexion. Pas de "Mes trajets" ni
   /// profil (UI booking).
   Widget _buildTaxibeContributeButton() {
+    final locale = context.watch<LocaleProvider>().locale;
     return Positioned(
       top: 16,
       right: 16,
@@ -2828,14 +2858,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               ],
               if (_isTransportEditor || _isTransportAdmin)
                 const PopupMenuDivider(),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'logout',
                 child: Row(
                   children: [
-                    Icon(Icons.logout, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('Déconnexion',
-                        style: TextStyle(color: Colors.red)),
+                    const Icon(Icons.logout, color: Colors.red),
+                    const SizedBox(width: 8),
+                    Text(TransitStrings.t('web.signOut', locale),
+                        style: const TextStyle(color: Colors.red)),
                   ],
                 ),
               ),
@@ -5186,6 +5216,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   Widget _buildSearchCard() {
+    final locale = context.watch<LocaleProvider>().locale;
     return Positioned(
       top: 16,
       left: 16,
@@ -5288,9 +5319,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                                               color: Colors.white,
                                             ),
                                           )
-                                        : const Text(
-                                            'Commander',
-                                            style: TextStyle(
+                                        : Text(
+                                            TransitStrings.t('web.order', locale),
+                                            style: const TextStyle(
                                               fontSize: 15,
                                               fontWeight: FontWeight.w600,
                                               letterSpacing: -0.2,
@@ -6302,6 +6333,7 @@ class _SchedulePickerDialogState extends State<_SchedulePickerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final locale = context.watch<LocaleProvider>().locale;
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
@@ -6357,14 +6389,16 @@ class _SchedulePickerDialogState extends State<_SchedulePickerDialog> {
             const SizedBox(height: 12),
 
             // Sélecteur de date
-            const Text('Date', style: TextStyle(fontWeight: FontWeight.w500)),
+            Text(TransitStrings.t('web.date', locale),
+                style: const TextStyle(fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
             _buildDateSelector(),
 
             const SizedBox(height: 16),
 
             // Sélecteur d'heure
-            const Text('Heure', style: TextStyle(fontWeight: FontWeight.w500)),
+            Text(TransitStrings.t('web.time', locale),
+                style: const TextStyle(fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
             _buildTimeSelector(),
 
@@ -6393,7 +6427,7 @@ class _SchedulePickerDialogState extends State<_SchedulePickerDialog> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: const Text('Planifier la course'),
+                child: Text(TransitStrings.t('web.scheduleRide', locale)),
               ),
             ),
           ],
