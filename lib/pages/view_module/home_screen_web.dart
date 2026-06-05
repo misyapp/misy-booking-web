@@ -3067,10 +3067,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       maxZoom: _maxZoom,
       cameraBounds: gma.toLLBounds(_tanaBounds),
       satellite: _currentMapType == MapType.satellite,
-      // Fond désaturé en vue réseau LOOM : les rubans dominent, la voirie
-      // s'efface (réglage client ; labels mineurs = style serveur, à venir).
-      muted: _homeMode == HomeMode.publicTransport &&
-          LoomNetworkService.flagEnabled,
+      // MÊME fond de plan dans les deux onglets (demande 05/06 : avec le
+      // style misy2 déjà clair, le filtre désaturé du mode TC ne se
+      // distinguait plus → retiré ; BookingMap.muted reste dispo).
       onTap: (_, p) => _onMapTap(gma.toGM(p)),
       onPositionChanged: (cam, hasGesture) {
         _onPublicCameraMove(cam);
