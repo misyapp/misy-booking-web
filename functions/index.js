@@ -9,6 +9,12 @@
 
 const logger = require("firebase-functions/logger");
 const functions = require('firebase-functions');
+
+// Levier I (audit GCP 2026-05-14) : les 3 fonctions HTTP (v2/Gen2 depuis ~2026-05-28)
+// tournent en parallèle us-central1 + asia-east1 ; les apps choisissent la région via
+// le flag Firestore setting/cloud_functions_config (même nom de fonction, URL préfixée
+// région : https://{region}-misy-95336.cloudfunctions.net/{name}).
+const CF_REGIONS = ['us-central1', 'asia-east1'];
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const axios = require("axios");
@@ -90,7 +96,7 @@ function translate(key, lang = "en") {
     : translations["en"][key]; // fallback to English if translation not found
 }
 
-exports.mainFunction = functions.https.onRequest(async (req, res) => {
+exports.mainFunction = functions.https.onRequest({ region: CF_REGIONS }, async (req, res) => {
   try {
     // Ensure request is a JSON payload
     if (req.method !== 'POST' || !req.body) {
@@ -336,7 +342,7 @@ exports.mainFunction = functions.https.onRequest(async (req, res) => {
   }
 });
 
-exports.updateSchedulerJob = functions.https.onRequest(async (req, res) => {
+exports.updateSchedulerJob = functions.https.onRequest({ region: CF_REGIONS }, async (req, res) => {
   try {
     console.log("Update Job Request :", req.body);
 
@@ -414,6 +420,7 @@ exports.updateSchedulerJob = functions.https.onRequest(async (req, res) => {
 });
 
 exports.sendNotificationFunction = functions.https.onRequest(
+  { region: CF_REGIONS },
   async (req, res) => {
     try {
       if (req.method !== "POST") {
