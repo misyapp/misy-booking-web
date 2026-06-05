@@ -46,6 +46,13 @@ class TransitStrings {
       AppLocale.mg: 'Fitaterana iombonana',
       AppLocale.en: 'Public transport',
     },
+    // Bouton de retour vers la course quand le mode TC a été ouvert depuis
+    // la tuile « Transport en commun » du choix de véhicule.
+    'panel.backToCourse': {
+      AppLocale.fr: 'Revenir à la course (voiture, moto…)',
+      AppLocale.mg: 'Hiverina amin\'ny diabe (fiara, môtô…)',
+      AppLocale.en: 'Back to your ride (car, bike…)',
+    },
 
     // ───────── Sidebar Transport — header ─────────
     'transit.title': {

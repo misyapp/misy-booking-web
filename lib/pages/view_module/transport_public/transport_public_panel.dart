@@ -46,10 +46,14 @@ class TransportPublicPanel extends StatefulWidget {
   /// veut remplacer un leg marche long par une course Misy.
   final WalkLegToRideRequest? onRequestRideForWalk;
   /// Pré-remplissage du calculateur (deep-link `?mode=transit&from*`/`to*`
-  /// depuis le widget de recherche du site). Si les 2 points sont fournis,
-  /// la recherche est lancée automatiquement au montage.
+  /// depuis le widget de recherche du site, ou tuile TC du choix de
+  /// véhicule). Si les 2 points sont fournis, la recherche est lancée
+  /// automatiquement au montage.
   final ({String label, LatLng pos})? initialOrigin;
   final ({String label, LatLng pos})? initialDestination;
+  /// Non-null quand le mode TC a été ouvert depuis le flux Course → affiche
+  /// un bouton bien visible « Revenir à la course (voiture, moto…) ».
+  final VoidCallback? onReturnToCourse;
 
   const TransportPublicPanel({
     super.key,
@@ -64,6 +68,7 @@ class TransportPublicPanel extends StatefulWidget {
     this.onRequestRideForWalk,
     this.initialOrigin,
     this.initialDestination,
+    this.onReturnToCourse,
   });
 
   @override
@@ -108,6 +113,56 @@ class _TransportPublicPanelState extends State<TransportPublicPanel> {
                         onChanged: widget.onModeChanged,
                       ),
                     ),
+                    // Retour direct vers la course quand le TC a été ouvert
+                    // depuis la tuile du choix de véhicule (l'état Course
+                    // est intact côté home).
+                    if (widget.onReturnToCourse != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: widget.onReturnToCourse,
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 10),
+                              decoration: BoxDecoration(
+                                color:
+                                    const Color(0xFFFF5357).withOpacity(0.10),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: const Color(0xFFFF5357)
+                                      .withOpacity(0.35),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.arrow_back,
+                                      size: 18, color: Color(0xFFFF5357)),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      TransitStrings.t(
+                                          'panel.backToCourse',
+                                          context
+                                              .watch<LocaleProvider>()
+                                              .locale),
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFFFF5357),
+                                      ),
+                                    ),
+                                  ),
+                                  const Icon(Icons.directions_car_outlined,
+                                      size: 18, color: Color(0xFFFF5357)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     _buildHeader(context),
                     const Divider(height: 1, thickness: 1),
                     Expanded(

@@ -203,10 +203,16 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   String? _publicSelectedLine;
 
   /// Pré-remplissage du calculateur TC via deep-link `?mode=transit&from*`/
-  /// `to*` (widget de recherche de la section Transit du site). Consommés
-  /// une fois par RouteCalculator (auto-recherche si les 2 sont présents).
+  /// `to*` (widget de recherche de la section Transit du site) OU via la
+  /// tuile « Transport en commun » du choix de véhicule. Consommés une fois
+  /// par RouteCalculator (auto-recherche si les 2 sont présents).
   ({String label, LatLng pos})? _transitInitialOrigin;
   ({String label, LatLng pos})? _transitInitialDestination;
+
+  /// True quand le mode TC a été ouvert depuis le flux Course (tuile du
+  /// choix de véhicule) → le panel TC affiche un bouton « Revenir à la
+  /// course » (l'état Course est intact, on y revient tel quel).
+  bool _transitFromCourse = false;
 
   // Zoom courant de la carte. Suivi via [GoogleMap.onCameraMove] pour piloter
   // le filtrage zoom-dependent des lignes/stops.
@@ -1582,6 +1588,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         onRequestRideForWalk: _onRequestRideForWalk,
         initialOrigin: _transitInitialOrigin,
         initialDestination: _transitInitialDestination,
+        onReturnToCourse:
+            _transitFromCourse ? () => _setHomeMode(HomeMode.course) : null,
       );
     }
 
@@ -1757,7 +1765,109 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   int _selectedVehicleIndex = -1;
 
   /// Panel de sélection de véhicule custom pour le web
+  /// True si le point est dans le Grand Tana (rayon ~35 km autour du
+  /// centre-ville) — zone couverte par le réseau taxi-be.
+  static bool _isTanaRegion(double lat, double lng) =>
+      _metersBetween(LatLng(lat, lng), const LatLng(-18.8792, 47.5079)) <
+      35000;
+
+  /// Ouvre le mode Transport en commun pré-rempli avec le trajet de la
+  /// course en cours → la recherche d'itinéraire se lance toute seule
+  /// (même plomberie que le deep-link `?mode=transit&from*/to*`). L'état
+  /// Course n'est PAS touché : le bouton « Revenir à la course » du panel
+  /// TC ramène au choix de véhicule tel quel.
+  void _openTransitFromCourse(TripProvider tripProvider) {
+    double? parse(dynamic v) => double.tryParse('${v ?? ''}');
+    final pick = tripProvider.pickLocation;
+    final drop = tripProvider.dropLocation;
+    final pLat = parse(pick?['lat']), pLng = parse(pick?['lng']);
+    final dLat = parse(drop?['lat']), dLng = parse(drop?['lng']);
+    if (pLat == null || pLng == null || dLat == null || dLng == null) return;
+    String label(Map? loc, String fallback) {
+      final a = loc?['address']?.toString() ?? '';
+      return a.isEmpty ? fallback : a.split(',').first.trim();
+    }
+
+    setState(() {
+      _transitInitialOrigin = (
+        label: label(pick, '$pLat, $pLng'),
+        pos: LatLng(pLat, pLng),
+      );
+      _transitInitialDestination = (
+        label: label(drop, '$dLat, $dLng'),
+        pos: LatLng(dLat, dLng),
+      );
+      _transitFromCourse = true; // le reset de _setHomeMode ne joue qu'en SORTIE de TC
+    });
+    _setHomeMode(HomeMode.publicTransport);
+  }
+
+  /// Tuile « Transport en commun » insérée en 2e position du choix de
+  /// véhicule quand le trajet est dans le Grand Tana. Code couleur indigo
+  /// (univers TC, distinct du corail courses — même convention que le site).
+  Widget _buildTransitOptionTile(TripProvider tripProvider) {
+    const indigo = Color(0xFF4F46E5);
+    return InkWell(
+      onTap: () => _openTransitFromCourse(tripProvider),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: indigo.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: indigo.withOpacity(0.35)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 60,
+              height: 40,
+              decoration: BoxDecoration(
+                color: indigo.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.directions_bus_filled, color: indigo),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Transport en commun',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    'Taxi-be — voir l\'itinéraire',
+                    style: TextStyle(fontSize: 12, color: indigo),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: indigo),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildVehicleSelectionPanel(TripProvider tripProvider) {
+    // Tuile TC proposée seulement si départ ET arrivée sont dans la zone
+    // couverte par le réseau taxi-be (Grand Tana).
+    double? parse(dynamic v) => double.tryParse('${v ?? ''}');
+    final pLat = parse(tripProvider.pickLocation?['lat']);
+    final pLng = parse(tripProvider.pickLocation?['lng']);
+    final dLat = parse(tripProvider.dropLocation?['lat']);
+    final dLng = parse(tripProvider.dropLocation?['lng']);
+    final transitEligible = pLat != null &&
+        pLng != null &&
+        dLat != null &&
+        dLng != null &&
+        _isTanaRegion(pLat, pLng) &&
+        _isTanaRegion(dLat, dLng);
+    // Position d'insertion : 2e (index 1), ou 1re si la liste est vide.
+    final transitIdx = vehicleListModal.isEmpty ? 0 : 1;
     return Positioned(
       top: 16,
       left: 16,
@@ -1849,21 +1959,29 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
                   const SizedBox(height: 16),
 
-                  // Liste des véhicules
+                  // Liste des véhicules (+ tuile Transport en commun en 2e
+                  // position quand le trajet est dans le Grand Tana)
                   Expanded(
                     child: ListView.builder(
-                      itemCount: vehicleListModal.length,
+                      itemCount:
+                          vehicleListModal.length + (transitEligible ? 1 : 0),
                       itemBuilder: (context, index) {
-                        final vehicle = vehicleListModal[index];
+                        if (transitEligible && index == transitIdx) {
+                          return _buildTransitOptionTile(tripProvider);
+                        }
+                        final vIndex = transitEligible && index > transitIdx
+                            ? index - 1
+                            : index;
+                        final vehicle = vehicleListModal[vIndex];
                         if (!vehicle.active) return const SizedBox.shrink();
 
-                        final isSelected = _selectedVehicleIndex == index;
+                        final isSelected = _selectedVehicleIndex == vIndex;
                         final price = tripProvider.calculatePrice(vehicle);
 
                         return InkWell(
                           onTap: () {
                             setState(() {
-                              _selectedVehicleIndex = index;
+                              _selectedVehicleIndex = vIndex;
                             });
                             tripProvider.selectedVehicle = vehicle;
                           },
@@ -2916,6 +3034,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     if (_homeMode == mode) return;
     setState(() {
       _homeMode = mode;
+      if (mode != HomeMode.publicTransport) {
+        // Sortie du TC : on consomme le pré-remplissage (sinon une prochaine
+        // ouverture manuelle du mode relancerait la même recherche).
+        _transitInitialOrigin = null;
+        _transitInitialDestination = null;
+        _transitFromCourse = false;
+      }
       _exitPinSelection(); // sortie du mode sélection au pin (+ vue plan)
       _pinGrabbed = false;
       _publicSelectedLine = null;
