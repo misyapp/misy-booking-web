@@ -48,7 +48,7 @@ rendu vectoriel client (`vector_map_tiles`), **cassé en dart2js** (Uint64 +
 
 ```bash
 flutter build web --release \
-  --dart-define=RASTER_TILE_URL='https://tiles.misy.app/styles/misy/{z}/{x}/{y}.png'
+  --dart-define=RASTER_TILE_URL='https://tiles.misy.app/styles/misy2/{z}/{x}/{y}.png'
 ```
 
 ### Étape 2: Upload des fichiers via rsync
