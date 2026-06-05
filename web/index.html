@@ -32,8 +32,10 @@
   <title>rider_ride_hailing_app</title>
   <link rel="manifest" href="manifest.json">
 
-  <!-- Google Maps JavaScript API -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBbcjTBakwdPpLeuQvb_5Fk6jY9oqXwOko&libraries=places"></script>
+  <!-- Google Maps JavaScript API (Places pour l'autocomplete uniquement —
+       le fond de carte est OSM auto-hébergé). `defer` : ne bloque plus le
+       premier rendu du splash ni le téléchargement de main.dart.js. -->
+  <script defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBbcjTBakwdPpLeuQvb_5Fk6jY9oqXwOko&libraries=places"></script>
 
   <script>
     // The value below is injected by flutter build, do not touch.
@@ -123,10 +125,11 @@
       background: #FFFFFF;
       transition: opacity 0.3s ease;
     }
+    /* Wordmark au ratio NATUREL (510×400 avec marge basse) — l'ex
+       Icon-192.png était le mark écrasé dans un carré → logo étiré. */
     #misy-boot img {
-      width: 72px;
-      height: 72px;
-      border-radius: 18px;
+      width: 116px;
+      height: auto;
     }
     #misy-boot .misy-boot-spinner {
       width: 28px;
@@ -143,7 +146,7 @@
 </head>
 <body>
   <div id="misy-boot">
-    <img src="icons/Icon-192.png" alt="Misy">
+    <img src="icons/boot-logo.png" alt="Misy">
     <div class="misy-boot-spinner"></div>
   </div>
   <script>
