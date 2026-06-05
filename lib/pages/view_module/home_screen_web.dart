@@ -82,7 +82,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   final FocusNode _destinationFocusNode = FocusNode();
 
   // Position par défaut: Antananarivo, Madagascar (Ankadifotsy)
-  static const LatLng _defaultPosition = LatLng(-18.9103, 47.5305);
+  /// Position par défaut de la carte : la MAIRIE d'Antananarivo (Hôtel de
+  /// Ville, Andohan'Analakely, avenue de l'Indépendance) — utilisée quand le
+  /// GPS est absent/refusé OU que l'utilisateur est HORS des geozones Misy
+  /// (visiteur à l'étranger qui pré-réserve : la carte doit montrer Tana,
+  /// pas son salon à Paris). Demande produit du 05/06/2026.
+  static const LatLng _defaultPosition = LatLng(-18.9086, 47.5270);
 
   // Bornage carte : zoom min/max + caméra limitée à ~40 km autour
   // d'Antananarivo (≈ ±0.36° lat, ±0.38° lng à cette latitude).
@@ -1574,10 +1579,21 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       if (currentPosition != null && mounted) {
         final latLng = LatLng(currentPosition!.latitude, currentPosition!.longitude);
 
-        _mapController?.move(gma.toLL(latLng), 15);
+        // HORS GEOZONE Misy (dashboard) → on ne recentre PAS sur le GPS de
+        // l'utilisateur (visiteur à l'étranger) : cap sur la mairie
+        // d'Antananarivo, cœur de la couverture. (Pas de return : le reset
+        // de _isLocating est en bas, hors finally.)
+        final zone = await GeoZoneService.getZoneForLocation(
+            latLng.latitude, latLng.longitude);
+        if (zone == null && mounted) {
+          _mapController?.move(gma.toLL(_defaultPosition), 15);
+          _reloadDriversNearPosition(_defaultPosition);
+        } else if (mounted) {
+          _mapController?.move(gma.toLL(latLng), 15);
 
-        // Recharger les chauffeurs proches de cette position
-        _reloadDriversNearPosition(latLng);
+          // Recharger les chauffeurs proches de cette position
+          _reloadDriversNearPosition(latLng);
+        }
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
