@@ -30,4 +30,4 @@ la meilleure défense contre le scraping (pourquoi voler ce qui est donné,
 et moins frais ?), et on relâche le blocage Referer sur le seul endpoint
 GTFS public.
 
-→ Décision attendue de Stéphane. En l'absence de décision, statu quo A.
+→ **DÉCISION 06/06/2026 : trajectoire A retenue (protéger).** Pas de feed GTFS public. À ne pas rouvrir sans décision explicite de Stéphane.
