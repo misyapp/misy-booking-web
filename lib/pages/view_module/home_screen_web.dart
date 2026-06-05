@@ -17,6 +17,8 @@ import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:rider_ride_hailing_app/widgets/booking_map.dart';
 import 'package:rider_ride_hailing_app/widgets/center_pin.dart';
+import 'package:rider_ride_hailing_app/modal/vehicle_modal.dart';
+import 'package:rider_ride_hailing_app/provider/geo_zone_provider.dart';
 import 'package:rider_ride_hailing_app/services/geo_zone_service.dart';
 import 'package:rider_ride_hailing_app/services/loom_network_service.dart';
 import 'package:rider_ride_hailing_app/utils/gmap_flutter_adapter.dart' as gma;
@@ -213,6 +215,39 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// par RouteCalculator (auto-recherche si les 2 sont présents).
   ({String label, LatLng pos})? _transitInitialOrigin;
   ({String label, LatLng pos})? _transitInitialDestination;
+
+  /// Véhicules du choix de véhicule APRÈS application de la geozone du
+  /// pickup : catégories désactivées filtrées (ex. Taxi/Bajaj hors zone),
+  /// ordre/tarifs de zone appliqués — parité avec choose_vehicle_sheet de
+  /// la riderapp. Vide tant que la zone n'a pas été résolue (fallback :
+  /// vehicleListModal brut).
+  List<VehicleModal> _zoneVehicles = const [];
+
+  /// Résout la geozone du PICKUP puis filtre/tarife la liste de véhicules.
+  /// À appeler à chaque entrée dans l'étape chooseVehicle (le pickup peut
+  /// avoir changé). Cf. bug 05/06/2026 : le panel web ignorait les geozones
+  /// (Taxi/Bajaj visibles à Tana, prix hors zone).
+  Future<void> _refreshZoneVehicles(TripProvider tripProvider) async {
+    try {
+      double? parse(dynamic v) => double.tryParse('${v ?? ''}');
+      final lat = parse(tripProvider.pickLocation?['lat']);
+      final lng = parse(tripProvider.pickLocation?['lng']);
+      if (lat == null || lng == null) return;
+      final geo = Provider.of<GeoZoneProvider>(context, listen: false);
+      await geo.updateCurrentZone(lat, lng, forceRefresh: true);
+      if (!mounted) return;
+      final filtered =
+          geo.applyZonePricingToList(geo.applyCategoryConfig(vehicleListModal));
+      setState(() {
+        _zoneVehicles = filtered;
+        // La liste affichée change → l'index de sélection ne vaut plus rien.
+        _selectedVehicleIndex = -1;
+      });
+    } catch (e) {
+      debugPrint('GeoZone refresh véhicules: $e');
+      if (mounted) setState(() => _zoneVehicles = const []);
+    }
+  }
 
   /// True quand le mode TC a été ouvert depuis le flux Course (tuile du
   /// choix de véhicule) → le panel TC affiche un bouton « Revenir à la
@@ -1935,8 +1970,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         dLng != null &&
         _isTanaRegion(pLat, pLng) &&
         _isTanaRegion(dLat, dLng);
+    // Liste zonée (catégories filtrées + tarifs de zone) ; fallback brut
+    // tant que la zone n'est pas résolue.
+    final zonedVehicles =
+        _zoneVehicles.isNotEmpty ? _zoneVehicles : vehicleListModal;
     // Position d'insertion : 2e (index 1), ou 1re si la liste est vide.
-    final transitIdx = vehicleListModal.isEmpty ? 0 : 1;
+    final transitIdx = zonedVehicles.isEmpty ? 0 : 1;
     return Positioned(
       top: 16,
       left: 16,
@@ -2033,7 +2072,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                   Expanded(
                     child: ListView.builder(
                       itemCount:
-                          vehicleListModal.length + (transitEligible ? 1 : 0),
+                          zonedVehicles.length + (transitEligible ? 1 : 0),
                       itemBuilder: (context, index) {
                         if (transitEligible && index == transitIdx) {
                           return _buildTransitOptionTile(tripProvider);
@@ -2041,7 +2080,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                         final vIndex = transitEligible && index > transitIdx
                             ? index - 1
                             : index;
-                        final vehicle = vehicleListModal[vIndex];
+                        final vehicle = zonedVehicles[vIndex];
                         if (!vehicle.active) return const SizedBox.shrink();
 
                         final isSelected = _selectedVehicleIndex == vIndex;
@@ -6307,7 +6346,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         return;
       }
 
-      // Passer à l'étape de sélection de véhicule
+      // Passer à l'étape de sélection de véhicule (+ geozone du pickup :
+      // filtre catégories + tarifs de zone, comme la riderapp)
+      _refreshZoneVehicles(tripProvider);
       tripProvider.currentStep = CustomTripType.chooseVehicle;
     } catch (e) {
       debugPrint('Error during search: $e');
