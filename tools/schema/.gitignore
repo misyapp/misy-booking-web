@@ -6,3 +6,8 @@ misy_octi.svg
 # Intermédiaires octi (régénérés)
 *_octi.json
 *_cont.json
+
+# Intermédiaires CTS (régénérés par build_schema_cts.sh)
+misy_cts_graph*.json
+misy_cts.svg
+misy_cts_centre.svg
