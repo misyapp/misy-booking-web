@@ -193,18 +193,24 @@ class _TransportPublicPanelState extends State<TransportPublicPanel> {
               ],
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.account_tree_outlined,
-                size: 18, color: Color(0xFF1D3557)),
-            tooltip: TransitStrings.t('network.button', locale),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const TransportNetworkDiagramScreen(),
-              ));
-            },
-          ),
+          // Bouton du plan schématique MASQUÉ tant que le rendu legacy
+          // n'est pas au point (labels tronqués/chevauchés — demande du
+          // 05/06/2026). Il revient automatiquement avec la refonte CTS :
+          // visible uniquement quand le build porte SCHEMATIC_CTS=true
+          // (branche feat/schematic-map-cts).
+          if (const bool.fromEnvironment('SCHEMATIC_CTS'))
+            IconButton(
+              icon: const Icon(Icons.account_tree_outlined,
+                  size: 18, color: Color(0xFF1D3557)),
+              tooltip: TransitStrings.t('network.button', locale),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              onPressed: () {
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const TransportNetworkDiagramScreen(),
+                ));
+              },
+            ),
         ],
       ),
     );
