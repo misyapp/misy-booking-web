@@ -9,6 +9,8 @@ import 'package:rider_ride_hailing_app/pages/test_invoice_regeneration_page.dart
 
 import '../../../contants/my_image_url.dart';
 import '../../../provider/auth_provider.dart';
+import 'web_auth_page.dart';
+import 'web_auth_screen.dart' show WebAuthMode;
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -38,11 +40,13 @@ class _SplashScreenState extends State<SplashScreen> {
       _currentUrl().contains('transport-login') ||
       _currentUrl().contains('transport-iam');
 
-  // NOTE: les params `login=1` / `signup=1` (CTA "Connexion"/"S'inscrire" de
-  // beta.misy.app) ne court-circuitent plus le splash : ils sont capturés par
-  // DeepLinkParams et c'est HomeScreenWeb qui ouvre le dialog WebAuthScreen
-  // dans le bon mode (cf. _maybeOpenAuthDialogFromUrl). L'ancien push direct
-  // de PhoneNumberScreen donnait l'écran mobile brut, hors charte web.
+  // Chemin rapide auth (CTA "Connexion"/"S'inscrire" de beta.misy.app) :
+  // on saute le splashAuthentication lourd (login anonyme, settings,
+  // géozones, home + carte ≈ plusieurs secondes d'écran blanc) et on pousse
+  // directement la page d'auth légère WebAuthPage (carte WebAuthScreen).
+  // La navigation post-login y est déléguée au listener global.
+  bool get _isForceLoginMode =>
+      _currentUrl().contains('login=1') || _currentUrl().contains('signup=1');
 
   @override
   void initState() {
@@ -71,6 +75,20 @@ class _SplashScreenState extends State<SplashScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         auth = Provider.of<CustomAuthProvider>(context, listen: false);
         auth.setAuthListener(context);
+      });
+      return;
+    }
+
+    if (_isForceLoginMode) {
+      final signup = _currentUrl().contains('signup=1');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => WebAuthPage(
+              initialMode: signup ? WebAuthMode.signup : WebAuthMode.login,
+            ),
+          ),
+        );
       });
       return;
     }

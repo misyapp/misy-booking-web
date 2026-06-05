@@ -37,4 +37,15 @@ class DeepLinkParams {
     _params = const {};
     return p;
   }
+
+  /// Consomme une clé précise en laissant les autres intactes (ex. retirer
+  /// `login`/`signup` une fois la page d'auth affichée, sans toucher aux
+  /// éventuels params de pré-remplissage pickup/destination).
+  static String? consumeKey(String key) {
+    if (!_params.containsKey(key)) return null;
+    final mutable = Map<String, String>.from(_params);
+    final value = mutable.remove(key);
+    _params = mutable;
+    return value;
+  }
 }

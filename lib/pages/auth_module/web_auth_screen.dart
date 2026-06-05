@@ -27,7 +27,14 @@ enum WebAuthMode { login, signup }
 /// backdrop assombri.
 class WebAuthScreen extends StatefulWidget {
   final WebAuthMode initialMode;
-  const WebAuthScreen({super.key, this.initialMode = WebAuthMode.login});
+
+  /// Fermeture personnalisée. Par défaut la carte est un dialog (pop) ;
+  /// en mode page autonome (WebAuthPage, deep-link ?login=1), la croix doit
+  /// renvoyer vers la home complète au lieu de dépiler.
+  final VoidCallback? onClose;
+
+  const WebAuthScreen(
+      {super.key, this.initialMode = WebAuthMode.login, this.onClose});
 
   @override
   State<WebAuthScreen> createState() => _WebAuthScreenState();
@@ -81,6 +88,10 @@ class _WebAuthScreenState extends State<WebAuthScreen> {
   }
 
   void _close() {
+    if (widget.onClose != null) {
+      widget.onClose!();
+      return;
+    }
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
