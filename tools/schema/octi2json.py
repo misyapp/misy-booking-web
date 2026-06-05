@@ -29,6 +29,24 @@ BUNDLE = os.path.expanduser(
 TARGET_W = 1600.0
 PAD = 70.0
 
+# MISY_CTS=1 : enrichissements pour le rendu CTS (painter v2) — le défaut
+# reste BIT-À-BIT identique (fallback). Ajoute : `label` par brin d'edge
+# (pastilles de numéro), `legendLines` global (légende), kind `pole`
+# (double anneau : gares routières / hubs majeurs).
+CTS = os.environ.get("MISY_CTS", "").strip() in ("1", "true", "yes")
+# Pôle d'échange : seuil de lignes desservies OU nom épinglé (sous-chaîne
+# normalisée — mots rares pour éviter les faux positifs).
+POLE_N = int(os.environ.get("MISY_POLE_N", "22"))
+POLE_PINNED = ("maki", "gare routiere", "soarano")
+
+
+def norm_name(s):
+    s = (s or "").strip().lower()
+    for x, y in [("à", "a"), ("â", "a"), ("é", "e"), ("è", "e"), ("ê", "e"),
+                 ("î", "i"), ("ô", "o"), ("ù", "u"), ("û", "u"), ("ç", "c")]:
+        s = s.replace(x, y)
+    return " ".join(s.split())
+
 
 def line_base(num):
     m = re.match(r"^(\d+)", (num or "").strip())
@@ -141,9 +159,29 @@ def main():
             kind = "interchange"
         else:
             kind = "stop"
+        if CTS:
+            nn = norm_name(name)
+            if len(lns) >= POLE_N or any(p in nn for p in POLE_PINNED):
+                kind = "pole"  # candidat — dédup spatiale plus bas
         x, y = proj(*f["geometry"]["coordinates"])
         stations.append({"x": x, "y": y, "name": name, "kind": kind,
                          "tier": tier, "n": len(lns)})
+
+    if CTS:
+        # Dédup spatiale des pôles : le seuil/épinglage marque tout le
+        # QUARTIER (4× Anosy, 4× Soarano…) ; on ne garde que le meilleur
+        # (n max) dans un rayon canvas, les autres redeviennent des
+        # correspondances. ~80 px/km sur le plan global.
+        POLE_RADIUS = 55.0
+        cands = sorted((s for s in stations if s["kind"] == "pole"),
+                       key=lambda s: -s["n"])
+        kept = []
+        for s in cands:
+            if any(math.hypot(s["x"] - k["x"], s["y"] - k["y"]) < POLE_RADIUS
+                   for k in kept):
+                s["kind"] = "interchange"
+            else:
+                kept.append(s)
 
     # ---- arêtes réseau ----
     # 1) SIMPLIFICATION Douglas-Peucker : les points intermédiaires d'octi sont
@@ -156,8 +194,16 @@ def main():
     edges = []
     for f in net_lines:
         pts = dp([proj(c[0], c[1]) for c in f["geometry"]["coordinates"]])
-        ll = [{"color": "#" + l["color"], "tier": tier_of.get(l["label"], 2)}
-              for l in f["properties"].get("lines", [])]
+        if CTS:
+            # `label` conservé : pastilles de numéro le long des brins.
+            ll = [{"color": "#" + l["color"],
+                   "tier": tier_of.get(l["label"], 2),
+                   "label": l["label"]}
+                  for l in f["properties"].get("lines", [])]
+        else:
+            ll = [{"color": "#" + l["color"],
+                   "tier": tier_of.get(l["label"], 2)}
+                  for l in f["properties"].get("lines", [])]
         if len(pts) < 2 or not ll:
             continue
         dx = pts[-1][0] - pts[0][0]
@@ -242,6 +288,35 @@ def main():
     data = {"size": [round(W, 1), round(H, 1)], "edges": edges,
             "stations": stations, "water": wlist,
             "continuations": continuations, "centreRect": centre_rect}
+    if CTS:
+        # Liste globale des lignes (légende) : dédup par label, tri tier
+        # puis numéro de base (numériques d'abord), pastille = couleur ligne.
+        # `name` = display_name du manifest quand il diffère du label
+        # (TELEPHERIQUE_Orange → « Téléphérique Orange »).
+        display_of = {}
+        for ln in man["lines"]:
+            b = line_base(ln["line_number"])
+            if b not in display_of or ln["line_number"].strip() == b:
+                display_of[b] = ln.get("display_name", "")
+        seen = {}
+        for f in net_lines:
+            for l in f["properties"].get("lines", []):
+                entry = {
+                    "label": l["label"],
+                    "color": "#" + l["color"],
+                    "tier": tier_of.get(l["label"], 2),
+                }
+                disp = display_of.get(l["label"], "")
+                if disp and disp != l["label"]:
+                    entry["name"] = disp
+                seen.setdefault(l["label"], entry)
+
+        def legend_key(e):
+            m = re.match(r"^(\d+)", e["label"])
+            return (e["tier"], 0 if m else 1,
+                    int(m.group(1)) if m else 0, e["label"])
+
+        data["legendLines"] = sorted(seen.values(), key=legend_key)
     json.dump(data, open(out, "w"), separators=(",", ":"))
     sys.stderr.write(
         "JSON %s : %d edges, %d stations, %d water, %d continuations\n"
