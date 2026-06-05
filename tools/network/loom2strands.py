@@ -30,6 +30,7 @@ Usage : loom2strands.py <network_loom.json> <network_strands.json>
 import json
 import math
 import os
+import re
 import sys
 from collections import defaultdict
 from datetime import date
@@ -61,6 +62,12 @@ def load_tier1_labels():
     man = json.load(open(os.path.join(BUNDLE, "manifest.json")))
     return {ln["line_number"].strip() for ln in man["lines"]
             if ln.get("importance_tier", 2) == 1}
+
+
+def line_base(num):
+    """'133A'/'133 Rouge' → '133' ; lignes sans préfixe numérique inchangées."""
+    m = re.match(r"^(\d+)", (num or "").strip())
+    return m.group(1) if m else (num or "").strip()
 
 
 def canonicalize(coords, lines, mlng):
@@ -100,11 +107,21 @@ def main():
     gj = json.load(open(sys.argv[1]))
     tier1 = load_tier1_labels()
 
-    # ── 1. Arêtes canonicalisées + entrées par ligne ─────────────────────
-    # entry = par (ligne, arête) : géométrie canonique partagée, slot, k.
-    edges = []           # [{coords, perps, k, node_a, node_b}]  (canonique)
-    by_line = defaultdict(list)   # label → [entryIdx]
-    entry_edge = []      # entryIdx → (edgeIdx, slot)
+    # ── 1. Arêtes canonicalisées + entrées par GROUPE ────────────────────
+    # FUSION LATÉRALE des variantes co-localisées (demande 05/06) : sur
+    # chaque arête, les variantes de même (numéro de base + COULEUR) sont
+    # réduites à UN brin — 133/133A/133B/133C orange = 1 brin sur le tronc ;
+    # 194 Vert ≠ 194 Rouge (couleurs ≠) jamais fusionnées. k et slots sont
+    # recalculés sur la liste réduite → bande étroite, ordering simplifié.
+    # La LISTE des variantes représentées est conservée PAR ARÊTE (modèle
+    # de données : ids complets en donnée, trunk-and-branch au rendu).
+    # NB : fusion faite ICI (et pas en amont de loom) car `topo` dédoublonne
+    # les lignes par id en jetant les labels → l'attribution par portion
+    # serait perdue.
+    edges = []           # [{coords, perps, k, a, b}]  (canonique)
+    by_group = defaultdict(list)   # groupKey (base§couleur) → [entryIdx]
+    entry_edge = []      # entryIdx → (edgeIdx, slot, variants tuple)
+    group_variants = defaultdict(set)  # groupKey → toutes variantes vues
     lat0 = None
     for ft in gj["features"]:
         if ft["geometry"]["type"] != "LineString":
@@ -131,7 +148,23 @@ def main():
         node_b = props.get("to")
         if flipped:
             node_a, node_b = node_b, node_a
-        k = len(ll_c)
+
+        # collapse par (base, couleur) — position du 1er représentant
+        # conservée dans l'ordre LOOM ; tier 1 exclu (hors faisceau)
+        groups, gpos = [], {}
+        for l in ll_c:
+            label = l["label"].strip()
+            if label in tier1:
+                continue
+            gk = line_base(label) + "§" + (l.get("color") or "")
+            if gk in gpos:
+                groups[gpos[gk]]["variants"].append(label)
+            else:
+                gpos[gk] = len(groups)
+                groups.append({"gk": gk, "variants": [label]})
+        if not groups:
+            continue
+        k = len(groups)
         eidx = len(edges)
         edges.append({
             "coords": coords_c,
@@ -140,21 +173,21 @@ def main():
             "a": node_a,   # nœud côté coords_c[0]
             "b": node_b,   # nœud côté coords_c[-1]
         })
-        for idx, l in enumerate(ll_c):
-            label = l["label"].strip()
-            if label in tier1:
-                continue
+        for idx, g in enumerate(groups):
             slot = idx - (k - 1) / 2.0
-            by_line[label].append(len(entry_edge))
-            entry_edge.append((eidx, slot, label))
+            variants = tuple(sorted(g["variants"]))
+            group_variants[g["gk"]].update(variants)
+            by_group[g["gk"]].append(len(entry_edge))
+            entry_edge.append((eidx, slot, variants))
 
     # ── 2. Chaînage par ligne (runs continus) ────────────────────────────
     # Marche gloutonne : on coupe quand le nœud n'a pas EXACTEMENT 2
     # incidences pour la ligne (embranchement/boucle → runs séparés, qui
     # partagent leur point de bout : aucun trou visuel).
     out_lines = {}
+    aliases = {}
     max_corridor = 0
-    for label, entry_idxs in by_line.items():
+    for gk, entry_idxs in by_group.items():
         incid = defaultdict(list)   # node → [(entryIdx, 'a'|'b')]
         for ei in entry_idxs:
             eidx, _, _ = entry_edge[ei]
@@ -197,14 +230,14 @@ def main():
             # sinon après) et devient une simple continuation.
             entries = []
             for (ei, rev) in chain:
-                eidx, slot, _ = entry_edge[ei]
+                eidx, slot, variants = entry_edge[ei]
                 e = edges[eidx]
                 mlng_e = mlng_at(e["coords"][0][1])
                 length = sum(
                     dist_m(e["coords"][i], e["coords"][i + 1], mlng_e)
                     for i in range(len(e["coords"]) - 1))
                 entries.append({"e": e, "rev": rev, "slot": slot,
-                                "k": e["k"], "len": length})
+                                "k": e["k"], "len": length, "v": variants})
             for i, en in enumerate(entries):
                 if en["len"] >= SHORT_EDGE_M:
                     continue
@@ -222,7 +255,7 @@ def main():
                     en["slot"] = donor["slot"]
                     en["k"] = donor["k"]
 
-            pts = []        # [lng, lat, vN, vE, k]
+            pts = []        # [lng, lat, vN, vE, k, variants]
             junctions = []  # index des points de raccord entre arêtes
             for en in entries:
                 e, rev, slot = en["e"], en["rev"], en["slot"]
@@ -231,7 +264,7 @@ def main():
                 for i in idxs:
                     c = e["coords"][i]
                     pN, pE = e["perps"][i]
-                    p = (c[0], c[1], pN * slot, pE * slot, en["k"])
+                    p = (c[0], c[1], pN * slot, pE * slot, en["k"], en["v"])
                     if pts and pts[-1][0] == p[0] and pts[-1][1] == p[1]:
                         # jonction d'arêtes : même position — on garde la
                         # NOUVELLE annotation (slot/k de l'arête entrante),
@@ -276,6 +309,7 @@ def main():
                         prev[2] + (p[2] - prev[2]) * t,
                         prev[3] + (p[3] - prev[3]) * t,
                         p[4] if t > 0.5 else prev[4],
+                        p[5] if t > 0.5 else prev[5],
                     ))
 
             # lissage du vecteur sur ±RAMP_M le long du parcours (rampes
@@ -297,13 +331,17 @@ def main():
                 cnt = j1 - j0 + 1
                 sN = sum(dense[j][2] for j in range(j0, j1 + 1)) / cnt
                 sE = sum(dense[j][3] for j in range(j0, j1 + 1)) / cnt
-                sm.append((dense[i][0], dense[i][1], sN, sE, dense[i][4]))
+                sm.append((dense[i][0], dense[i][1], sN, sE,
+                           dense[i][4], dense[i][5]))
 
-            # scission au franchissement du seuil dense (k ≤ DENSE_K vs >)
+            # scission : franchissement du seuil dense OU changement de
+            # l'ensemble de variantes représentées (divergence d'une
+            # variante = début/fin de branche — trunk-and-branch)
             pieces = []
             cur = [sm[0]]
             for p in sm[1:]:
-                if (p[4] > DENSE_K) != (cur[-1][4] > DENSE_K):
+                if ((p[4] > DENSE_K) != (cur[-1][4] > DENSE_K)
+                        or p[5] != cur[-1][5]):
                     cur.append(p)        # point partagé → aucun trou
                     pieces.append(cur)
                     cur = [p]
@@ -353,20 +391,31 @@ def main():
                 kmax = max(p[4] for p in kept)
                 runs.append({
                     "k": kmax,
+                    "v": list(kept[-1][5]),  # variantes représentées (pièce
+                    #                          homogène : split au changement)
                     "pts": [[round(p[1], 6), round(p[0], 6),
                              round(p[2], 3), round(p[3], 3)] for p in kept],
                 })
         if runs:
-            out_lines[label] = {"runs": runs}
+            vs = sorted(group_variants[gk])
+            base = gk.split("§")[0]
+            # primaire = la ligne « nue » si elle existe, sinon 1re variante
+            primary = base if base in vs else vs[0]
+            out_lines[primary] = {"runs": runs, "variants": vs}
+            for v in vs:
+                if v != primary:
+                    aliases[v] = primary
 
     out = {
         "meta": {
             "generated": date.today().isoformat(),
             "nLines": len(out_lines),
+            "nAliases": len(aliases),
             "maxCorridor": max_corridor,
             "denseK": DENSE_K,
         },
         "lines": out_lines,
+        "aliases": aliases,
     }
     json.dump(out, open(sys.argv[2], "w"), separators=(",", ":"))
     npts = sum(len(r["pts"]) for l in out_lines.values() for r in l["runs"])

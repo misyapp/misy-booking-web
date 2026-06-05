@@ -85,3 +85,18 @@ Override du chemin : `LOOM_BUILD=/chemin/vers/loom/build`.
   chargé une fois par session TC.
 - **Génération** : topo+loom < 10 s sur le réseau entier ; non-déterministe
   d'un run à l'autre (cf. Pièges).
+
+## Fusion latérale des variantes (05/06/2026)
+
+Sur un tronc partagé, les variantes de même **(numéro de base + couleur)**
+sont réduites à UN brin (133/133A/133B/133C orange = 1 brin) ; séparation
+uniquement là où une variante diverge (trunk-and-branch). 194 Vert / 194
+Rouge (couleurs ≠) ne fusionnent jamais. Implémenté dans `loom2strands.py`
+(PAS en amont de loom : `topo` dédoublonne par id en jetant les labels →
+l'attribution par portion serait perdue) : collapse par arête, k/slots
+recalculés sur la liste réduite, pièces scindées au changement d'ensemble
+de variantes, champ `v` (variantes représentées) par pièce, sortie
+`lines[primaire]` (= ligne « nue » si elle existe) + `aliases{variante→primaire}`.
+Runtime : les variantes représentées ne se dessinent pas (le tronc est
+visible si UNE variante du groupe l'est) ; la sélection d'une variante
+reste son tracé brut complet (tronc + branche, inchangé).
