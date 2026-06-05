@@ -3266,7 +3266,30 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// polylines + markers pour l'affichage du réseau sur la carte.
   Future<void> _loadPublicTransportLayers() async {
     try {
-      await PublicTransportService.instance.ensureLoaded();
+      final svc = PublicTransportService.instance;
+      // ── FAST PATH (flag LOOM) : manifest (~46 Ko) + faisceaux
+      // pré-calculés (network_strands.json) suffisent à dessiner TOUS les
+      // rubans — la carte est visible en ~1-2 s au lieu d'attendre les
+      // 91×2 GeoJSON et les précalculs. L'ordre/squelette provisoires du
+      // manifest sont remplacés par les vrais au chargement complet.
+      var loomReady = false;
+      if (LoomNetworkService.flagEnabled) {
+        final r = await Future.wait<dynamic>([
+          svc.ensureManifest(),
+          LoomNetworkService.instance.ensureLoaded(),
+        ]);
+        loomReady = r[1] as bool;
+        if (loomReady && mounted) {
+          _populateStrandRunsFromLoom(); // sans antennes retour (pas encore
+          //                                de geojson) — re-passe plus bas
+          await _rebuildPublicTransportLayers();
+          setState(() => _publicTransportLoaded = true);
+        }
+      }
+
+      // ── CHARGEMENT COMPLET : GeoJSON, importance/squelette réels,
+      // antennes retour, clusters d'arrêts, index de recherche.
+      await svc.ensureLoaded();
       if (!mounted) return;
       // Fusion aller/retour par ligne (vue réseau) : tronc partagé + branches.
       _precomputeMergedLines();
@@ -3275,8 +3298,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // ordonnés, croisements minimisés) ; sinon — ou si le JSON est absent —
       // heuristique runtime historique : co-localisation (≥2 lignes même axe)
       // → profils de slot -1/0/+1, ≤ 3 brins côte à côte, aucun trou.
-      if (await LoomNetworkService.instance.ensureLoaded()) {
-        _populateStrandRunsFromLoom();
+      if (loomReady || await LoomNetworkService.instance.ensureLoaded()) {
+        _populateStrandRunsFromLoom(); // avec retourSolo cette fois
       } else {
         _precomputeStrandRuns();
       }
@@ -4233,8 +4256,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final termCaps = <({LatLng pos, Color color, double radiusM})>[];
     for (final lineNumber in renderOrder) {
       if (!visible.contains(lineNumber)) continue;
+      // FAST PATH : avant le chargement des GeoJSON, `group` est null mais
+      // les faisceaux LOOM suffisent à dessiner les rubans (les terminus
+      // et les fallbacks tracé brut attendent le chargement complet).
       final group = svc.getLineGroup(lineNumber);
-      if (group == null) continue;
+      if (group == null && _strandRuns[lineNumber] == null) continue;
       final meta = svc.metadataFor(lineNumber);
       final color =
           meta != null ? Color(meta.colorValue) : const Color(0xFF1565C0);
@@ -4288,8 +4314,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
       if (isSelected) {
         // Vue ligne sélectionnée : tracé brut plein, aller + retour, INCHANGÉ.
-        if (group.aller != null) addColored('aller', group.aller!.coordinates, width);
-        if (group.retour != null) addColored('retour', group.retour!.coordinates, width);
+        // (group null seulement pendant le fast path, où rien n'est encore
+        // sélectionné — garde de complétude.)
+        if (group?.aller != null) {
+          addColored('aller', group!.aller!.coordinates, width);
+        }
+        if (group?.retour != null) {
+          addColored('retour', group!.retour!.coordinates, width);
+        }
       } else {
         // VUE RÉSEAU : aller et retour fusionnés (tronc + branches, cf.
         // _precomputeMergedLines), pièces annotées d'un vecteur d'offset
@@ -4312,11 +4344,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           // tracé brut plein.
           final merged = _mergedRuns[lineNumber];
           if (merged == null) {
-            if (group.aller != null) {
-              addColored('aller', group.aller!.coordinates, width);
+            if (group?.aller != null) {
+              addColored('aller', group!.aller!.coordinates, width);
             }
-            if (group.retour != null) {
-              addColored('retour', group.retour!.coordinates, width);
+            if (group?.retour != null) {
+              addColored('retour', group!.retour!.coordinates, width);
             }
           } else {
             for (var i = 0; i < merged.trunk.length; i++) {
@@ -4373,7 +4405,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       }
 
       // Bouts du tracé (= les 2 terminus) à fermer par un gros point.
-      final capLine = group.aller ?? group.retour;
+      // (group null pendant le fast path → caps au chargement complet.)
+      final capLine = group?.aller ?? group?.retour;
       if (capLine != null && capLine.coordinates.length >= 2) {
         // Terminus un peu plus gros que le trait, en px → m au zoom courant.
         final capR = strokePx * 0.95 * mpp;

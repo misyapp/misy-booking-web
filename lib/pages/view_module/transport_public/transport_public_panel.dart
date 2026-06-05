@@ -238,7 +238,13 @@ class _LinesListState extends State<_LinesList> {
   @override
   void initState() {
     super.initState();
-    _loadFuture = PublicTransportService.instance.ensureLoaded();
+    // Liste IMMÉDIATE : le manifest (~46 Ko) suffit (noms, couleurs,
+    // tiers). Le chargement complet (GeoJSON) continue en arrière-plan et
+    // déclenche un rebuild pour les compteurs d'arrêts / la recherche.
+    _loadFuture = PublicTransportService.instance.ensureManifest();
+    PublicTransportService.instance.ensureLoaded().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -277,7 +283,7 @@ class _LinesListState extends State<_LinesList> {
                 OutlinedButton(
                   onPressed: () => setState(() {
                     _loadFuture =
-                        PublicTransportService.instance.ensureLoaded();
+                        PublicTransportService.instance.ensureManifest();
                   }),
                   child: Text(TransitStrings.t('state.retry', locale)),
                 ),
@@ -488,7 +494,9 @@ class _LineRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '$stops ${TransitStrings.t('lines.stops.short', locale)}',
+                      stops > 0
+                          ? '$stops ${TransitStrings.t('lines.stops.short', locale)}'
+                          : '…',
                       style: TextStyle(
                         fontSize: 10,
                         color: Colors.grey.shade600,
