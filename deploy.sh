@@ -51,6 +51,19 @@ fi
 # Libération du lock quoi qu'il arrive (succès, erreur, Ctrl-C).
 trap "ssh -i $SSH_KEY $SERVER_USER@$SERVER_HOST 'sudo rm -rf /var/www/.deploy-book.lock' 2>/dev/null" EXIT
 
+# ─── Filigrane anti-scraping (06/06/2026) ───────────────────────────────
+# Signature géométrique INVISIBLE (≤1,5 m) des tracés taxi-be + © dans les
+# JSON servis. Seed unique par déploiement (date+commit) journalisé hors
+# dépôt → toute réapparition de nos lignes ailleurs est PROUVABLE et DATÉE
+# (cf. tools/protect/README.md, `watermark.py verify`). Désactivable :
+# WATERMARK=0 ./deploy.sh
+if [ "${WATERMARK:-1}" = "1" ]; then
+    WM_VERSION="$(date +%Y%m%d)-$(git rev-parse --short HEAD 2>/dev/null || echo nogit)"
+    echo "🔏 Filigrane des tracés (v=$WM_VERSION)…"
+    python3 tools/protect/watermark.py apply build/web --version "$WM_VERSION" \
+        || { echo "❌ filigrane échoué — deploy interrompu"; exit 1; }
+fi
+
 echo ""
 echo "📦 Upload des fichiers vers le serveur..."
 echo "Serveur: $SERVER_USER@$SERVER_HOST"
