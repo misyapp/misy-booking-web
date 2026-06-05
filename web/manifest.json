@@ -1,11 +1,11 @@
 {
-    "name": "rider_ride_hailing_app",
-    "short_name": "rider_ride_hailing_app",
+    "name": "Misy — Réserver une course",
+    "short_name": "Misy",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Commandez un chauffeur en quelques secondes à Madagascar.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
