@@ -38,8 +38,10 @@ BUNDLE = os.path.expanduser(
     "~/StudioProjects/misy_booking_web/assets/transport_lines_public")
 
 DENSE_K = 6        # au-delà : corridor dense → brins amincis côté runtime
-RAMP_M = 45.0      # demi-fenêtre de lissage du vecteur le long du parcours
-STEP_M = 25.0      # densification max entre 2 points (assure des rampes lisses)
+RAMP_M = 50.0      # demi-fenêtre de lissage du vecteur le long du parcours
+STEP_M = 25.0      # densification max entre 2 points (zones courantes)
+STEP_NODE_M = 9.0  # densification FINE près des jonctions (rampes nettes)
+SHORT_EDGE_M = 20.0  # arête plus courte → hérite slot/k du voisin long
 PRUNE_POS_M = 1.5  # simplification : écart max au segment (mètres)
 PRUNE_VEC = 0.06   # simplification : écart max du vecteur à l'interpolation
 
@@ -189,34 +191,83 @@ def main():
         # ── 3. Pièces → points annotés + densification + lissage ────────
         runs = []
         for chain in chains:
-            pts = []   # [lng, lat, vN, vE, k]
+            # 3a. FUSION DES ARÊTES COURTES : une arête < SHORT_EDGE_M
+            # (arrêts très proches) fait flicker le slot aux nœuds →
+            # elle hérite slot ET k de son plus proche voisin long (avant,
+            # sinon après) et devient une simple continuation.
+            entries = []
             for (ei, rev) in chain:
                 eidx, slot, _ = entry_edge[ei]
                 e = edges[eidx]
+                mlng_e = mlng_at(e["coords"][0][1])
+                length = sum(
+                    dist_m(e["coords"][i], e["coords"][i + 1], mlng_e)
+                    for i in range(len(e["coords"]) - 1))
+                entries.append({"e": e, "rev": rev, "slot": slot,
+                                "k": e["k"], "len": length})
+            for i, en in enumerate(entries):
+                if en["len"] >= SHORT_EDGE_M:
+                    continue
+                donor = None
+                for j in range(i - 1, -1, -1):
+                    if entries[j]["len"] >= SHORT_EDGE_M:
+                        donor = entries[j]
+                        break
+                if donor is None:
+                    for j in range(i + 1, len(entries)):
+                        if entries[j]["len"] >= SHORT_EDGE_M:
+                            donor = entries[j]
+                            break
+                if donor is not None:
+                    en["slot"] = donor["slot"]
+                    en["k"] = donor["k"]
+
+            pts = []        # [lng, lat, vN, vE, k]
+            junctions = []  # index des points de raccord entre arêtes
+            for en in entries:
+                e, rev, slot = en["e"], en["rev"], en["slot"]
                 idxs = range(len(e["coords"]) - 1, -1, -1) if rev \
                     else range(len(e["coords"]))
                 for i in idxs:
                     c = e["coords"][i]
                     pN, pE = e["perps"][i]
-                    p = (c[0], c[1], pN * slot, pE * slot, e["k"])
+                    p = (c[0], c[1], pN * slot, pE * slot, en["k"])
                     if pts and pts[-1][0] == p[0] and pts[-1][1] == p[1]:
                         # jonction d'arêtes : même position — on garde la
                         # NOUVELLE annotation (slot/k de l'arête entrante),
                         # le lissage fera la rampe.
                         pts[-1] = p
+                        junctions.append(len(pts) - 1)
                         continue
                     pts.append(p)
-                max_corridor = max(max_corridor, e["k"])
+                max_corridor = max(max_corridor, en["k"])
             if len(pts) < 2:
                 continue
             mlng = mlng_at(pts[0][1])
 
-            # densification (≤ STEP_M) pour donner du grain aux rampes
+            # arclength des jonctions → densification ADAPTATIVE : fine
+            # (STEP_NODE_M) dans les fenêtres de rampe autour des
+            # jonctions, grossière (STEP_M) ailleurs — rampes nettes sans
+            # gonfler le JSON.
+            cum_raw = [0.0] * len(pts)
+            for i in range(1, len(pts)):
+                cum_raw[i] = cum_raw[i - 1] + dist_m(
+                    (pts[i - 1][0], pts[i - 1][1]),
+                    (pts[i][0], pts[i][1]), mlng)
+            jdists = sorted(cum_raw[j] for j in junctions)
+
+            def near_junction(d):
+                # peu de jonctions par run → scan linéaire suffisant
+                return any(abs(d - jd) <= RAMP_M for jd in jdists)
+
             dense = [pts[0]]
-            for p in pts[1:]:
+            for ip in range(1, len(pts)):
+                p = pts[ip]
                 prev = dense[-1]
                 d = dist_m((prev[0], prev[1]), (p[0], p[1]), mlng)
-                steps = max(1, int(math.ceil(d / STEP_M)))
+                mid = (cum_raw[ip - 1] + cum_raw[ip]) / 2
+                step = STEP_NODE_M if near_junction(mid) else STEP_M
+                steps = max(1, int(math.ceil(d / step)))
                 for s in range(1, steps + 1):
                     t = s / steps
                     dense.append((

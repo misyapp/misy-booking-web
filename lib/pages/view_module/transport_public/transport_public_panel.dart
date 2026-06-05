@@ -248,18 +248,24 @@ class _TransportPublicPanelState extends State<TransportPublicPanel> {
               ],
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.account_tree_outlined,
-                size: 18, color: Color(0xFF1D3557)),
-            tooltip: TransitStrings.t('network.button', locale),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const TransportNetworkDiagramScreen(),
-              ));
-            },
-          ),
+          // Bouton du plan schématique MASQUÉ tant que le rendu legacy
+          // n'est pas au point (labels tronqués/chevauchés — demande du
+          // 05/06/2026). Il revient automatiquement avec la refonte CTS :
+          // visible uniquement quand le build porte SCHEMATIC_CTS=true
+          // (branche feat/schematic-map-cts).
+          if (const bool.fromEnvironment('SCHEMATIC_CTS'))
+            IconButton(
+              icon: const Icon(Icons.account_tree_outlined,
+                  size: 18, color: Color(0xFF1D3557)),
+              tooltip: TransitStrings.t('network.button', locale),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              onPressed: () {
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const TransportNetworkDiagramScreen(),
+                ));
+              },
+            ),
         ],
       ),
     );
@@ -287,7 +293,13 @@ class _LinesListState extends State<_LinesList> {
   @override
   void initState() {
     super.initState();
-    _loadFuture = PublicTransportService.instance.ensureLoaded();
+    // Liste IMMÉDIATE : le manifest (~46 Ko) suffit (noms, couleurs,
+    // tiers). Le chargement complet (GeoJSON) continue en arrière-plan et
+    // déclenche un rebuild pour les compteurs d'arrêts / la recherche.
+    _loadFuture = PublicTransportService.instance.ensureManifest();
+    PublicTransportService.instance.ensureLoaded().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -326,7 +338,7 @@ class _LinesListState extends State<_LinesList> {
                 OutlinedButton(
                   onPressed: () => setState(() {
                     _loadFuture =
-                        PublicTransportService.instance.ensureLoaded();
+                        PublicTransportService.instance.ensureManifest();
                   }),
                   child: Text(TransitStrings.t('state.retry', locale)),
                 ),
@@ -537,7 +549,9 @@ class _LineRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '$stops ${TransitStrings.t('lines.stops.short', locale)}',
+                      stops > 0
+                          ? '$stops ${TransitStrings.t('lines.stops.short', locale)}'
+                          : '…',
                       style: TextStyle(
                         fontSize: 10,
                         color: Colors.grey.shade600,

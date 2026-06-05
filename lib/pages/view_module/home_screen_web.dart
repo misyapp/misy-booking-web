@@ -2976,6 +2976,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       maxZoom: _maxZoom,
       cameraBounds: gma.toLLBounds(_tanaBounds),
       satellite: _currentMapType == MapType.satellite,
+      // Fond désaturé en vue réseau LOOM : les rubans dominent, la voirie
+      // s'efface (réglage client ; labels mineurs = style serveur, à venir).
+      muted: _homeMode == HomeMode.publicTransport &&
+          LoomNetworkService.flagEnabled,
       onTap: (_, p) => _onMapTap(gma.toGM(p)),
       onPositionChanged: (cam, hasGesture) {
         _onPublicCameraMove(cam);
@@ -3441,7 +3445,30 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// polylines + markers pour l'affichage du réseau sur la carte.
   Future<void> _loadPublicTransportLayers() async {
     try {
-      await PublicTransportService.instance.ensureLoaded();
+      final svc = PublicTransportService.instance;
+      // ── FAST PATH (flag LOOM) : manifest (~46 Ko) + faisceaux
+      // pré-calculés (network_strands.json) suffisent à dessiner TOUS les
+      // rubans — la carte est visible en ~1-2 s au lieu d'attendre les
+      // 91×2 GeoJSON et les précalculs. L'ordre/squelette provisoires du
+      // manifest sont remplacés par les vrais au chargement complet.
+      var loomReady = false;
+      if (LoomNetworkService.flagEnabled) {
+        final r = await Future.wait<dynamic>([
+          svc.ensureManifest(),
+          LoomNetworkService.instance.ensureLoaded(),
+        ]);
+        loomReady = r[1] as bool;
+        if (loomReady && mounted) {
+          _populateStrandRunsFromLoom(); // sans antennes retour (pas encore
+          //                                de geojson) — re-passe plus bas
+          await _rebuildPublicTransportLayers();
+          setState(() => _publicTransportLoaded = true);
+        }
+      }
+
+      // ── CHARGEMENT COMPLET : GeoJSON, importance/squelette réels,
+      // antennes retour, clusters d'arrêts, index de recherche.
+      await svc.ensureLoaded();
       if (!mounted) return;
       // Fusion aller/retour par ligne (vue réseau) : tronc partagé + branches.
       _precomputeMergedLines();
@@ -3450,8 +3477,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // ordonnés, croisements minimisés) ; sinon — ou si le JSON est absent —
       // heuristique runtime historique : co-localisation (≥2 lignes même axe)
       // → profils de slot -1/0/+1, ≤ 3 brins côte à côte, aucun trou.
-      if (await LoomNetworkService.instance.ensureLoaded()) {
-        _populateStrandRunsFromLoom();
+      if (loomReady || await LoomNetworkService.instance.ensureLoaded()) {
+        _populateStrandRunsFromLoom(); // avec retourSolo cette fois
       } else {
         _precomputeStrandRuns();
       }
@@ -3464,6 +3491,15 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   // ───────── Faisceaux de lignes co-localisées (vue réseau) ─────────
+  /// Budget de largeur ÉCRAN d'une bande de corridor LOOM (rubans + jours)
+  /// quel que soit son k — pitch par brin = budget / k, plafonné au pas
+  /// normal (cf. addStrand dans _rebuildPublicTransportLayers).
+  static const double _loomBandBudgetPx = 40.0;
+
+  /// Zoom minimal d'affichage des billes d'arrêts en vue réseau LOOM
+  /// (hors ligne sélectionnée, qui les montre à tout zoom).
+  static const double _loomStopsMinZoom = 16.0;
+
   static const double _corridorSampleStepM = 10.0;
   static const double _corridorMergeRadiusM = 25.0; // englobe un terre-plein
   static const double _corridorBearingTolDeg = 25.0;
@@ -4360,7 +4396,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // Dots blancs sur la polyline visibles dès qu'on commence à zoomer.
     // Les labels (numéro de ligne) n'apparaissent que plus haut pour ne
     // pas saturer.
-    final showStops = _publicMapZoom >= 11;
+    // En mode LOOM (vue réseau toutes-lignes), les billes d'arrêts sur les
+    // faisceaux surchargent la carte : on ne les montre que pour la ligne
+    // SÉLECTIONNÉE ou en zoom très proche (≥ [_loomStopsMinZoom], réglable
+    // QA). Fallback heuristique : seuil historique 11 inchangé.
+    final showStops = _strandsFromLoom
+        ? (selected != null || _publicMapZoom >= _loomStopsMinZoom)
+        : _publicMapZoom >= 11;
     // Pastilles n° de ligne + capsules de correspondance : cachées par défaut,
     // affichées seulement TRÈS PROCHE (≥ 16) — ou, à tout zoom, sur l'arrêt
     // cliqué/survolé (géré par la branche isActive plus bas). Les billes rondes
@@ -4393,8 +4435,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final termCaps = <({LatLng pos, Color color, double radiusM})>[];
     for (final lineNumber in renderOrder) {
       if (!visible.contains(lineNumber)) continue;
+      // FAST PATH : avant le chargement des GeoJSON, `group` est null mais
+      // les faisceaux LOOM suffisent à dessiner les rubans (les terminus
+      // et les fallbacks tracé brut attendent le chargement complet).
       final group = svc.getLineGroup(lineNumber);
-      if (group == null) continue;
+      if (group == null && _strandRuns[lineNumber] == null) continue;
       final meta = svc.metadataFor(lineNumber);
       final color =
           meta != null ? Color(meta.colorValue) : const Color(0xFF1565C0);
@@ -4448,8 +4493,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
       if (isSelected) {
         // Vue ligne sélectionnée : tracé brut plein, aller + retour, INCHANGÉ.
-        if (group.aller != null) addColored('aller', group.aller!.coordinates, width);
-        if (group.retour != null) addColored('retour', group.retour!.coordinates, width);
+        // (group null seulement pendant le fast path, où rien n'est encore
+        // sélectionné — garde de complétude.)
+        if (group?.aller != null) {
+          addColored('aller', group!.aller!.coordinates, width);
+        }
+        if (group?.retour != null) {
+          addColored('retour', group!.retour!.coordinates, width);
+        }
       } else {
         // VUE RÉSEAU : aller et retour fusionnés (tronc + branches, cf.
         // _precomputeMergedLines), pièces annotées d'un vecteur d'offset
@@ -4472,11 +4523,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           // tracé brut plein.
           final merged = _mergedRuns[lineNumber];
           if (merged == null) {
-            if (group.aller != null) {
-              addColored('aller', group.aller!.coordinates, width);
+            if (group?.aller != null) {
+              addColored('aller', group!.aller!.coordinates, width);
             }
-            if (group.retour != null) {
-              addColored('retour', group.retour!.coordinates, width);
+            if (group?.retour != null) {
+              addColored('retour', group!.retour!.coordinates, width);
             }
           } else {
             for (var i = 0; i < merged.trunk.length; i++) {
@@ -4490,24 +4541,34 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             }
           }
         } else {
-          // Pièces (k, pts). k ≥ 2 = corridor LOOM partagé : largeur de brin
-          // UNIFORME (5 px bus standard, amincie en 64/k px au-delà de
-          // [LoomNetworkService.denseK] pour contenir la largeur du ruban à
-          // l'écran — corridor max ~26 lignes) et écart de slot calé sur
-          // CETTE largeur : les brins de toutes les lignes du corridor
-          // partagent le même k → ils s'alignent bord à bord quel que soit
-          // leur tier. k = 0 (heuristique / antennes) : largeurs et écart
-          // historiques de la ligne.
+          // Pièces (k, pts). k ≥ 2 = corridor LOOM partagé : BUDGET DE
+          // LARGEUR CONTINU (remplace l'amincissement binaire 64/k) — la
+          // bande totale d'un corridor est bornée à ~[_loomBandBudgetPx]
+          // quel que soit k :
+          //   pitch = budget/k (part de bande par brin, cœur + jour),
+          //   plafonné au pas normal (cœur 5 px + jour 2) pour que k=2-5
+          //   garde le rendu standard ;
+          //   cœur = clamp(pitch − jour, 3, 5).
+          // L'écart de slot (slotWM) suit CE pitch : tous les brins du
+          // corridor partagent k → alignement bord à bord garanti.
+          // k=12-15 → brins fins, bande ~40 px (au lieu de ~100).
+          // k = 0 (heuristique / antennes) : largeurs et écart historiques
+          // de la ligne — strictement inchangés (fallback non régressé).
           void addStrand(
               String id, ({int k, List<_StrandPt> pts}) piece, double legacyPx) {
             final bool shared = piece.k >= 2;
-            final double basePx =
-                piece.k > LoomNetworkService.instance.denseK
-                    ? (64.0 / piece.k).clamp(2.5, 5.0)
-                    : 5.0;
-            final double w = shared ? basePx : legacyPx;
-            final double wm = ((shared ? basePx : trunkPx) + 2) * mpp;
-            addColored(id, _applyStrandOffset(piece.pts, wm), w);
+            if (shared) {
+              const jourPx = 2.0; // bordure noire ~1 px de chaque côté
+              const basePx = 5.0; // cœur d'un brin bus standard
+              final double pitch =
+                  (_loomBandBudgetPx / piece.k).clamp(0.0, basePx + jourPx);
+              final double coeur = (pitch - jourPx).clamp(3.0, basePx);
+              addColored(
+                  id, _applyStrandOffset(piece.pts, pitch * mpp), coeur);
+            } else {
+              final double wm = (trunkPx + 2) * mpp;
+              addColored(id, _applyStrandOffset(piece.pts, wm), legacyPx);
+            }
           }
 
           for (var i = 0; i < strands.trunk.length; i++) {
@@ -4523,7 +4584,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       }
 
       // Bouts du tracé (= les 2 terminus) à fermer par un gros point.
-      final capLine = group.aller ?? group.retour;
+      // (group null pendant le fast path → caps au chargement complet.)
+      final capLine = group?.aller ?? group?.retour;
       if (capLine != null && capLine.coordinates.length >= 2) {
         // Terminus un peu plus gros que le trait, en px → m au zoom courant.
         final capR = strokePx * 0.95 * mpp;

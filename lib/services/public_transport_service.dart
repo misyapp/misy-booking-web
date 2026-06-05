@@ -50,7 +50,20 @@ class PublicTransportService {
     return _loadFuture ??= _load();
   }
 
-  Future<void> _load() async {
+  Future<void>? _manifestFuture;
+
+  /// FAST PATH : charge le MANIFEST SEUL (~46 Ko) — suffit pour la liste
+  /// des lignes du panel (noms, couleurs, tiers) et, combiné aux faisceaux
+  /// LOOM pré-calculés, pour dessiner la vue réseau IMMÉDIATEMENT sans
+  /// attendre les 91×2 GeoJSON. Pose un ordre d'importance et un squelette
+  /// PROVISOIRES depuis le manifest (tri tier puis numéro ; squelette =
+  /// tier 1 + alphabétiques + épinglées — les 2 grands axes N-S/E-O, qui
+  /// exigent la géométrie, arrivent avec [ensureLoaded] qui recalcule tout).
+  Future<void> ensureManifest() {
+    return _manifestFuture ??= _loadManifest();
+  }
+
+  Future<void> _loadManifest() async {
     final raw = await rootBundle.loadString(_manifestAsset);
     final json = jsonDecode(raw) as Map<String, dynamic>;
     final lines = (json['lines'] as List? ?? [])
@@ -58,8 +71,31 @@ class PublicTransportService {
         .toList();
     _manifest = {for (final m in lines) m.lineNumber: m};
 
+    if (_linesByImportance.isEmpty) {
+      final names = lines.map((m) => m.lineNumber).toList()
+        ..sort((a, b) {
+          final ta = tierFor(a), tb = tierFor(b);
+          if (ta != tb) return ta.compareTo(tb);
+          return _compareLine(_manifest![a]!, _manifest![b]!);
+        });
+      _linesByImportance = names;
+      final alpha = RegExp(r'^[A-Za-z]+$');
+      _backbone = {
+        for (final ln in names)
+          if (tierFor(ln) == 1 ||
+              alpha.hasMatch(ln) ||
+              _backbonePinned.contains(ln))
+            ln,
+      };
+    }
+  }
+
+  Future<void> _load() async {
+    await ensureManifest();
+    final lines = _manifest!.values.toList();
+
     await Future.wait(lines.map(_loadLine));
-    _computeImportance();
+    _computeImportance(); // remplace l'ordre/squelette provisoires du manifest
     _computeAllBranches();
     _computeAllSchematics();
     _buildSearchIndex();

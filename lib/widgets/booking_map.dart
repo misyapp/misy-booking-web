@@ -50,6 +50,13 @@ class BookingMap extends StatefulWidget {
   /// vers le curseur déplaçait sa position GPS à chaque cran de molette).
   final bool zoomAroundCenter;
 
+  /// Fond DÉSATURÉ (vue réseau Transport en commun) : les rubans LOOM
+  /// doivent dominer — le raster passe sous un ColorFilter (saturation
+  /// réduite + léger éclaircissement). Réglage client uniquement : les
+  /// labels de voirie mineure restent (masquage = style serveur dédié,
+  /// cf. tools/network/README.md).
+  final bool muted;
+
   const BookingMap({
     super.key,
     required this.controller,
@@ -64,6 +71,7 @@ class BookingMap extends StatefulWidget {
     this.satellite = false,
     this.showZoomControls = true,
     this.initialCameraFit,
+    this.muted = false,
     this.interactive = true,
     this.zoomAroundCenter = false,
   });
@@ -166,14 +174,44 @@ class _BookingMapState extends State<BookingMap> {
         tileProvider: NetworkTileProvider(),
       );
     }
-    return TileLayer(
-      urlTemplate: MapTilesConfig.rasterTileUrlTemplate
-          .replaceFirst('.png', '{r}.png'),
+    final tiles = TileLayer(
+      urlTemplate:
+          MapTilesConfig.rasterTileUrlTemplate.replaceFirst('.png', '{r}.png'),
       retinaMode: RetinaMode.isHighDensity(context),
       maxNativeZoom: 19,
       maxZoom: 19,
       userAgentPackageName: 'app.misy.book',
       tileProvider: NetworkTileProvider(),
+    );
+    if (!widget.muted) return tiles;
+    // Saturation ~0.45 + éclaircissement léger : matrice standard de
+    // désaturation (coefficients luma Rec. 601) + offset.
+    const s = 0.45;
+    const r = 0.2126, g = 0.7152, b = 0.0722;
+    return ColorFiltered(
+      colorFilter: const ColorFilter.matrix(<double>[
+        r + (1 - r) * s,
+        g * (1 - s),
+        b * (1 - s),
+        0,
+        14,
+        r * (1 - s),
+        g + (1 - g) * s,
+        b * (1 - s),
+        0,
+        14,
+        r * (1 - s),
+        g * (1 - s),
+        b + (1 - b) * s,
+        0,
+        14,
+        0,
+        0,
+        0,
+        1,
+        0,
+      ]),
+      child: tiles,
     );
   }
 
@@ -288,8 +326,7 @@ class _Attribution extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text =
-        satellite ? 'Tiles © Esri' : '© OpenStreetMap contributors';
+    final text = satellite ? 'Tiles © Esri' : '© OpenStreetMap contributors';
     return Align(
       alignment: Alignment.bottomRight,
       child: Padding(
@@ -308,8 +345,7 @@ class _Attribution extends StatelessWidget {
                       mode: LaunchMode.externalApplication,
                     ),
             child: Text(text,
-                style:
-                    const TextStyle(fontSize: 10, color: Colors.black87)),
+                style: const TextStyle(fontSize: 10, color: Colors.black87)),
           ),
         ),
       ),
