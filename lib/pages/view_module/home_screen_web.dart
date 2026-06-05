@@ -3285,6 +3285,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   // ───────── Faisceaux de lignes co-localisées (vue réseau) ─────────
+  /// Budget de largeur ÉCRAN d'une bande de corridor LOOM (rubans + jours)
+  /// quel que soit son k — pitch par brin = budget / k, plafonné au pas
+  /// normal (cf. addStrand dans _rebuildPublicTransportLayers).
+  static const double _loomBandBudgetPx = 40.0;
+
   static const double _corridorSampleStepM = 10.0;
   static const double _corridorMergeRadiusM = 25.0; // englobe un terre-plein
   static const double _corridorBearingTolDeg = 25.0;
@@ -4311,24 +4316,34 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             }
           }
         } else {
-          // Pièces (k, pts). k ≥ 2 = corridor LOOM partagé : largeur de brin
-          // UNIFORME (5 px bus standard, amincie en 64/k px au-delà de
-          // [LoomNetworkService.denseK] pour contenir la largeur du ruban à
-          // l'écran — corridor max ~26 lignes) et écart de slot calé sur
-          // CETTE largeur : les brins de toutes les lignes du corridor
-          // partagent le même k → ils s'alignent bord à bord quel que soit
-          // leur tier. k = 0 (heuristique / antennes) : largeurs et écart
-          // historiques de la ligne.
+          // Pièces (k, pts). k ≥ 2 = corridor LOOM partagé : BUDGET DE
+          // LARGEUR CONTINU (remplace l'amincissement binaire 64/k) — la
+          // bande totale d'un corridor est bornée à ~[_loomBandBudgetPx]
+          // quel que soit k :
+          //   pitch = budget/k (part de bande par brin, cœur + jour),
+          //   plafonné au pas normal (cœur 5 px + jour 2) pour que k=2-5
+          //   garde le rendu standard ;
+          //   cœur = clamp(pitch − jour, 3, 5).
+          // L'écart de slot (slotWM) suit CE pitch : tous les brins du
+          // corridor partagent k → alignement bord à bord garanti.
+          // k=12-15 → brins fins, bande ~40 px (au lieu de ~100).
+          // k = 0 (heuristique / antennes) : largeurs et écart historiques
+          // de la ligne — strictement inchangés (fallback non régressé).
           void addStrand(
               String id, ({int k, List<_StrandPt> pts}) piece, double legacyPx) {
             final bool shared = piece.k >= 2;
-            final double basePx =
-                piece.k > LoomNetworkService.instance.denseK
-                    ? (64.0 / piece.k).clamp(2.5, 5.0)
-                    : 5.0;
-            final double w = shared ? basePx : legacyPx;
-            final double wm = ((shared ? basePx : trunkPx) + 2) * mpp;
-            addColored(id, _applyStrandOffset(piece.pts, wm), w);
+            if (shared) {
+              const jourPx = 2.0; // bordure noire ~1 px de chaque côté
+              const basePx = 5.0; // cœur d'un brin bus standard
+              final double pitch =
+                  (_loomBandBudgetPx / piece.k).clamp(0.0, basePx + jourPx);
+              final double coeur = (pitch - jourPx).clamp(3.0, basePx);
+              addColored(
+                  id, _applyStrandOffset(piece.pts, pitch * mpp), coeur);
+            } else {
+              final double wm = (trunkPx + 2) * mpp;
+              addColored(id, _applyStrandOffset(piece.pts, wm), legacyPx);
+            }
           }
 
           for (var i = 0; i < strands.trunk.length; i++) {
