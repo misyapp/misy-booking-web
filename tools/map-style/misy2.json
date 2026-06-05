@@ -1,6 +1,6 @@
 {
  "version": 8,
- "name": "Misy v3 — match référence Uber (base plate froide)",
+ "name": "Misy v3.1 — primaires en bleu lavande",
  "metadata": {
   "comment": "v2.1 05/06 : palette alignée sur la référence Uber fournie par Stéphane (fond gris-bleu très pâle, parcs verts francs, eau vive, routes blanches à casing gris-bleu) + police Azo Sans (charte). Glyphes Azo générés serveur (fontnik/node:20)."
  },
@@ -527,7 +527,7 @@
     "line-join": "round"
    },
    "paint": {
-    "line-color": "#AEB9CB",
+    "line-color": "#8398CC",
     "line-width": {
      "base": 1.35,
      "stops": [
@@ -571,7 +571,7 @@
     "line-join": "round"
    },
    "paint": {
-    "line-color": "#FFFFFF",
+    "line-color": "#B9C6EC",
     "line-width": {
      "base": 1.35,
      "stops": [
