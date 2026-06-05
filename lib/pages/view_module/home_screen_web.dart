@@ -357,6 +357,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // Écouter les changements de TripProvider pour reset l'UI après course
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final tripProvider = Provider.of<TripProvider>(context, listen: false);
+      _lastTripStep = tripProvider.currentStep;
       tripProvider.addListener(_onTripProviderChanged);
     });
   }
@@ -462,24 +463,36 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   /// Callback quand TripProvider change (pour gérer le reset après course terminée)
+  /// Dernière étape Course observée — pour ne réagir qu'aux TRANSITIONS.
+  CustomTripType? _lastTripStep;
+
   void _onTripProviderChanged() {
     if (!mounted) return;
 
     final tripProvider = Provider.of<TripProvider>(context, listen: false);
+    final step = tripProvider.currentStep;
 
-    // Si on retourne à l'écran initial en mode Course, reset l'UI
-    // Ne pas reset si on est en mode Transport (pour ne pas effacer les adresses lors du switch)
-    if (tripProvider.currentStep == CustomTripType.setYourDestination) {
-      _stopPolylineAnimation();
-      setState(() {
-        _routePolylines = {};
-        _routeCoordinates = [];
-        _pickupController.clear();
-        _destinationController.clear();
-        _pickupLocation = {'lat': null, 'lng': null, 'address': null};
-        _destinationLocation = {'lat': null, 'lng': null, 'address': null};
-      });
-    }
+    // Reset de l'UI UNIQUEMENT quand on REVIENT à l'écran initial depuis une
+    // autre étape (fin/annulation de course). ⚠️ currentStep DÉMARRE déjà à
+    // setYourDestination : sans ce test de transition, n'importe quel
+    // notifyListeners du boot (auth web, chargement véhicules…) effaçait les
+    // champs pré-remplis par le deep-link beta.misy.app avant l'auto-search
+    // (bug « les points départ/arrivée se perdent », 05/06/2026).
+    final cameBackToStart = step == CustomTripType.setYourDestination &&
+        _lastTripStep != null &&
+        _lastTripStep != CustomTripType.setYourDestination;
+    _lastTripStep = step;
+    if (!cameBackToStart) return;
+
+    _stopPolylineAnimation();
+    setState(() {
+      _routePolylines = {};
+      _routeCoordinates = [];
+      _pickupController.clear();
+      _destinationController.clear();
+      _pickupLocation = {'lat': null, 'lng': null, 'address': null};
+      _destinationLocation = {'lat': null, 'lng': null, 'address': null};
+    });
   }
 
   /// Restaure une réservation planifiée laissée en attente avant le login
