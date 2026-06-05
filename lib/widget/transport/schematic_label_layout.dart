@@ -47,8 +47,16 @@ class SchematicLabelLayout {
       if (p == null || !viewport.inflate(40).contains(p)) continue;
       final bold = _isMajor(st);
       final size = measure(st.name, bold: bold);
-      final label = _tryPlace(st, p, size, bold, grid, viewport,
+      var label = _tryPlace(st, p, size, bold, grid, viewport,
           symbolRadius: symbolRadius, gap: gap);
+      // MAJEURS : si aucun candidat strict, on autorise le label À CHEVAL
+      // sur un tracé (le halo blanc le garde lisible — pratique standard
+      // des plans pro en zone dense) ; jamais sur un autre label. Les
+      // arrêts simples restent stricts → masqués.
+      label ??= bold
+          ? _tryPlace(st, p, size, bold, grid, viewport,
+              symbolRadius: symbolRadius, gap: gap, ignoreSegments: true)
+          : null;
       if (label != null) {
         placed.add(label);
         grid.addLabel(label.aabb);
@@ -81,6 +89,8 @@ class SchematicLabelLayout {
       st.kind == 'pole' || st.kind == 'interchange' || st.kind == 'terminus';
 
   /// Essaie les ~8 candidats dans l'ordre de préférence ; null si aucun.
+  /// [ignoreSegments] : ne teste que les collisions label↔label (passe de
+  /// secours des majeurs en zone dense).
   static PlacedLabel? _tryPlace(
     SchStation st,
     Offset p,
@@ -90,6 +100,7 @@ class SchematicLabelLayout {
     Rect viewport, {
     required double symbolRadius,
     required double gap,
+    bool ignoreSegments = false,
   }) {
     final w = size.width, h = size.height;
     final r = symbolRadius + gap;
@@ -113,7 +124,10 @@ class SchematicLabelLayout {
       }
       // Tolérance : on ignore les segments au contact immédiat du symbole
       // d'ancrage (le label peut toucher SON arrêt, pas les rubans voisins).
-      if (grid.collides(aabb, ignoreNear: p, ignoreRadius: symbolRadius + 1)) {
+      if (grid.collides(aabb,
+          ignoreNear: p,
+          ignoreRadius: symbolRadius + 1,
+          ignoreSegments: ignoreSegments)) {
         continue;
       }
       return PlacedLabel(
@@ -220,13 +234,17 @@ class _SpatialGrid {
 
   /// Collision de [r] avec un label posé ou un segment de tracé.
   /// [ignoreNear]/[ignoreRadius] : exclut les segments touchant le symbole
-  /// d'ancrage lui-même.
+  /// d'ancrage lui-même. [ignoreSegments] : collisions label↔label seules
+  /// (passe de secours des majeurs).
   bool collides(Rect r,
-      {required Offset ignoreNear, required double ignoreRadius}) {
+      {required Offset ignoreNear,
+      required double ignoreRadius,
+      bool ignoreSegments = false}) {
     for (final k in _cellsOf(r)) {
       for (final other in _labels[k] ?? const <Rect>[]) {
         if (r.overlaps(other)) return true;
       }
+      if (ignoreSegments) continue;
       for (final s in _segments[k] ?? const <ScreenSegment>[]) {
         if (!_segmentIntersectsRect(s, r)) continue;
         // segment au ras du symbole d'ancrage → toléré
