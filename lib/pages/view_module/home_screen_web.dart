@@ -2890,6 +2890,16 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   Widget _buildMap() {
+    // Pin central visible (mode Course, étapes de recherche) → la molette /
+    // le pinch zooment AUTOUR DU CENTRE pour que la position GPS visée par
+    // le bonhomme ne bouge pas pendant le zoom (bug rapporté 05/06/2026 :
+    // « en dézoomant la position GPS est changée »).
+    final tripStepForZoom =
+        context.select<TripProvider, CustomTripType?>((p) => p.currentStep);
+    final zoomAroundCenter = _homeMode == HomeMode.course &&
+        (tripStepForZoom == null ||
+            tripStepForZoom == CustomTripType.setYourDestination ||
+            tripStepForZoom == CustomTripType.choosePickupDropLocation);
     final allMarkers = <Marker>{};
     final allPolylines = <Polyline>{};
     final allCircles = <Circle>{};
@@ -2956,6 +2966,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
     return BookingMap(
       controller: _mapController!,
+      zoomAroundCenter: zoomAroundCenter,
       initialCenter: gma.toLL(_defaultPosition),
       // Zoom d'ouverture serré (échelle quartier, feedback 04/06) — vaut
       // pour les DEUX modes (Course et Transport en commun).

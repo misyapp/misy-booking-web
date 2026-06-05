@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_map/flutter_map.dart';
@@ -43,6 +45,10 @@ class BookingMap extends StatefulWidget {
 
   /// `false` = carte figée (mini-cartes récap : aucun geste).
   final bool interactive;
+  /// Molette/pinch : zoome AUTOUR DU CENTRE de la carte au lieu du curseur.
+  /// Utilisé en mode sélection au pin (le bonhomme = camera.center : zoomer
+  /// vers le curseur déplaçait sa position GPS à chaque cran de molette).
+  final bool zoomAroundCenter;
 
   const BookingMap({
     super.key,
@@ -59,6 +65,7 @@ class BookingMap extends StatefulWidget {
     this.showZoomControls = true,
     this.initialCameraFit,
     this.interactive = true,
+    this.zoomAroundCenter = false,
   });
 
   /// Provider PMTiles + thème, chargés **une seule fois** et partagés entre
@@ -170,7 +177,26 @@ class _BookingMapState extends State<BookingMap> {
     );
   }
 
-  Widget _map(Widget basemap) => FlutterMap(
+  /// Zoom molette/pinch ancré sur le CENTRE (cf. [BookingMap.zoomAroundCenter]).
+  void _onPointerSignal(PointerSignalEvent e) {
+    final camera = widget.controller.camera;
+    double? newZoom;
+    if (e is PointerScrollEvent) {
+      // Même sensibilité que flutter_map (scrollWheelVelocity 0.005).
+      newZoom = camera.zoom - e.scrollDelta.dy * 0.005;
+    } else if (e is PointerScaleEvent) {
+      // Pinch trackpad macOS (cf. piège PointerScaleEvent du plan schématique).
+      newZoom = camera.zoom + math.log(e.scale) / math.ln2;
+    }
+    if (newZoom == null) return;
+    widget.controller.move(
+      camera.center,
+      newZoom.clamp(widget.minZoom, widget.maxZoom),
+    );
+  }
+
+  Widget _map(Widget basemap) {
+    final map = FlutterMap(
         mapController: widget.controller,
         options: MapOptions(
           initialCenter: widget.initialCenter,
@@ -185,7 +211,11 @@ class _BookingMapState extends State<BookingMap> {
               : const CameraConstraint.unconstrained(),
           interactionOptions: InteractionOptions(
             flags: widget.interactive
-                ? InteractiveFlag.all & ~InteractiveFlag.rotate
+                ? (widget.zoomAroundCenter
+                    ? InteractiveFlag.all &
+                        ~InteractiveFlag.rotate &
+                        ~InteractiveFlag.scrollWheelZoom
+                    : InteractiveFlag.all & ~InteractiveFlag.rotate)
                 : InteractiveFlag.none,
           ),
         ),
@@ -197,6 +227,13 @@ class _BookingMapState extends State<BookingMap> {
           _Attribution(satellite: widget.satellite),
         ],
       );
+    if (!widget.zoomAroundCenter) return map;
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerSignal: _onPointerSignal,
+      child: map,
+    );
+  }
 }
 
 /// Boutons +/- (équivalent `zoomControlsEnabled` Google).
