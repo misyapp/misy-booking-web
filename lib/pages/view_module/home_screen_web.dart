@@ -3290,6 +3290,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// normal (cf. addStrand dans _rebuildPublicTransportLayers).
   static const double _loomBandBudgetPx = 40.0;
 
+  /// Zoom minimal d'affichage des billes d'arrêts en vue réseau LOOM
+  /// (hors ligne sélectionnée, qui les montre à tout zoom).
+  static const double _loomStopsMinZoom = 16.0;
+
   static const double _corridorSampleStepM = 10.0;
   static const double _corridorMergeRadiusM = 25.0; // englobe un terre-plein
   static const double _corridorBearingTolDeg = 25.0;
@@ -4186,7 +4190,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // Dots blancs sur la polyline visibles dès qu'on commence à zoomer.
     // Les labels (numéro de ligne) n'apparaissent que plus haut pour ne
     // pas saturer.
-    final showStops = _publicMapZoom >= 11;
+    // En mode LOOM (vue réseau toutes-lignes), les billes d'arrêts sur les
+    // faisceaux surchargent la carte : on ne les montre que pour la ligne
+    // SÉLECTIONNÉE ou en zoom très proche (≥ [_loomStopsMinZoom], réglable
+    // QA). Fallback heuristique : seuil historique 11 inchangé.
+    final showStops = _strandsFromLoom
+        ? (selected != null || _publicMapZoom >= _loomStopsMinZoom)
+        : _publicMapZoom >= 11;
     // Pastilles n° de ligne + capsules de correspondance : cachées par défaut,
     // affichées seulement TRÈS PROCHE (≥ 16) — ou, à tout zoom, sur l'arrêt
     // cliqué/survolé (géré par la branche isActive plus bas). Les billes rondes
