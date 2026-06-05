@@ -30,6 +30,15 @@ class LoomNetworkService {
   Future<bool>? _loadFuture;
   Map<String, List<LoomStrandRun>>? _runsByLine;
 
+  /// Variante → variante PRIMAIRE de son groupe fusionné (même numéro de
+  /// base + même couleur, ex. 133A → 133). Les variantes représentées ne
+  /// se dessinent pas elles-mêmes en vue réseau : le tronc fusionné porte
+  /// le groupe (trunk-and-branch, demande 05/06).
+  Map<String, String> _aliasOf = const {};
+
+  /// Primaire → toutes les variantes du groupe (primaire incluse).
+  Map<String, List<String>> _variantsOf = const {};
+
   /// Densité de corridor au-delà de laquelle les brins sont amincis
   /// (recopiée du `meta.denseK` du JSON ; 6 par défaut).
   int denseK = 6;
@@ -52,10 +61,21 @@ class LoomNetworkService {
       final json = jsonDecode(res.body) as Map<String, dynamic>;
       final meta = json['meta'] as Map<String, dynamic>? ?? const {};
       denseK = (meta['denseK'] as num?)?.toInt() ?? 6;
+      _aliasOf = {
+        for (final e
+            in (json['aliases'] as Map<String, dynamic>? ?? const {}).entries)
+          e.key: e.value as String,
+      };
       final lines = json['lines'] as Map<String, dynamic>? ?? const {};
       final parsed = <String, List<LoomStrandRun>>{};
+      final variants = <String, List<String>>{};
       lines.forEach((lineNumber, v) {
-        final runs = (v as Map<String, dynamic>)['runs'] as List? ?? const [];
+        variants[lineNumber] = [
+          for (final x in (v as Map<String, dynamic>)['variants'] as List? ??
+              [lineNumber])
+            x as String,
+        ];
+        final runs = v['runs'] as List? ?? const [];
         parsed[lineNumber] = [
           for (final r in runs)
             LoomStrandRun(
@@ -73,6 +93,7 @@ class LoomNetworkService {
         ];
       });
       _runsByLine = parsed;
+      _variantsOf = variants;
       myCustomPrintStatement(
           'LoomNetworkService: ${parsed.length} lignes, corridor max '
           '${meta['maxCorridor']} (run ${meta['generated']})');
@@ -88,6 +109,18 @@ class LoomNetworkService {
   /// Runs LOOM d'une ligne (clé = `line_number` exact du manifest),
   /// `null` si absente (→ fallback tracé brut côté rendu).
   List<LoomStrandRun>? runsFor(String lineNumber) => _runsByLine?[lineNumber];
+
+  /// Primaire du groupe fusionné de [lineNumber] (elle-même si primaire ou
+  /// hors groupe). 133A → 133 ; 194 Vert → 194 Vert (couleur distincte).
+  String primaryOf(String lineNumber) => _aliasOf[lineNumber] ?? lineNumber;
+
+  /// True si [lineNumber] est une variante REPRÉSENTÉE par un tronc fusionné
+  /// (→ ne pas la dessiner elle-même en vue réseau).
+  bool isRepresented(String lineNumber) => _aliasOf.containsKey(lineNumber);
+
+  /// Variantes du groupe de [primary] (primaire incluse).
+  List<String> variantsOf(String primary) =>
+      _variantsOf[primary] ?? [primary];
 }
 
 /// Une pièce continue du tracé d'une ligne en vue réseau : points

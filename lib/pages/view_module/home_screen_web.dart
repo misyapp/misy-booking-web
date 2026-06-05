@@ -3955,6 +3955,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         })>{};
     for (final ln in svc.linesByImportance) {
       if (svc.tierFor(ln) == 1) continue; // tier 1 : tracé pur au-dessus
+      if (loom.isRepresented(ln)) continue; // variante → tronc fusionné
       final runs = loom.runsFor(ln);
       if (runs == null || runs.isEmpty) continue;
       final merged = _mergedRuns[ln];
@@ -4523,8 +4524,24 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // Bouts de tracé (terminus) à "fermer" par un gros point = dernier arrêt,
     // à la couleur de la ligne (dédup par position = 1ʳᵉ couleur rencontrée).
     final termCaps = <({LatLng pos, Color color, double radiusM})>[];
+    final loom = LoomNetworkService.instance;
     for (final lineNumber in renderOrder) {
-      if (!visible.contains(lineNumber)) continue;
+      // FUSION LATÉRALE des variantes (vue réseau LOOM, demande 05/06) :
+      // une variante représentée par un tronc fusionné (133A → 133) ne se
+      // dessine PAS elle-même ; le tronc (primaire) se dessine si AU MOINS
+      // UNE variante du groupe est visible au zoom. La vue ligne
+      // SÉLECTIONNÉE reste par variante (tracé brut complet, inchangé).
+      if (_strandsFromLoom && selected == null) {
+        if (loom.isRepresented(lineNumber)) continue; // tronc la représente
+        final variants = loom.variantsOf(lineNumber);
+        if (variants.length > 1
+            ? !variants.any(visible.contains)
+            : !visible.contains(lineNumber)) {
+          continue;
+        }
+      } else if (!visible.contains(lineNumber)) {
+        continue;
+      }
       // FAST PATH : avant le chargement des GeoJSON, `group` est null mais
       // les faisceaux LOOM suffisent à dessiner les rubans (les terminus
       // et les fallbacks tracé brut attendent le chargement complet).
