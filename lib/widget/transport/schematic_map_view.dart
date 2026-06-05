@@ -1,6 +1,8 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:rider_ride_hailing_app/models/schematic_plan.dart';
+import 'package:rider_ride_hailing_app/widget/transport/schematic_label_layout.dart';
+import 'package:rider_ride_hailing_app/widget/transport/schematic_painter_cts.dart';
 
 /// Vue du plan schématique avec ZOOM SÉMANTIQUE :
 /// - le zoom/pan ne transforme QUE les positions (espacement des arrêts) ;
@@ -27,6 +29,10 @@ class SchematicMapView extends StatefulWidget {
 }
 
 class _SchematicMapViewState extends State<SchematicMapView> {
+  /// Rendu CTS (painter v2 + labels auto dé-chevauchés + légende) —
+  /// `--dart-define=SCHEMATIC_CTS=true`. Sans le flag : rendu historique.
+  static const bool kCts = bool.fromEnvironment('SCHEMATIC_CTS');
+
   double _scale = 1.0;
   Offset _offset = Offset.zero;
   bool _fitted = false;
@@ -40,8 +46,77 @@ class _SchematicMapViewState extends State<SchematicMapView> {
     ..sort((a, b) => b.priority.compareTo(a.priority));
   final Map<String, TextPainter> _labelCache = {};
 
+  // ── caches CTS (construits paresseusement, canvas-space immuable) ──
+  late final CtsGeomCache _ctsGeom = CtsGeomCache(widget.plan);
+  late final List<ScreenSegment> _ctsCanvasSegments = [
+    for (final e in widget.plan.edges)
+      for (var i = 0; i < e.pts.length - 1; i++)
+        ScreenSegment(e.pts[i], e.pts[i + 1]),
+  ];
+  // Layout des labels mémoïsé par échelle quantifiée (1 %) : les ancres
+  // sont en espace « canvas × scale » (sans offset) → le PAN est une pure
+  // translation, seul le zoom recalcule.
+  int _ctsLayoutKey = -1;
+  List<PlacedLabel> _ctsLabels = const [];
+  final Map<String, Size> _measureCache = {};
+
   static const double _minScale = 0.05;
   static const double _maxScale = 8.0;
+
+  /// Paliers de révélation : dézoomé = majeurs seuls, zoomé = tout.
+  /// Relatifs au zoom de fit initial (≈ plan entier à l'écran).
+  int _palier() {
+    final fit = _fitScale ?? 1.0;
+    if (_scale < fit * 2.0) return 0; // majeurs (pole/interchange/terminus)
+    if (_scale < fit * 4.0) return 1; // + arrêts desservis par ≥ 4 lignes
+    return 2; // tous
+  }
+
+  double? _fitScale;
+
+  List<PlacedLabel> _ctsLayoutFor(double scale) {
+    final key = (scale * 100).round() * 10 + _palier();
+    if (key == _ctsLayoutKey) return _ctsLabels;
+    final palier = _palier();
+    final eligible = _sorted.where((st) {
+      if (st.name.isEmpty) return false;
+      if (palier == 2) return true;
+      if (palier == 1) return st.priority >= 4;
+      return st.priority >= 60; // majeurs
+    }).toList();
+    final screenPos = {for (final st in eligible) st: st.pos * scale};
+    final segments = [
+      for (final s in _ctsCanvasSegments)
+        ScreenSegment(s.a * scale, s.b * scale),
+    ];
+    final bounds = Rect.fromLTWH(0, 0, widget.plan.size.width * scale,
+        widget.plan.size.height * scale);
+    Size measure(String text, {required bool bold}) {
+      return _measureCache.putIfAbsent('${bold ? 'B' : 'n'}:$text', () {
+        final tp = TextPainter(
+          text: TextSpan(
+            text: text,
+            style: TextStyle(
+              fontSize: bold ? 11.5 : 10.0,
+              fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        return tp.size;
+      });
+    }
+
+    _ctsLabels = SchematicLabelLayout.layoutLabels(
+      stationsByPriority: eligible,
+      edgeSegments: segments,
+      screenPos: screenPos,
+      viewport: bounds,
+      measure: measure,
+    );
+    _ctsLayoutKey = key;
+    return _ctsLabels;
+  }
 
   void _fit(Size vp) {
     final s = widget.plan.size;
@@ -52,6 +127,7 @@ class _SchematicMapViewState extends State<SchematicMapView> {
     _scale = k;
     _offset = Offset((vp.width - s.width * k) / 2, (vp.height - s.height * k) / 2);
     _fitted = true;
+    _fitScale = k;
   }
 
   Offset _toCanvas(Offset screen) => (screen - _offset) / _scale;
@@ -109,16 +185,28 @@ class _SchematicMapViewState extends State<SchematicMapView> {
             },
             child: CustomPaint(
               size: Size.infinite,
-              painter: _SchematicPainter(
-                plan: widget.plan,
-                sorted: _sorted,
-                labelCache: _labelCache,
-                scale: _scale,
-                offset: _offset,
-                viewport: vp,
-                showCentreRect: widget.showCentreRect,
-                centreLabel: widget.centreLabel,
-              ),
+              painter: kCts
+                  ? SchematicPainterCts(
+                      plan: widget.plan,
+                      geom: _ctsGeom,
+                      placedLabels: _ctsLayoutFor(_scale),
+                      labelCache: _labelCache,
+                      scale: _scale,
+                      offset: _offset,
+                      viewport: vp,
+                      showCentreRect: widget.showCentreRect,
+                      centreLabel: widget.centreLabel,
+                    )
+                  : _SchematicPainter(
+                      plan: widget.plan,
+                      sorted: _sorted,
+                      labelCache: _labelCache,
+                      scale: _scale,
+                      offset: _offset,
+                      viewport: vp,
+                      showCentreRect: widget.showCentreRect,
+                      centreLabel: widget.centreLabel,
+                    ),
             ),
           ),
         ),
