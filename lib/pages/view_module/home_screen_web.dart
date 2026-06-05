@@ -2804,6 +2804,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       maxZoom: _maxZoom,
       cameraBounds: gma.toLLBounds(_tanaBounds),
       satellite: _currentMapType == MapType.satellite,
+      // Fond désaturé en vue réseau LOOM : les rubans dominent, la voirie
+      // s'efface (réglage client ; labels mineurs = style serveur, à venir).
+      muted: _homeMode == HomeMode.publicTransport &&
+          LoomNetworkService.flagEnabled,
       onTap: (_, p) => _onMapTap(gma.toGM(p)),
       onPositionChanged: (cam, hasGesture) {
         _onPublicCameraMove(cam);
