@@ -18,6 +18,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:rider_ride_hailing_app/widgets/booking_map.dart';
 import 'package:rider_ride_hailing_app/widgets/center_pin.dart';
 import 'package:rider_ride_hailing_app/services/geo_zone_service.dart';
+import 'package:rider_ride_hailing_app/services/loom_network_service.dart';
 import 'package:rider_ride_hailing_app/utils/gmap_flutter_adapter.dart' as gma;
 import 'package:rider_ride_hailing_app/contants/my_colors.dart';
 import 'package:rider_ride_hailing_app/contants/my_image_url.dart';
@@ -38,7 +39,7 @@ import 'package:rider_ride_hailing_app/pages/auth_module/login_screen.dart' show
 import 'package:rider_ride_hailing_app/pages/auth_module/signup_screen.dart' show SignUpScreen;
 import 'package:rider_ride_hailing_app/pages/auth_module/web_auth_screen.dart'
     show WebAuthMode, WebAuthScreen;
-import 'package:rider_ride_hailing_app/contants/transit_strings.dart' show AppLocale;
+import 'package:rider_ride_hailing_app/contants/transit_strings.dart';
 import 'package:rider_ride_hailing_app/pages/account_web/account_shell_web.dart'
     show AccountSection;
 import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
@@ -80,7 +81,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   final FocusNode _destinationFocusNode = FocusNode();
 
   // Position par défaut: Antananarivo, Madagascar (Ankadifotsy)
-  static const LatLng _defaultPosition = LatLng(-18.9103, 47.5305);
+  /// Position par défaut de la carte : la MAIRIE d'Antananarivo (Hôtel de
+  /// Ville, Andohan'Analakely, avenue de l'Indépendance) — utilisée quand le
+  /// GPS est absent/refusé OU que l'utilisateur est HORS des geozones Misy
+  /// (visiteur à l'étranger qui pré-réserve : la carte doit montrer Tana,
+  /// pas son salon à Paris). Demande produit du 05/06/2026.
+  static const LatLng _defaultPosition = LatLng(-18.9086, 47.5270);
 
   // Bornage carte : zoom min/max + caméra limitée à ~40 km autour
   // d'Antananarivo (≈ ±0.36° lat, ±0.38° lng à cette latitude).
@@ -201,6 +207,18 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // = toutes les lignes (filtrées par zoom) affichées normalement.
   String? _publicSelectedLine;
 
+  /// Pré-remplissage du calculateur TC via deep-link `?mode=transit&from*`/
+  /// `to*` (widget de recherche de la section Transit du site) OU via la
+  /// tuile « Transport en commun » du choix de véhicule. Consommés une fois
+  /// par RouteCalculator (auto-recherche si les 2 sont présents).
+  ({String label, LatLng pos})? _transitInitialOrigin;
+  ({String label, LatLng pos})? _transitInitialDestination;
+
+  /// True quand le mode TC a été ouvert depuis le flux Course (tuile du
+  /// choix de véhicule) → le panel TC affiche un bouton « Revenir à la
+  /// course » (l'état Course est intact, on y revient tel quel).
+  bool _transitFromCourse = false;
+
   // Zoom courant de la carte. Suivi via [GoogleMap.onCameraMove] pour piloter
   // le filtrage zoom-dependent des lignes/stops.
   double _publicMapZoom = 15.5;
@@ -257,19 +275,31 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// la sélection en cours.
   List<_PublicStopAggregate> _baseClusters = const [];
 
-  /// Tracés "faisceau-ready" de la VUE RÉSEAU, précalculés une fois par
-  /// [_precomputeStrandRuns] à partir de [_mergedRuns] : chaque pièce
-  /// (tronc/branches) est densifiée et annotée par point d'un vecteur
-  /// d'offset latéral unitaire (slot -1/0/+1 lissé). Au rebuild, l'offset
-  /// réel = vecteur × largeur de brin au zoom courant → les lignes
-  /// co-localisées s'écartent en ≤ 3 brins côte à côte, en restant des
-  /// polylignes CONTINUES (aucun trou). Vide → fallback tracé brut.
+  /// Tracés "faisceau-ready" de la VUE RÉSEAU, précalculés une fois à
+  /// partir de [_mergedRuns] : chaque pièce (tronc/branches) est densifiée
+  /// et annotée par point d'un vecteur d'offset latéral unitaire × slot.
+  /// Au rebuild, l'offset réel = vecteur × largeur de brin au zoom courant
+  /// → les lignes co-localisées s'écartent en brins côte à côte, en restant
+  /// des polylignes CONTINUES (aucun trou). Vide → fallback tracé brut.
+  ///
+  /// Deux sources possibles (cf. [_loadPublicTransportLayers]) :
+  /// - [_precomputeStrandRuns] : heuristique runtime (slots -1/0/+1, ≤ 3
+  ///   brins) — pièces marquées `k: 0` (comportement historique) ;
+  /// - [_populateStrandRunsFromLoom] (flag LOOM_NETWORK) : faisceaux LOOM
+  ///   pré-calculés au build — `k` = densité du corridor (jusqu'à ~26
+  ///   lignes côte à côte, brins amincis au-delà de
+  ///   [LoomNetworkService.denseK]).
   Map<String,
       ({
-        List<List<_StrandPt>> trunk,
-        List<List<_StrandPt>> allerSolo,
-        List<List<_StrandPt>> retourSolo
+        List<({int k, List<_StrandPt> pts})> trunk,
+        List<({int k, List<_StrandPt> pts})> allerSolo,
+        List<({int k, List<_StrandPt> pts})> retourSolo
       })> _strandRuns = const {};
+
+  /// True quand [_strandRuns] vient des faisceaux LOOM (slots jusqu'à
+  /// ±12,5) : au dézoom squelette les offsets sont neutralisés (cf.
+  /// [_rebuildPublicTransportLayers]).
+  bool _strandsFromLoom = false;
 
   /// Découpage aller/retour de CHAQUE ligne pour la VUE RÉSEAU, précalculé une
   /// fois par [_precomputeMergedLines] (statique, ≠ zoom). Par ligne :
@@ -331,6 +361,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // Écouter les changements de TripProvider pour reset l'UI après course
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final tripProvider = Provider.of<TripProvider>(context, listen: false);
+      _lastTripStep = tripProvider.currentStep;
       tripProvider.addListener(_onTripProviderChanged);
     });
   }
@@ -436,24 +467,36 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   /// Callback quand TripProvider change (pour gérer le reset après course terminée)
+  /// Dernière étape Course observée — pour ne réagir qu'aux TRANSITIONS.
+  CustomTripType? _lastTripStep;
+
   void _onTripProviderChanged() {
     if (!mounted) return;
 
     final tripProvider = Provider.of<TripProvider>(context, listen: false);
+    final step = tripProvider.currentStep;
 
-    // Si on retourne à l'écran initial en mode Course, reset l'UI
-    // Ne pas reset si on est en mode Transport (pour ne pas effacer les adresses lors du switch)
-    if (tripProvider.currentStep == CustomTripType.setYourDestination) {
-      _stopPolylineAnimation();
-      setState(() {
-        _routePolylines = {};
-        _routeCoordinates = [];
-        _pickupController.clear();
-        _destinationController.clear();
-        _pickupLocation = {'lat': null, 'lng': null, 'address': null};
-        _destinationLocation = {'lat': null, 'lng': null, 'address': null};
-      });
-    }
+    // Reset de l'UI UNIQUEMENT quand on REVIENT à l'écran initial depuis une
+    // autre étape (fin/annulation de course). ⚠️ currentStep DÉMARRE déjà à
+    // setYourDestination : sans ce test de transition, n'importe quel
+    // notifyListeners du boot (auth web, chargement véhicules…) effaçait les
+    // champs pré-remplis par le deep-link beta.misy.app avant l'auto-search
+    // (bug « les points départ/arrivée se perdent », 05/06/2026).
+    final cameBackToStart = step == CustomTripType.setYourDestination &&
+        _lastTripStep != null &&
+        _lastTripStep != CustomTripType.setYourDestination;
+    _lastTripStep = step;
+    if (!cameBackToStart) return;
+
+    _stopPolylineAnimation();
+    setState(() {
+      _routePolylines = {};
+      _routeCoordinates = [];
+      _pickupController.clear();
+      _destinationController.clear();
+      _pickupLocation = {'lat': null, 'lng': null, 'address': null};
+      _destinationLocation = {'lat': null, 'lng': null, 'address': null};
+    });
   }
 
   /// Restaure une réservation planifiée laissée en attente avant le login
@@ -553,11 +596,49 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       }
 
       if (params.isNotEmpty) {
+        // Langue du visiteur transmise par le site vitrine (?lang=it|pl|de|
+        // mg|fr|en) : l'app s'ouvre dans la langue de la page d'origine.
+        // setLocale persiste le choix (SharedPreferences misy_locale).
+        final langParam = params['lang'];
+        if (langParam != null) {
+          for (final l in AppLocale.values) {
+            if (l.name == langParam) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  Provider.of<LocaleProvider>(context, listen: false)
+                      .setLocale(l);
+                }
+              });
+              break;
+            }
+          }
+        }
+
         // Deep-link "Transport en commun" depuis le site (tuile "Découvrir
         // le transport en commun" → book.misy.app/?mode=transit) : bascule
         // direct dans l'onglet Transport au montage du home.
         final mode = params['mode'];
         if (mode == 'transit' || mode == 'transport') {
+          // Pré-remplissage du calculateur depuis le widget de recherche du
+          // site (TransitSection beta/misy.app) : from/to + coords. Les
+          // params `from*`/`to*` sont DISTINCTS de pickup/destination pour
+          // ne pas déclencher l'auto-search du mode Course plus bas.
+          final fromLat = double.tryParse(params['fromLat'] ?? '');
+          final fromLng = double.tryParse(params['fromLng'] ?? '');
+          final toLat = double.tryParse(params['toLat'] ?? '');
+          final toLng = double.tryParse(params['toLng'] ?? '');
+          if (fromLat != null && fromLng != null) {
+            _transitInitialOrigin = (
+              label: params['from'] ?? '$fromLat, $fromLng',
+              pos: LatLng(fromLat, fromLng),
+            );
+          }
+          if (toLat != null && toLng != null) {
+            _transitInitialDestination = (
+              label: params['to'] ?? '$toLat, $toLng',
+              pos: LatLng(toLat, toLng),
+            );
+          }
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) _setHomeMode(HomeMode.publicTransport);
           });
@@ -1318,6 +1399,15 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
   @override
   Widget build(BuildContext context) {
+    // Le bonhomme (pin central) ne vit que pendant la RECHERCHE d'adresses :
+    // dès qu'un trajet est affiché (choix véhicule, confirmation, suivi…),
+    // il disparaît — demande explicite 05/06/2026.
+    final tripStep = context
+        .select<TripProvider, CustomTripType?>((p) => p.currentStep);
+    final pinVisible = _homeMode == HomeMode.course &&
+        (tripStep == null ||
+            tripStep == CustomTripType.setYourDestination ||
+            tripStep == CustomTripType.choosePickupDropLocation);
     return Scaffold(
       body: LayoutBuilder(builder: (ctx, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
@@ -1337,7 +1427,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           Listener(
             behavior: HitTestBehavior.translucent,
             onPointerDown: (_) {
-              if (_homeMode == HomeMode.course && !_pinGrabbed) {
+              if (pinVisible && !_pinGrabbed) {
                 setState(() => _pinGrabbed = true);
               }
             },
@@ -1346,10 +1436,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             child: _buildMap(),
           ),
 
-          // Pin central : bonhomme bleu posé en permanence au centre de la
-          // zone visible (mode Course). La pointe = le point GPS visé
-          // (camera.center). IgnorePointer : ne bloque jamais les gestes.
-          if (_homeMode == HomeMode.course)
+          // Pin central : bonhomme bleu posé au centre de la zone visible,
+          // UNIQUEMENT pendant la recherche d'adresses (cf. pinVisible).
+          // La pointe = le point GPS visé (camera.center). IgnorePointer :
+          // ne bloque jamais les gestes.
+          if (pinVisible)
             Positioned.fill(
               child: IgnorePointer(
                 child: Center(
@@ -1506,10 +1597,21 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       if (currentPosition != null && mounted) {
         final latLng = LatLng(currentPosition!.latitude, currentPosition!.longitude);
 
-        _mapController?.move(gma.toLL(latLng), 15);
+        // HORS GEOZONE Misy (dashboard) → on ne recentre PAS sur le GPS de
+        // l'utilisateur (visiteur à l'étranger) : cap sur la mairie
+        // d'Antananarivo, cœur de la couverture. (Pas de return : le reset
+        // de _isLocating est en bas, hors finally.)
+        final zone = await GeoZoneService.getZoneForLocation(
+            latLng.latitude, latLng.longitude);
+        if (zone == null && mounted) {
+          _mapController?.move(gma.toLL(_defaultPosition), 15);
+          _reloadDriversNearPosition(_defaultPosition);
+        } else if (mounted) {
+          _mapController?.move(gma.toLL(latLng), 15);
 
-        // Recharger les chauffeurs proches de cette position
-        _reloadDriversNearPosition(latLng);
+          // Recharger les chauffeurs proches de cette position
+          _reloadDriversNearPosition(latLng);
+        }
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1521,8 +1623,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       debugPrint('Erreur localisation: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Erreur lors de la localisation'),
+          SnackBar(
+            content: Text(TransitStrings.t('web.errLocation',
+                Provider.of<LocaleProvider>(context, listen: false).locale)),
           ),
         );
       }
@@ -1550,6 +1653,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         onPointsChanged: _onPublicPointsChanged,
         mapTapNotifier: _publicMapTapNotifier,
         onRequestRideForWalk: _onRequestRideForWalk,
+        initialOrigin: _transitInitialOrigin,
+        initialDestination: _transitInitialDestination,
+        onReturnToCourse:
+            _transitFromCourse ? () => _setHomeMode(HomeMode.course) : null,
       );
     }
 
@@ -1725,7 +1832,111 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   int _selectedVehicleIndex = -1;
 
   /// Panel de sélection de véhicule custom pour le web
+  /// True si le point est dans le Grand Tana (rayon ~35 km autour du
+  /// centre-ville) — zone couverte par le réseau taxi-be.
+  static bool _isTanaRegion(double lat, double lng) =>
+      _metersBetween(LatLng(lat, lng), const LatLng(-18.8792, 47.5079)) <
+      35000;
+
+  /// Ouvre le mode Transport en commun pré-rempli avec le trajet de la
+  /// course en cours → la recherche d'itinéraire se lance toute seule
+  /// (même plomberie que le deep-link `?mode=transit&from*/to*`). L'état
+  /// Course n'est PAS touché : le bouton « Revenir à la course » du panel
+  /// TC ramène au choix de véhicule tel quel.
+  void _openTransitFromCourse(TripProvider tripProvider) {
+    double? parse(dynamic v) => double.tryParse('${v ?? ''}');
+    final pick = tripProvider.pickLocation;
+    final drop = tripProvider.dropLocation;
+    final pLat = parse(pick?['lat']), pLng = parse(pick?['lng']);
+    final dLat = parse(drop?['lat']), dLng = parse(drop?['lng']);
+    if (pLat == null || pLng == null || dLat == null || dLng == null) return;
+    String label(Map? loc, String fallback) {
+      final a = loc?['address']?.toString() ?? '';
+      return a.isEmpty ? fallback : a.split(',').first.trim();
+    }
+
+    setState(() {
+      _transitInitialOrigin = (
+        label: label(pick, '$pLat, $pLng'),
+        pos: LatLng(pLat, pLng),
+      );
+      _transitInitialDestination = (
+        label: label(drop, '$dLat, $dLng'),
+        pos: LatLng(dLat, dLng),
+      );
+      _transitFromCourse = true; // le reset de _setHomeMode ne joue qu'en SORTIE de TC
+    });
+    _setHomeMode(HomeMode.publicTransport);
+  }
+
+  /// Tuile « Transport en commun » insérée en 2e position du choix de
+  /// véhicule quand le trajet est dans le Grand Tana. Code couleur indigo
+  /// (univers TC, distinct du corail courses — même convention que le site).
+  Widget _buildTransitOptionTile(TripProvider tripProvider) {
+    const indigo = Color(0xFF4F46E5);
+    final locale = context.watch<LocaleProvider>().locale;
+    return InkWell(
+      onTap: () => _openTransitFromCourse(tripProvider),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: indigo.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: indigo.withOpacity(0.35)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 60,
+              height: 40,
+              decoration: BoxDecoration(
+                color: indigo.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.directions_bus_filled, color: indigo),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    TransitStrings.t('mode.public', locale),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    TransitStrings.t('web.transitTileSub', locale),
+                    style: const TextStyle(fontSize: 12, color: indigo),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: indigo),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildVehicleSelectionPanel(TripProvider tripProvider) {
+    final locale = context.watch<LocaleProvider>().locale;
+    // Tuile TC proposée seulement si départ ET arrivée sont dans la zone
+    // couverte par le réseau taxi-be (Grand Tana).
+    double? parse(dynamic v) => double.tryParse('${v ?? ''}');
+    final pLat = parse(tripProvider.pickLocation?['lat']);
+    final pLng = parse(tripProvider.pickLocation?['lng']);
+    final dLat = parse(tripProvider.dropLocation?['lat']);
+    final dLng = parse(tripProvider.dropLocation?['lng']);
+    final transitEligible = pLat != null &&
+        pLng != null &&
+        dLat != null &&
+        dLng != null &&
+        _isTanaRegion(pLat, pLng) &&
+        _isTanaRegion(dLat, dLng);
+    // Position d'insertion : 2e (index 1), ou 1re si la liste est vide.
+    final transitIdx = vehicleListModal.isEmpty ? 0 : 1;
     return Positioned(
       top: 16,
       left: 16,
@@ -1759,10 +1970,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                         constraints: const BoxConstraints(),
                       ),
                       const SizedBox(width: 8),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Choisir un véhicule',
-                          style: TextStyle(
+                          TransitStrings.t('web.chooseVehicle', locale),
+                          style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
@@ -1817,21 +2028,29 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
                   const SizedBox(height: 16),
 
-                  // Liste des véhicules
+                  // Liste des véhicules (+ tuile Transport en commun en 2e
+                  // position quand le trajet est dans le Grand Tana)
                   Expanded(
                     child: ListView.builder(
-                      itemCount: vehicleListModal.length,
+                      itemCount:
+                          vehicleListModal.length + (transitEligible ? 1 : 0),
                       itemBuilder: (context, index) {
-                        final vehicle = vehicleListModal[index];
+                        if (transitEligible && index == transitIdx) {
+                          return _buildTransitOptionTile(tripProvider);
+                        }
+                        final vIndex = transitEligible && index > transitIdx
+                            ? index - 1
+                            : index;
+                        final vehicle = vehicleListModal[vIndex];
                         if (!vehicle.active) return const SizedBox.shrink();
 
-                        final isSelected = _selectedVehicleIndex == index;
+                        final isSelected = _selectedVehicleIndex == vIndex;
                         final price = tripProvider.calculatePrice(vehicle);
 
                         return InkWell(
                           onTap: () {
                             setState(() {
-                              _selectedVehicleIndex = index;
+                              _selectedVehicleIndex = vIndex;
                             });
                             tripProvider.selectedVehicle = vehicle;
                           },
@@ -1928,9 +2147,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                      child: const Text(
-                        'Commander',
-                        style: TextStyle(
+                      child: Text(
+                        TransitStrings.t('web.order', locale),
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
@@ -2326,7 +2545,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       } else if (mounted) {
         debugPrint('❌ Échec création booking');
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Erreur lors de la création de la course')),
+          SnackBar(
+              content: Text(TransitStrings.t('web.errCreateRide',
+                  Provider.of<LocaleProvider>(context, listen: false).locale))),
         );
       }
     } catch (e) {
@@ -2374,6 +2595,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   Widget _buildProfileButton() {
+    final locale = context.watch<LocaleProvider>().locale;
     // En mode Transport en commun, expose le menu "Contribuer" (raccourcis
     // éditeur / admin pour les claims correspondants, sans S'inscrire — pas
     // de notion de compte rider à ce moment-là).
@@ -2400,9 +2622,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                       borderRadius: BorderRadius.circular(20),
                     ),
                   ),
-                  child: const Text(
-                    'Connexion',
-                    style: TextStyle(
+                  child: Text(
+                    TransitStrings.t('web.signIn', locale),
+                    style: const TextStyle(
                       color: Colors.black87,
                       fontWeight: FontWeight.w500,
                     ),
@@ -2419,7 +2641,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   ),
-                  child: const Text("S'inscrire"),
+                  child: Text(TransitStrings.t('web.signUp', locale)),
                 ),
               ],
             );
@@ -2522,13 +2744,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               const PopupMenuDivider(),
               ..._buildLanguageMenuItems(context),
               const PopupMenuDivider(),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'logout',
                 child: Row(
                   children: [
-                    Icon(Icons.logout, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('Déconnexion', style: TextStyle(color: Colors.red)),
+                    const Icon(Icons.logout, color: Colors.red),
+                    const SizedBox(width: 8),
+                    Text(TransitStrings.t('web.signOut', locale),
+                        style: const TextStyle(color: Colors.red)),
                   ],
                 ),
               ),
@@ -2547,6 +2770,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       AppLocale.fr: 'Français',
       AppLocale.mg: 'Malagasy',
       AppLocale.en: 'English',
+      AppLocale.it: 'Italiano',
+      AppLocale.pl: 'Polski',
+      AppLocale.de: 'Deutsch',
     };
     return [
       for (final loc in AppLocale.values)
@@ -2586,6 +2812,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// /admin (si claim admin) + déconnexion. Pas de "Mes trajets" ni
   /// profil (UI booking).
   Widget _buildTaxibeContributeButton() {
+    final locale = context.watch<LocaleProvider>().locale;
     return Positioned(
       top: 16,
       right: 16,
@@ -2696,14 +2923,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               ],
               if (_isTransportEditor || _isTransportAdmin)
                 const PopupMenuDivider(),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'logout',
                 child: Row(
                   children: [
-                    Icon(Icons.logout, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('Déconnexion',
-                        style: TextStyle(color: Colors.red)),
+                    const Icon(Icons.logout, color: Colors.red),
+                    const SizedBox(width: 8),
+                    Text(TransitStrings.t('web.signOut', locale),
+                        style: const TextStyle(color: Colors.red)),
                   ],
                 ),
               ),
@@ -2715,6 +2942,16 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   Widget _buildMap() {
+    // Pin central visible (mode Course, étapes de recherche) → la molette /
+    // le pinch zooment AUTOUR DU CENTRE pour que la position GPS visée par
+    // le bonhomme ne bouge pas pendant le zoom (bug rapporté 05/06/2026 :
+    // « en dézoomant la position GPS est changée »).
+    final tripStepForZoom =
+        context.select<TripProvider, CustomTripType?>((p) => p.currentStep);
+    final zoomAroundCenter = _homeMode == HomeMode.course &&
+        (tripStepForZoom == null ||
+            tripStepForZoom == CustomTripType.setYourDestination ||
+            tripStepForZoom == CustomTripType.choosePickupDropLocation);
     final allMarkers = <Marker>{};
     final allPolylines = <Polyline>{};
     final allCircles = <Circle>{};
@@ -2781,6 +3018,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
     return BookingMap(
       controller: _mapController!,
+      zoomAroundCenter: zoomAroundCenter,
       initialCenter: gma.toLL(_defaultPosition),
       // Zoom d'ouverture serré (échelle quartier, feedback 04/06) — vaut
       // pour les DEUX modes (Course et Transport en commun).
@@ -2790,6 +3028,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       maxZoom: _maxZoom,
       cameraBounds: gma.toLLBounds(_tanaBounds),
       satellite: _currentMapType == MapType.satellite,
+      // Fond désaturé en vue réseau LOOM : les rubans dominent, la voirie
+      // s'efface (réglage client ; labels mineurs = style serveur, à venir).
+      muted: _homeMode == HomeMode.publicTransport &&
+          LoomNetworkService.flagEnabled,
       onTap: (_, p) => _onMapTap(gma.toGM(p)),
       onPositionChanged: (cam, hasGesture) {
         _onPublicCameraMove(cam);
@@ -2902,6 +3144,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     if (_homeMode == mode) return;
     setState(() {
       _homeMode = mode;
+      if (mode != HomeMode.publicTransport) {
+        // Sortie du TC : on consomme le pré-remplissage (sinon une prochaine
+        // ouverture manuelle du mode relancerait la même recherche).
+        _transitInitialOrigin = null;
+        _transitInitialDestination = null;
+        _transitFromCourse = false;
+      }
       _exitPinSelection(); // sortie du mode sélection au pin (+ vue plan)
       _pinGrabbed = false;
       _publicSelectedLine = null;
@@ -3248,16 +3497,43 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// polylines + markers pour l'affichage du réseau sur la carte.
   Future<void> _loadPublicTransportLayers() async {
     try {
-      await PublicTransportService.instance.ensureLoaded();
+      final svc = PublicTransportService.instance;
+      // ── FAST PATH (flag LOOM) : manifest (~46 Ko) + faisceaux
+      // pré-calculés (network_strands.json) suffisent à dessiner TOUS les
+      // rubans — la carte est visible en ~1-2 s au lieu d'attendre les
+      // 91×2 GeoJSON et les précalculs. L'ordre/squelette provisoires du
+      // manifest sont remplacés par les vrais au chargement complet.
+      var loomReady = false;
+      if (LoomNetworkService.flagEnabled) {
+        final r = await Future.wait<dynamic>([
+          svc.ensureManifest(),
+          LoomNetworkService.instance.ensureLoaded(),
+        ]);
+        loomReady = r[1] as bool;
+        if (loomReady && mounted) {
+          _populateStrandRunsFromLoom(); // sans antennes retour (pas encore
+          //                                de geojson) — re-passe plus bas
+          await _rebuildPublicTransportLayers();
+          setState(() => _publicTransportLoaded = true);
+        }
+      }
+
+      // ── CHARGEMENT COMPLET : GeoJSON, importance/squelette réels,
+      // antennes retour, clusters d'arrêts, index de recherche.
+      await svc.ensureLoaded();
       if (!mounted) return;
       // Fusion aller/retour par ligne (vue réseau) : tronc partagé + branches.
       _precomputeMergedLines();
-      // Faisceaux : co-localisation (≥2 lignes même axe) → profils de slot
-      // par ligne. Chaque ligne reste UNE polyligne continue qui s'écarte
-      // latéralement dans les zones partagées (≤ 3 brins côte à côte,
-      // prioritaire au centre, aucun trou). Produit 2026-06-04 v2 : remplace
-      // épines + arc-en-ciel (supprimés).
-      _precomputeStrandRuns();
+      // Faisceaux : derrière --dart-define=LOOM_NETWORK=true, ordonnancement
+      // PRO pré-calculé au build par LOOM (tools/network, corridors complets
+      // ordonnés, croisements minimisés) ; sinon — ou si le JSON est absent —
+      // heuristique runtime historique : co-localisation (≥2 lignes même axe)
+      // → profils de slot -1/0/+1, ≤ 3 brins côte à côte, aucun trou.
+      if (loomReady || await LoomNetworkService.instance.ensureLoaded()) {
+        _populateStrandRunsFromLoom(); // avec retourSolo cette fois
+      } else {
+        _precomputeStrandRuns();
+      }
       _precomputeBaseClusters();
       await _rebuildPublicTransportLayers();
       setState(() => _publicTransportLoaded = true);
@@ -3267,6 +3543,15 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   // ───────── Faisceaux de lignes co-localisées (vue réseau) ─────────
+  /// Budget de largeur ÉCRAN d'une bande de corridor LOOM (rubans + jours)
+  /// quel que soit son k — pitch par brin = budget / k, plafonné au pas
+  /// normal (cf. addStrand dans _rebuildPublicTransportLayers).
+  static const double _loomBandBudgetPx = 40.0;
+
+  /// Zoom minimal d'affichage des billes d'arrêts en vue réseau LOOM
+  /// (hors ligne sélectionnée, qui les montre à tout zoom).
+  static const double _loomStopsMinZoom = 16.0;
+
   static const double _corridorSampleStepM = 10.0;
   static const double _corridorMergeRadiusM = 25.0; // englobe un terre-plein
   static const double _corridorBearingTolDeg = 25.0;
@@ -3372,16 +3657,49 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         ? key.substring(0, key.length - 6)
         : key.substring(0, key.length - 7);
 
-    // Par échantillon de chaque (ligne, sens) : facteur de slot lissé puis
-    // vecteur latéral unitaire lissé.
+    // Par échantillon de chaque (ligne, sens) : facteur de slot (médiane +
+    // lissage) puis vecteur latéral via la TANGENTE CONTINUE du tracé.
     final vecAt = <String, List<({LatLng pos, double vLat, double vLng})>>{};
     samples.forEach((key, list) {
       final selfLine = lineOf(key);
-      final raw = List<double>.filled(list.length, 0);
-      for (var i = 0; i < list.length; i++) {
+      final n = list.length;
+
+      // Perpendiculaire CONTINUE le long du parcours : tangente lissée par
+      // différence centrale (fenêtre ±4 ≈ ±40 m, espace mètres) tournée de
+      // +90°. L'ancienne formule « cap mod 180° + 90 » avait une
+      // discontinuité pile sur les axes ~N-S (178° vs 2° → perpendiculaires
+      // OPPOSÉES d'un échantillon à l'autre) → brins qui sautaient de côté
+      // = TRESSAGE vu en prod le 05/06/2026.
+      final perpN = List<double>.filled(n, 0); // composante nord (m)
+      final perpE = List<double>.filled(n, 0); // composante est (m)
+      for (var i = 0; i < n; i++) {
+        final a = list[(i - 4).clamp(0, n - 1)].pos;
+        final b = list[(i + 4).clamp(0, n - 1)].pos;
+        var tE = (b.longitude - a.longitude) *
+            111320.0 *
+            cos(a.latitude * pi / 180);
+        var tN = (b.latitude - a.latitude) * 111320.0;
+        final len = sqrt(tE * tE + tN * tN);
+        if (len < 1e-6) {
+          if (i > 0) {
+            perpN[i] = perpN[i - 1];
+            perpE[i] = perpE[i - 1];
+          }
+          continue;
+        }
+        tE /= len;
+        tN /= len;
+        // Rotation +90° boussole : (N, E) → (−E, N).
+        perpN[i] = -tE;
+        perpE[i] = tN;
+      }
+
+      final raw = List<double>.filled(n, 0);
+      for (var i = 0; i < n; i++) {
         final s = list[i];
         final c = cellOf(s.pos);
         final set = <String>{selfLine};
+        final near = <_TrunkGridEntry>[];
         for (var dx = -1; dx <= 1; dx++) {
           for (var dy = -1; dy <= 1; dy++) {
             final bucket = grid['${c[0] + dx}_${c[1] + dy}'];
@@ -3395,6 +3713,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                 continue;
               }
               set.add(lineOf(e.key));
+              near.add(e);
             }
           }
         }
@@ -3402,32 +3721,66 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         final ordered = set.toList()
           ..sort((a, b) => prio(a).compareTo(prio(b)));
         final idx = ordered.indexOf(selfLine);
-        raw[i] = idx == 1 ? 1.0 : (idx == 2 ? -1.0 : 0.0);
+        var f = idx == 1 ? 1.0 : (idx == 2 ? -1.0 : 0.0);
+        if (f != 0) {
+          // Cohérence de CÔTÉ avec la ligne de référence du corridor
+          // (slot 0) : si on la longe à CONTRESENS, notre « droite » est sa
+          // « gauche » — sans ce flip, deux lignes saisies en sens inverse
+          // finissaient sur le même flanc (chevauchement/tressage).
+          final ref = ordered[0];
+          _TrunkGridEntry? best;
+          var bestD = double.infinity;
+          for (final e in near) {
+            if (lineOf(e.key) != ref) continue;
+            final d = _metersBetween(s.pos, e.pos);
+            if (d < bestD) {
+              bestD = d;
+              best = e;
+            }
+          }
+          if (best != null) {
+            final diff =
+                (((s.bearing - best.bearing) % 360) + 540) % 360 - 180;
+            if (diff.abs() > 90) f = -f; // antiparallèle à la référence
+          }
+        }
+        raw[i] = f;
+      }
+
+      // Hystérésis : médiane glissante (±4 ≈ 90 m) — une ligne qui ne longe
+      // l'axe que sur 2-3 échantillons ne fait plus zigzaguer le slot (les
+      // S permanents quand la composition du faisceau change sans arrêt).
+      final med = List<double>.filled(n, 0);
+      for (var i = 0; i < n; i++) {
+        final w = <double>[];
+        for (var j = i - 4; j <= i + 4; j++) {
+          if (j < 0 || j >= n) continue;
+          w.add(raw[j]);
+        }
+        w.sort();
+        med[i] = w[w.length ~/ 2];
       }
       // Lissage du facteur → transitions en biais douces (pas de marche).
-      final smooth = List<double>.filled(list.length, 0);
-      for (var i = 0; i < list.length; i++) {
+      final smooth = List<double>.filled(n, 0);
+      for (var i = 0; i < n; i++) {
         var sum = 0.0;
         var c = 0;
         for (var j = i - 6; j <= i + 6; j++) {
-          if (j < 0 || j >= list.length) continue;
-          sum += raw[j];
+          if (j < 0 || j >= n) continue;
+          sum += med[j];
           c++;
         }
         smooth[i] = sum / c;
       }
-      // Vecteur latéral (espace mètres) puis lissage vectoriel.
+      // Vecteur latéral = facteur × perpendiculaire continue, puis lissage
+      // vectoriel (fenêtre ±3).
       final vec = List<({LatLng pos, double vLat, double vLng})>.generate(
-        list.length,
-        (i) {
-          final bMod = ((list[i].bearing % 180) + 180) % 180;
-          final perp = (bMod + 90) * pi / 180.0;
-          return (
-            pos: list[i].pos,
-            vLat: smooth[i] * cos(perp),
-            vLng: smooth[i] * sin(perp),
-          );
-        },
+        n,
+        (i) => (
+          pos: list[i].pos,
+          vLat: smooth[i] * perpN[i],
+          vLng: smooth[i] * perpE[i],
+        ),
       );
       final out = <({LatLng pos, double vLat, double vLng})>[];
       for (var i = 0; i < vec.length; i++) {
@@ -3455,35 +3808,47 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       vecGrid[key] = g;
     });
 
-    ({double vLat, double vLng}) lookupVec(String key, LatLng p) {
+    ({double vLat, double vLng, int idx}) lookupVec(
+        String key, LatLng p, int lastIdx) {
       final list = vecAt[key];
       final g = vecGrid[key];
-      if (list == null || g == null) return (vLat: 0.0, vLng: 0.0);
+      if (list == null || g == null) return (vLat: 0.0, vLng: 0.0, idx: -1);
       final c = cellOf(p);
       var best = -1;
       var bestD = 30.0; // au-delà : hors tracé échantillonné → centre
-      for (var dx = -1; dx <= 1; dx++) {
-        for (var dy = -1; dy <= 1; dy++) {
-          final bucket = g['${c[0] + dx}_${c[1] + dy}'];
-          if (bucket == null) continue;
-          for (final i in bucket) {
-            final d = _metersBetween(p, list[i].pos);
-            if (d < bestD) {
-              bestD = d;
-              best = i;
+      // Continuité de parcours : on préfère un échantillon proche en INDEX
+      // du précédent (±80 ≈ 800 m). Sans ce filtre, dans les lacets de Tana
+      // (la même rue repasse à < 30 m), le plus-proche absolu attrapait le
+      // vecteur d'un AUTRE passage → pics/zigzags isolés.
+      for (var pass = 0; pass < 2; pass++) {
+        final constrain = pass == 0 && lastIdx >= 0;
+        for (var dx = -1; dx <= 1; dx++) {
+          for (var dy = -1; dy <= 1; dy++) {
+            final bucket = g['${c[0] + dx}_${c[1] + dy}'];
+            if (bucket == null) continue;
+            for (final i in bucket) {
+              if (constrain && (i - lastIdx).abs() > 80) continue;
+              final d = _metersBetween(p, list[i].pos);
+              if (d < bestD) {
+                bestD = d;
+                best = i;
+              }
             }
           }
         }
+        if (best >= 0) break; // pass contraint suffisant
       }
-      if (best < 0) return (vLat: 0.0, vLng: 0.0);
-      return (vLat: list[best].vLat, vLng: list[best].vLng);
+      if (best < 0) return (vLat: 0.0, vLng: 0.0, idx: lastIdx);
+      return (vLat: list[best].vLat, vLng: list[best].vLng, idx: best);
     }
 
     // Densifie chaque pièce de _mergedRuns (~20 m) et annote chaque point.
     List<_StrandPt> annotate(String key, List<LatLng> pts) {
       final out = <_StrandPt>[];
+      var last = -1;
       void add(LatLng p) {
-        final v = lookupVec(key, p);
+        final v = lookupVec(key, p, last);
+        last = v.idx;
         out.add(_StrandPt(p, v.vLat, v.vLng));
       }
 
@@ -3503,25 +3868,80 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
     final result = <String,
         ({
-          List<List<_StrandPt>> trunk,
-          List<List<_StrandPt>> allerSolo,
-          List<List<_StrandPt>> retourSolo
+          List<({int k, List<_StrandPt> pts})> trunk,
+          List<({int k, List<_StrandPt> pts})> allerSolo,
+          List<({int k, List<_StrandPt> pts})> retourSolo
         })>{};
     _mergedRuns.forEach((ln, runs) {
       if (svc.tierFor(ln) == 1) return; // tier 1 : tracé pur, pas de faisceau
       // Le tronc reprend la géométrie de l'aller ; fallback retour si la
-      // ligne n'a qu'un sens.
+      // ligne n'a qu'un sens. k: 0 = pièce heuristique (largeur/écart legacy).
       final ak =
           vecAt.containsKey('${ln}_aller') ? '${ln}_aller' : '${ln}_retour';
       final rk =
           vecAt.containsKey('${ln}_retour') ? '${ln}_retour' : ak;
       result[ln] = (
-        trunk: [for (final p in runs.trunk) annotate(ak, p)],
-        allerSolo: [for (final p in runs.allerSolo) annotate(ak, p)],
-        retourSolo: [for (final p in runs.retourSolo) annotate(rk, p)],
+        trunk: [for (final p in runs.trunk) (k: 0, pts: annotate(ak, p))],
+        allerSolo: [
+          for (final p in runs.allerSolo) (k: 0, pts: annotate(ak, p))
+        ],
+        retourSolo: [
+          for (final p in runs.retourSolo) (k: 0, pts: annotate(rk, p))
+        ],
       );
     });
     _strandRuns = result;
+    _strandsFromLoom = false;
+  }
+
+  /// Peuple [_strandRuns] depuis les faisceaux LOOM pré-calculés au build
+  /// (flag LOOM_NETWORK, cf. [LoomNetworkService]) :
+  /// - `trunk` = runs LOOM (l'ALLER complet, géométrie `topo` partagée,
+  ///   vecteurs slot×perpendiculaire déjà "baked" — sémantique [_StrandPt]),
+  ///   `k` = densité max du corridor sur la pièce (amincissement au rendu) ;
+  /// - `retourSolo` = antennes du retour à sens unique reprises de
+  ///   [_mergedRuns] SANS offset (k: 0, vecteur nul) : LOOM ne connaît que
+  ///   l'aller, ces tronçons divergents resteraient invisibles sinon ;
+  /// - `allerSolo` = vide : l'aller est déjà couvert en entier par les runs
+  ///   LOOM (le dessiner en plus dédoublerait le trait).
+  /// Ligne absente du JSON → pas d'entrée → fallback tracé brut/mergé au
+  /// rendu (branche `strands == null`).
+  void _populateStrandRunsFromLoom() {
+    final svc = PublicTransportService.instance;
+    final loom = LoomNetworkService.instance;
+    final result = <String,
+        ({
+          List<({int k, List<_StrandPt> pts})> trunk,
+          List<({int k, List<_StrandPt> pts})> allerSolo,
+          List<({int k, List<_StrandPt> pts})> retourSolo
+        })>{};
+    for (final ln in svc.linesByImportance) {
+      if (svc.tierFor(ln) == 1) continue; // tier 1 : tracé pur au-dessus
+      final runs = loom.runsFor(ln);
+      if (runs == null || runs.isEmpty) continue;
+      final merged = _mergedRuns[ln];
+      result[ln] = (
+        trunk: [
+          for (final r in runs)
+            (
+              k: r.k,
+              pts: [
+                for (final p in r.pts)
+                  _StrandPt(LatLng(p[0], p[1]), p[2], p[3]),
+              ],
+            ),
+        ],
+        allerSolo: const [],
+        retourSolo: [
+          for (final pts in merged?.retourSolo ?? const <List<LatLng>>[])
+            (k: 0, pts: [for (final p in pts) _StrandPt(p, 0, 0)]),
+        ],
+      );
+    }
+    _strandRuns = result;
+    _strandsFromLoom = true;
+    myCustomPrintStatement(
+        'LOOM network: ${result.length} lignes en faisceaux pré-calculés');
   }
 
   /// Applique l'offset latéral de faisceau à une pièce annotée :
@@ -3995,8 +4415,6 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final svc = PublicTransportService.instance;
     final selected = _publicSelectedLine;
     final selectedStop = _publicSelectedStop;
-    final dpr =
-        MediaQuery.maybeOf(context)?.devicePixelRatio ?? 2.0;
     // m/px au zoom courant : sert à convertir les tailles ÉCRAN (traits,
     // billes, terminus, écarts de slot) en rayons/offsets géographiques.
     final mpp = _metersPerPixel(_publicMapZoom);
@@ -4030,7 +4448,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // Dots blancs sur la polyline visibles dès qu'on commence à zoomer.
     // Les labels (numéro de ligne) n'apparaissent que plus haut pour ne
     // pas saturer.
-    final showStops = _publicMapZoom >= 11;
+    // En mode LOOM (vue réseau toutes-lignes), les billes d'arrêts sur les
+    // faisceaux surchargent la carte : on ne les montre que pour la ligne
+    // SÉLECTIONNÉE ou en zoom très proche (≥ [_loomStopsMinZoom], réglable
+    // QA). Fallback heuristique : seuil historique 11 inchangé.
+    final showStops = _strandsFromLoom
+        ? (selected != null || _publicMapZoom >= _loomStopsMinZoom)
+        : _publicMapZoom >= 11;
     // Pastilles n° de ligne + capsules de correspondance : cachées par défaut,
     // affichées seulement TRÈS PROCHE (≥ 16) — ou, à tout zoom, sur l'arrêt
     // cliqué/survolé (géré par la branche isActive plus bas). Les billes rondes
@@ -4063,8 +4487,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final termCaps = <({LatLng pos, Color color, double radiusM})>[];
     for (final lineNumber in renderOrder) {
       if (!visible.contains(lineNumber)) continue;
+      // FAST PATH : avant le chargement des GeoJSON, `group` est null mais
+      // les faisceaux LOOM suffisent à dessiner les rubans (les terminus
+      // et les fallbacks tracé brut attendent le chargement complet).
       final group = svc.getLineGroup(lineNumber);
-      if (group == null) continue;
+      if (group == null && _strandRuns[lineNumber] == null) continue;
       final meta = svc.metadataFor(lineNumber);
       final color =
           meta != null ? Color(meta.colorValue) : const Color(0xFF1565C0);
@@ -4118,8 +4545,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
       if (isSelected) {
         // Vue ligne sélectionnée : tracé brut plein, aller + retour, INCHANGÉ.
-        if (group.aller != null) addColored('aller', group.aller!.coordinates, width);
-        if (group.retour != null) addColored('retour', group.retour!.coordinates, width);
+        // (group null seulement pendant le fast path, où rien n'est encore
+        // sélectionné — garde de complétude.)
+        if (group?.aller != null) {
+          addColored('aller', group!.aller!.coordinates, width);
+        }
+        if (group?.retour != null) {
+          addColored('retour', group!.retour!.coordinates, width);
+        }
       } else {
         // VUE RÉSEAU : aller et retour fusionnés (tronc + branches, cf.
         // _precomputeMergedLines), pièces annotées d'un vecteur d'offset
@@ -4127,23 +4560,26 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         // partagent l'axe, chaque ligne glisse sur SON slot (-1/0/+1) → ≤ 3
         // brins côte à côte, polylignes CONTINUES (aucun trou), croisements
         // francs (prioritaire au-dessus par ordre d'insertion).
-        final strands = _strandRuns[lineNumber];
+        // Au DÉZOOM squelette (< 15), les slots LOOM (jusqu'à ±12,5 ≈ 90 px)
+        // écarteraient une ligne de sa rue alors que ses voisines de corridor
+        // sont masquées → tracé mergé sans offset (strands == null). Pas de
+        // gate pour l'heuristique : son squelette est prioritaire au centre
+        // (slot 0), aucun artefact.
+        final strands = (_strandsFromLoom && _publicMapZoom < 15)
+            ? null
+            : _strandRuns[lineNumber];
         final trunkPx = strokePx;
         final branchPx = (strokePx * 0.7).clamp(2.5, strokePx);
-        // Écart d'un slot = largeur du trait + sa bordure (px → m au zoom
-        // courant) : les brins restent côte à côte, bordures qui se touchent,
-        // à TOUS les zooms.
-        final slotWM = (trunkPx + 2) * mpp;
         if (strands == null) {
           // Fallback (precompute pas encore prêt / tier 1 hors faisceau) :
           // tracé brut plein.
           final merged = _mergedRuns[lineNumber];
           if (merged == null) {
-            if (group.aller != null) {
-              addColored('aller', group.aller!.coordinates, width);
+            if (group?.aller != null) {
+              addColored('aller', group!.aller!.coordinates, width);
             }
-            if (group.retour != null) {
-              addColored('retour', group.retour!.coordinates, width);
+            if (group?.retour != null) {
+              addColored('retour', group!.retour!.coordinates, width);
             }
           } else {
             for (var i = 0; i < merged.trunk.length; i++) {
@@ -4157,27 +4593,51 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             }
           }
         } else {
+          // Pièces (k, pts). k ≥ 2 = corridor LOOM partagé : BUDGET DE
+          // LARGEUR CONTINU (remplace l'amincissement binaire 64/k) — la
+          // bande totale d'un corridor est bornée à ~[_loomBandBudgetPx]
+          // quel que soit k :
+          //   pitch = budget/k (part de bande par brin, cœur + jour),
+          //   plafonné au pas normal (cœur 5 px + jour 2) pour que k=2-5
+          //   garde le rendu standard ;
+          //   cœur = clamp(pitch − jour, 3, 5).
+          // L'écart de slot (slotWM) suit CE pitch : tous les brins du
+          // corridor partagent k → alignement bord à bord garanti.
+          // k=12-15 → brins fins, bande ~40 px (au lieu de ~100).
+          // k = 0 (heuristique / antennes) : largeurs et écart historiques
+          // de la ligne — strictement inchangés (fallback non régressé).
+          void addStrand(
+              String id, ({int k, List<_StrandPt> pts}) piece, double legacyPx) {
+            final bool shared = piece.k >= 2;
+            if (shared) {
+              const jourPx = 2.0; // bordure noire ~1 px de chaque côté
+              const basePx = 5.0; // cœur d'un brin bus standard
+              final double pitch =
+                  (_loomBandBudgetPx / piece.k).clamp(0.0, basePx + jourPx);
+              final double coeur = (pitch - jourPx).clamp(3.0, basePx);
+              addColored(
+                  id, _applyStrandOffset(piece.pts, pitch * mpp), coeur);
+            } else {
+              final double wm = (trunkPx + 2) * mpp;
+              addColored(id, _applyStrandOffset(piece.pts, wm), legacyPx);
+            }
+          }
+
           for (var i = 0; i < strands.trunk.length; i++) {
-            addColored('trunk_$i', _applyStrandOffset(strands.trunk[i], slotWM),
-                trunkPx);
+            addStrand('trunk_$i', strands.trunk[i], trunkPx);
           }
           for (var i = 0; i < strands.allerSolo.length; i++) {
-            addColored(
-                'aSolo_$i',
-                _applyStrandOffset(strands.allerSolo[i], slotWM),
-                branchPx);
+            addStrand('aSolo_$i', strands.allerSolo[i], branchPx);
           }
           for (var i = 0; i < strands.retourSolo.length; i++) {
-            addColored(
-                'rSolo_$i',
-                _applyStrandOffset(strands.retourSolo[i], slotWM),
-                branchPx);
+            addStrand('rSolo_$i', strands.retourSolo[i], branchPx);
           }
         }
       }
 
       // Bouts du tracé (= les 2 terminus) à fermer par un gros point.
-      final capLine = group.aller ?? group.retour;
+      // (group null pendant le fast path → caps au chargement complet.)
+      final capLine = group?.aller ?? group?.retour;
       if (capLine != null && capLine.coordinates.length >= 2) {
         // Terminus un peu plus gros que le trait, en px → m au zoom courant.
         final capR = strokePx * 0.95 * mpp;
@@ -4385,7 +4845,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         final arrowColor = selMeta != null
             ? Color(selMeta.colorValue)
             : const Color(0xFF1565C0);
-        markers.addAll(await _buildDirectionArrows(group, arrowColor, dpr));
+        markers.addAll(_buildDirectionArrows(group, arrowColor));
       }
     }
 
@@ -4434,13 +4894,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// du retour, et inversement). Sur les tronçons à double sens (aller/retour
   /// superposés) on n'en met pas, pour éviter des flèches opposées illisibles.
   /// Révèle les boucles et sens uniques, style M réso.
-  Future<List<Marker>> _buildDirectionArrows(
-      TransportLineGroup group, Color color, double dpr) async {
+  List<Marker> _buildDirectionArrows(TransportLineGroup group, Color color) {
     final markers = <Marker>[];
     const divergeThreshM = 25.0; // au-delà : tronçon à sens unique
     const stepM = 170.0; // espacement entre 2 flèches
 
-    Future<void> addFor(List<LatLng> path, List<LatLng> other, String dir) async {
+    void addFor(List<LatLng> path, List<LatLng> other, String dir) {
       if (path.length < 2) return;
       var sinceLast = stepM; // pose une flèche dès le 1er point éligible
       for (var i = 0; i < path.length - 1; i++) {
@@ -4452,15 +4911,22 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         if (isOneWay && sinceLast >= stepM) {
           final bearing =
               _bearingBetween(a.latitude, a.longitude, b.latitude, b.longitude);
-          final icon = await StopMarkerFactory.createArrow(
-            color: color,
-            bearingDeg: bearing,
-            devicePixelRatio: dpr,
+          // WIDGET pur + Marker.rotation : l'adaptateur flutter_map ne lit
+          // pas les BitmapDescriptor (ex-createArrow → fallback POINT BLEU,
+          // vécu 05/06/2026) mais applique Transform.rotate depuis
+          // `rotation` sur les iconWidgets enregistrés.
+          final id = 'arrow_${group.lineNumber}_${dir}_$i';
+          _publicMarkerWidgets[id] = Center(
+            child: SizedBox(
+              width: 15,
+              height: 15,
+              child: CustomPaint(painter: _ArrowGlyphPainter(color)),
+            ),
           );
           markers.add(Marker(
-            markerId: MarkerId('arrow_${group.lineNumber}_${dir}_$i'),
+            markerId: MarkerId(id),
             position: a,
-            icon: icon,
+            rotation: bearing,
             anchor: const Offset(0.5, 0.5),
             zIndex: 7,
             consumeTapEvents: false,
@@ -4470,9 +4936,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       }
     }
 
-    await addFor(group.aller?.coordinates ?? const [],
+    addFor(group.aller?.coordinates ?? const [],
         group.retour?.coordinates ?? const [], 'aller');
-    await addFor(group.retour?.coordinates ?? const [],
+    addFor(group.retour?.coordinates ?? const [],
         group.aller?.coordinates ?? const [], 'retour');
     return markers;
   }
@@ -4734,7 +5200,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
   }
 
-  /// Zoom la caméra sur les bounds d'une ligne donnée (aller + retour).
+  /// Zoom la caméra sur les bounds d'une ligne donnée (aller + retour),
+  /// dans la ZONE VISIBLE de la carte : le panel TC (Positioned left:16,
+  /// largeur 320) masque la gauche de l'écran — sans padding asymétrique,
+  /// l'extrémité ouest des lignes Est-Ouest finissait sous le panel.
+  /// Sur écran étroit (panel quasi pleine largeur), fallback symétrique.
   void _zoomToPublicLine(String lineNumber) {
     final group = PublicTransportService.instance.getLineGroup(lineNumber);
     if (group == null || _mapController == null) return;
@@ -4751,13 +5221,19 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       if (p.longitude < minLng) minLng = p.longitude;
       if (p.longitude > maxLng) maxLng = p.longitude;
     }
+    const panelRightEdge = 16.0 + 320.0; // left inset + largeur du panel
+    final screenW = MediaQuery.of(context).size.width;
+    final wideEnough = screenW - panelRightEdge > 360;
+    final padding = wideEnough
+        ? const EdgeInsets.fromLTRB(panelRightEdge + 32, 72, 48, 56)
+        : const EdgeInsets.all(48);
     _mapController?.fitCamera(
       fm.CameraFit.bounds(
         bounds: fm.LatLngBounds(
           ll.LatLng(maxLat, maxLng),
           ll.LatLng(minLat, minLng),
         ),
-        padding: const EdgeInsets.all(80),
+        padding: padding,
       ),
     );
   }
@@ -4878,6 +5354,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   }
 
   Widget _buildSearchCard() {
+    final locale = context.watch<LocaleProvider>().locale;
     return Positioned(
       top: 16,
       left: 16,
@@ -4980,9 +5457,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                                               color: Colors.white,
                                             ),
                                           )
-                                        : const Text(
-                                            'Commander',
-                                            style: TextStyle(
+                                        : Text(
+                                            TransitStrings.t('web.order', locale),
+                                            style: const TextStyle(
                                               fontSize: 15,
                                               fontWeight: FontWeight.w600,
                                               letterSpacing: -0.2,
@@ -5994,6 +6471,7 @@ class _SchedulePickerDialogState extends State<_SchedulePickerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final locale = context.watch<LocaleProvider>().locale;
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
@@ -6049,14 +6527,16 @@ class _SchedulePickerDialogState extends State<_SchedulePickerDialog> {
             const SizedBox(height: 12),
 
             // Sélecteur de date
-            const Text('Date', style: TextStyle(fontWeight: FontWeight.w500)),
+            Text(TransitStrings.t('web.date', locale),
+                style: const TextStyle(fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
             _buildDateSelector(),
 
             const SizedBox(height: 16),
 
             // Sélecteur d'heure
-            const Text('Heure', style: TextStyle(fontWeight: FontWeight.w500)),
+            Text(TransitStrings.t('web.time', locale),
+                style: const TextStyle(fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
             _buildTimeSelector(),
 
@@ -6085,7 +6565,7 @@ class _SchedulePickerDialogState extends State<_SchedulePickerDialog> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: const Text('Planifier la course'),
+                child: Text(TransitStrings.t('web.scheduleRide', locale)),
               ),
             ),
           ],
@@ -6304,4 +6784,37 @@ class _PublicStopAggregate {
     required this.primaryLine,
     required this.primaryColor,
   });
+}
+
+/// Chevron de sens (15×15, pointe vers le haut) — même géométrie que
+/// l'ex-`StopMarkerFactory.createArrow`, mais en widget pur : la rotation
+/// vers le cap est appliquée par l'adaptateur via `Marker.rotation`.
+class _ArrowGlyphPainter extends CustomPainter {
+  final Color color;
+  const _ArrowGlyphPainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.translate(size.width / 2, size.height / 2);
+    final r = size.width * 0.36;
+    final path = Path()
+      ..moveTo(0, -r)
+      ..lineTo(r * 0.95, r * 0.55)
+      ..lineTo(0, r * 0.16)
+      ..lineTo(-r * 0.95, r * 0.55)
+      ..close();
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.2
+        ..strokeJoin = StrokeJoin.round,
+    );
+    canvas.drawPath(path, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_ArrowGlyphPainter oldDelegate) =>
+      oldDelegate.color != color;
 }

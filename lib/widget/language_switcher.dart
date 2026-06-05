@@ -75,6 +75,9 @@ class LanguageSwitcher extends StatelessWidget {
       AppLocale.fr => '🇫🇷',
       AppLocale.mg => '🇲🇬',
       AppLocale.en => '🇬🇧',
+      AppLocale.it => '🇮🇹',
+      AppLocale.pl => '🇵🇱',
+      AppLocale.de => '🇩🇪',
     };
     return Text(emoji, style: const TextStyle(fontSize: 14));
   }

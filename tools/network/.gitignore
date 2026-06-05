@@ -1,0 +1,5 @@
+# Artefacts intermédiaires du pipeline (régénérables) — seul le
+# web/transport_network/network_strands.json final est versionné.
+network_graph.json
+network_loom.json
+network_control.svg

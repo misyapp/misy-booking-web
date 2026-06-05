@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_map/flutter_map.dart';
@@ -43,6 +45,17 @@ class BookingMap extends StatefulWidget {
 
   /// `false` = carte figée (mini-cartes récap : aucun geste).
   final bool interactive;
+  /// Molette/pinch : zoome AUTOUR DU CENTRE de la carte au lieu du curseur.
+  /// Utilisé en mode sélection au pin (le bonhomme = camera.center : zoomer
+  /// vers le curseur déplaçait sa position GPS à chaque cran de molette).
+  final bool zoomAroundCenter;
+
+  /// Fond DÉSATURÉ (vue réseau Transport en commun) : les rubans LOOM
+  /// doivent dominer — le raster passe sous un ColorFilter (saturation
+  /// réduite + léger éclaircissement). Réglage client uniquement : les
+  /// labels de voirie mineure restent (masquage = style serveur dédié,
+  /// cf. tools/network/README.md).
+  final bool muted;
 
   const BookingMap({
     super.key,
@@ -58,7 +71,9 @@ class BookingMap extends StatefulWidget {
     this.satellite = false,
     this.showZoomControls = true,
     this.initialCameraFit,
+    this.muted = false,
     this.interactive = true,
+    this.zoomAroundCenter = false,
   });
 
   /// Provider PMTiles + thème, chargés **une seule fois** et partagés entre
@@ -159,18 +174,67 @@ class _BookingMapState extends State<BookingMap> {
         tileProvider: NetworkTileProvider(),
       );
     }
-    return TileLayer(
-      urlTemplate: MapTilesConfig.rasterTileUrlTemplate
-          .replaceFirst('.png', '{r}.png'),
+    final tiles = TileLayer(
+      urlTemplate:
+          MapTilesConfig.rasterTileUrlTemplate.replaceFirst('.png', '{r}.png'),
       retinaMode: RetinaMode.isHighDensity(context),
       maxNativeZoom: 19,
       maxZoom: 19,
       userAgentPackageName: 'app.misy.book',
       tileProvider: NetworkTileProvider(),
     );
+    if (!widget.muted) return tiles;
+    // Saturation ~0.45 + éclaircissement léger : matrice standard de
+    // désaturation (coefficients luma Rec. 601) + offset.
+    const s = 0.45;
+    const r = 0.2126, g = 0.7152, b = 0.0722;
+    return ColorFiltered(
+      colorFilter: const ColorFilter.matrix(<double>[
+        r + (1 - r) * s,
+        g * (1 - s),
+        b * (1 - s),
+        0,
+        14,
+        r * (1 - s),
+        g + (1 - g) * s,
+        b * (1 - s),
+        0,
+        14,
+        r * (1 - s),
+        g * (1 - s),
+        b + (1 - b) * s,
+        0,
+        14,
+        0,
+        0,
+        0,
+        1,
+        0,
+      ]),
+      child: tiles,
+    );
   }
 
-  Widget _map(Widget basemap) => FlutterMap(
+  /// Zoom molette/pinch ancré sur le CENTRE (cf. [BookingMap.zoomAroundCenter]).
+  void _onPointerSignal(PointerSignalEvent e) {
+    final camera = widget.controller.camera;
+    double? newZoom;
+    if (e is PointerScrollEvent) {
+      // Même sensibilité que flutter_map (scrollWheelVelocity 0.005).
+      newZoom = camera.zoom - e.scrollDelta.dy * 0.005;
+    } else if (e is PointerScaleEvent) {
+      // Pinch trackpad macOS (cf. piège PointerScaleEvent du plan schématique).
+      newZoom = camera.zoom + math.log(e.scale) / math.ln2;
+    }
+    if (newZoom == null) return;
+    widget.controller.move(
+      camera.center,
+      newZoom.clamp(widget.minZoom, widget.maxZoom),
+    );
+  }
+
+  Widget _map(Widget basemap) {
+    final map = FlutterMap(
         mapController: widget.controller,
         options: MapOptions(
           initialCenter: widget.initialCenter,
@@ -185,7 +249,11 @@ class _BookingMapState extends State<BookingMap> {
               : const CameraConstraint.unconstrained(),
           interactionOptions: InteractionOptions(
             flags: widget.interactive
-                ? InteractiveFlag.all & ~InteractiveFlag.rotate
+                ? (widget.zoomAroundCenter
+                    ? InteractiveFlag.all &
+                        ~InteractiveFlag.rotate &
+                        ~InteractiveFlag.scrollWheelZoom
+                    : InteractiveFlag.all & ~InteractiveFlag.rotate)
                 : InteractiveFlag.none,
           ),
         ),
@@ -197,6 +265,13 @@ class _BookingMapState extends State<BookingMap> {
           _Attribution(satellite: widget.satellite),
         ],
       );
+    if (!widget.zoomAroundCenter) return map;
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerSignal: _onPointerSignal,
+      child: map,
+    );
+  }
 }
 
 /// Boutons +/- (équivalent `zoomControlsEnabled` Google).
@@ -251,8 +326,7 @@ class _Attribution extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text =
-        satellite ? 'Tiles © Esri' : '© OpenStreetMap contributors';
+    final text = satellite ? 'Tiles © Esri' : '© OpenStreetMap contributors';
     return Align(
       alignment: Alignment.bottomRight,
       child: Padding(
@@ -271,8 +345,7 @@ class _Attribution extends StatelessWidget {
                       mode: LaunchMode.externalApplication,
                     ),
             child: Text(text,
-                style:
-                    const TextStyle(fontSize: 10, color: Colors.black87)),
+                style: const TextStyle(fontSize: 10, color: Colors.black87)),
           ),
         ),
       ),

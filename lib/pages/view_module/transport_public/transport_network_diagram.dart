@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/transit_strings.dart';
 import 'package:rider_ride_hailing_app/models/schematic_plan.dart';
 import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
+import 'package:rider_ride_hailing_app/widget/transport/schematic_legend.dart';
 import 'package:rider_ride_hailing_app/widget/transport/schematic_map_view.dart';
 
 /// Écran plein-page : plan SCHÉMATIQUE octilinéaire du réseau taxi-be
@@ -36,19 +37,41 @@ class TransportNetworkDiagramScreen extends StatefulWidget {
 
 class _TransportNetworkDiagramScreenState
     extends State<TransportNetworkDiagramScreen> {
+  /// Rendu CTS (cf. SchematicMapView.kCts) : on charge alors les artefacts
+  /// `misy_cts*.json` ; 404/erreur → FALLBACK silencieux sur les fichiers
+  /// historiques + rendu legacy (les anciens JSON n'ont pas `legendLines`,
+  /// le painter v1 reste choisi par le flag — garde-fou intégral).
+  static const bool _kCts = bool.fromEnvironment('SCHEMATIC_CTS');
+
   late final Future<SchematicPlan> _planFuture = _load();
 
-  Future<SchematicPlan> _load() async {
-    final url = Uri.base.resolve('transport_schema/${widget.planFile}');
+  String get _ctsPlanFile =>
+      widget.planFile.replaceFirst('misy_octilineaire', 'misy_cts');
+
+  Future<SchematicPlan> _fetch(String file) async {
+    final url = Uri.base.resolve('transport_schema/$file');
     final res = await http.get(url);
     if (res.statusCode != 200) {
-      throw Exception('HTTP ${res.statusCode} pour ${widget.planFile}');
+      throw Exception('HTTP ${res.statusCode} pour $file');
     }
     return SchematicPlan.fromJson(
         jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  Future<SchematicPlan> _load() async {
+    if (_kCts) {
+      try {
+        return await _fetch(_ctsPlanFile);
+      } catch (_) {
+        // artefacts CTS absents → fichiers historiques (fallback)
+      }
+    }
+    return _fetch(widget.planFile);
+  }
+
   void _openCentre() {
+    // Toujours le nom legacy : l'écran enfant refait lui-même l'essai
+    // CTS (misy_cts_centre.json) avec le même fallback.
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => const TransportNetworkDiagramScreen(
         planFile: 'misy_octilineaire_centre.json',
@@ -97,12 +120,22 @@ class _TransportNetworkDiagramScreenState
           if (!snap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-          return SchematicMapView(
-            plan: snap.data!,
-            showCentreRect: !widget.isCentre,
-            centreLabel: TransitStrings.t('network.centre', locale),
-            onCentreTap: _openCentre,
-          );
+          final plan = snap.data!;
+          return Stack(children: [
+            SchematicMapView(
+              plan: plan,
+              showCentreRect: !widget.isCentre,
+              centreLabel: TransitStrings.t('network.centre', locale),
+              onCentreTap: _openCentre,
+            ),
+            // Légende générée (mode CTS uniquement : legendLines présent)
+            if (plan.legendLines != null && plan.legendLines!.isNotEmpty)
+              Positioned(
+                left: 12,
+                bottom: 16,
+                child: SchematicLegend(lines: plan.legendLines!),
+              ),
+          ]);
         },
       ),
     );

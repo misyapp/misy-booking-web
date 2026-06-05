@@ -45,6 +45,15 @@ class TransportPublicPanel extends StatefulWidget {
   /// Forwardé au [RouteCalculator] interne. Appelé quand l'utilisateur
   /// veut remplacer un leg marche long par une course Misy.
   final WalkLegToRideRequest? onRequestRideForWalk;
+  /// Pré-remplissage du calculateur (deep-link `?mode=transit&from*`/`to*`
+  /// depuis le widget de recherche du site, ou tuile TC du choix de
+  /// véhicule). Si les 2 points sont fournis, la recherche est lancée
+  /// automatiquement au montage.
+  final ({String label, LatLng pos})? initialOrigin;
+  final ({String label, LatLng pos})? initialDestination;
+  /// Non-null quand le mode TC a été ouvert depuis le flux Course → affiche
+  /// un bouton bien visible « Revenir à la course (voiture, moto…) ».
+  final VoidCallback? onReturnToCourse;
 
   const TransportPublicPanel({
     super.key,
@@ -57,6 +66,9 @@ class TransportPublicPanel extends StatefulWidget {
     this.mapTapNotifier,
     this.topInset = 16,
     this.onRequestRideForWalk,
+    this.initialOrigin,
+    this.initialDestination,
+    this.onReturnToCourse,
   });
 
   @override
@@ -101,6 +113,56 @@ class _TransportPublicPanelState extends State<TransportPublicPanel> {
                         onChanged: widget.onModeChanged,
                       ),
                     ),
+                    // Retour direct vers la course quand le TC a été ouvert
+                    // depuis la tuile du choix de véhicule (l'état Course
+                    // est intact côté home).
+                    if (widget.onReturnToCourse != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: widget.onReturnToCourse,
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 10),
+                              decoration: BoxDecoration(
+                                color:
+                                    const Color(0xFFFF5357).withOpacity(0.10),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: const Color(0xFFFF5357)
+                                      .withOpacity(0.35),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.arrow_back,
+                                      size: 18, color: Color(0xFFFF5357)),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      TransitStrings.t(
+                                          'panel.backToCourse',
+                                          context
+                                              .watch<LocaleProvider>()
+                                              .locale),
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFFFF5357),
+                                      ),
+                                    ),
+                                  ),
+                                  const Icon(Icons.directions_car_outlined,
+                                      size: 18, color: Color(0xFFFF5357)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     _buildHeader(context),
                     const Divider(height: 1, thickness: 1),
                     Expanded(
@@ -118,6 +180,8 @@ class _TransportPublicPanelState extends State<TransportPublicPanel> {
                               mapTapNotifier: widget.mapTapNotifier,
                               onRequestRideForWalk:
                                   widget.onRequestRideForWalk,
+                              initialOrigin: widget.initialOrigin,
+                              initialDestination: widget.initialDestination,
                             ),
                             if (!_hasResults) ...[
                               const Divider(height: 1, thickness: 1),
@@ -184,18 +248,24 @@ class _TransportPublicPanelState extends State<TransportPublicPanel> {
               ],
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.account_tree_outlined,
-                size: 18, color: Color(0xFF1D3557)),
-            tooltip: TransitStrings.t('network.button', locale),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const TransportNetworkDiagramScreen(),
-              ));
-            },
-          ),
+          // Bouton du plan schématique MASQUÉ tant que le rendu legacy
+          // n'est pas au point (labels tronqués/chevauchés — demande du
+          // 05/06/2026). Il revient automatiquement avec la refonte CTS :
+          // visible uniquement quand le build porte SCHEMATIC_CTS=true
+          // (branche feat/schematic-map-cts).
+          if (const bool.fromEnvironment('SCHEMATIC_CTS'))
+            IconButton(
+              icon: const Icon(Icons.account_tree_outlined,
+                  size: 18, color: Color(0xFF1D3557)),
+              tooltip: TransitStrings.t('network.button', locale),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              onPressed: () {
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const TransportNetworkDiagramScreen(),
+                ));
+              },
+            ),
         ],
       ),
     );
@@ -223,7 +293,13 @@ class _LinesListState extends State<_LinesList> {
   @override
   void initState() {
     super.initState();
-    _loadFuture = PublicTransportService.instance.ensureLoaded();
+    // Liste IMMÉDIATE : le manifest (~46 Ko) suffit (noms, couleurs,
+    // tiers). Le chargement complet (GeoJSON) continue en arrière-plan et
+    // déclenche un rebuild pour les compteurs d'arrêts / la recherche.
+    _loadFuture = PublicTransportService.instance.ensureManifest();
+    PublicTransportService.instance.ensureLoaded().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -262,7 +338,7 @@ class _LinesListState extends State<_LinesList> {
                 OutlinedButton(
                   onPressed: () => setState(() {
                     _loadFuture =
-                        PublicTransportService.instance.ensureLoaded();
+                        PublicTransportService.instance.ensureManifest();
                   }),
                   child: Text(TransitStrings.t('state.retry', locale)),
                 ),
@@ -473,7 +549,9 @@ class _LineRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '$stops ${TransitStrings.t('lines.stops.short', locale)}',
+                      stops > 0
+                          ? '$stops ${TransitStrings.t('lines.stops.short', locale)}'
+                          : '…',
                       style: TextStyle(
                         fontSize: 10,
                         color: Colors.grey.shade600,

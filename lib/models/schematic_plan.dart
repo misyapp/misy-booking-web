@@ -11,6 +11,10 @@ class SchematicPlan {
   final List<SchContinuation> continuations;
   final Rect? centreRect;
 
+  /// Liste globale des lignes pour la LÉGENDE (mode CTS uniquement —
+  /// `null` sur les anciens JSON, la légende n'est alors pas affichée).
+  final List<SchLegendLine>? legendLines;
+
   SchematicPlan({
     required this.size,
     required this.edges,
@@ -18,6 +22,7 @@ class SchematicPlan {
     required this.water,
     required this.continuations,
     this.centreRect,
+    this.legendLines,
   });
 
   factory SchematicPlan.fromJson(Map<String, dynamic> j) {
@@ -40,7 +45,8 @@ class SchematicPlan {
           lines: (m['lines'] as List).map((l) {
             final lm = l as Map<String, dynamic>;
             return SchLine(_color(lm['color'] as String),
-                (lm['tier'] as num).toInt());
+                (lm['tier'] as num).toInt(),
+                label: lm['label'] as String?);
           }).toList(),
         );
       }).toList(),
@@ -70,6 +76,17 @@ class SchematicPlan {
           n: (m['n'] as num?)?.toInt() ?? 1,
         );
       }).toList(),
+      legendLines: j['legendLines'] == null
+          ? null
+          : (j['legendLines'] as List).map((e) {
+              final m = e as Map<String, dynamic>;
+              return SchLegendLine(
+                label: m['label'] as String,
+                name: m['name'] as String?,
+                color: _color(m['color'] as String),
+                tier: (m['tier'] as num?)?.toInt() ?? 2,
+              );
+            }).toList(),
     );
   }
 
@@ -82,7 +99,26 @@ class SchematicPlan {
 class SchLine {
   final Color color;
   final int tier;
-  const SchLine(this.color, this.tier);
+
+  /// Numéro/nom de la ligne (mode CTS : pastilles le long du tracé) —
+  /// `null` sur les anciens JSON.
+  final String? label;
+  const SchLine(this.color, this.tier, {this.label});
+}
+
+/// Entrée de la légende générée (mode CTS) : pastille colorée + numéro,
+/// avec un nom d'affichage optionnel (« Téléphérique Orange »…).
+class SchLegendLine {
+  final String label;
+  final String? name;
+  final Color color;
+  final int tier;
+  const SchLegendLine({
+    required this.label,
+    this.name,
+    required this.color,
+    required this.tier,
+  });
 }
 
 class SchEdge {
@@ -94,7 +130,7 @@ class SchEdge {
 class SchStation {
   final Offset pos;
   final String name;
-  final String kind; // stop | terminus | interchange
+  final String kind; // stop | terminus | interchange | pole (CTS)
   final int tier;
   final int n; // nombre de lignes desservies
   const SchStation({
@@ -107,6 +143,7 @@ class SchStation {
 
   /// Priorité d'affichage du label (plus haut = montré en premier au dézoom).
   int get priority {
+    if (kind == 'pole') return 200 + n; // pôle d'échange : toujours premier
     if (kind == 'interchange') return 100 + n;
     if (tier == 1) return 90;
     if (kind == 'terminus') return 60;
