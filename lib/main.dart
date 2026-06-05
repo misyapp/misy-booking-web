@@ -12,6 +12,7 @@ import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/global_data.dart';
 import 'package:rider_ride_hailing_app/contants/my_colors.dart';
 import 'package:rider_ride_hailing_app/functions/print_function.dart';
+import 'package:rider_ride_hailing_app/pages/account_web/account_shell_web.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/splash_screen.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/web_entry_screen.dart';
 import 'package:rider_ride_hailing_app/pages/test_invoice_regeneration_page.dart';
@@ -626,6 +627,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 ],
                 home: const SplashScreen(),
                 routes: {
+                  // Espace compte rider web (courses, portefeuille, profil).
+                  '/account': (context) => const AccountShellWeb(),
                   '/test-invoice': (context) => const TestInvoiceRegenerationPage(),
                   '/transport-login': (context) => const TransportLoginScreen(),
                   '/transport-editor': (context) => const EditorDashboardScreen(),

@@ -20,9 +20,11 @@ import 'package:rider_ride_hailing_app/widget/input_text_field_widget.dart';
 import 'package:rider_ride_hailing_app/widget/round_edged_button.dart';
 import 'package:rider_ride_hailing_app/widget/show_custom_dialog.dart';
 import 'package:rider_ride_hailing_app/widget/show_snackbar.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:rider_ride_hailing_app/widget/web_card_shell.dart';
 
 class PhoneNumberScreen extends StatefulWidget {
   const PhoneNumberScreen({super.key});
@@ -78,8 +80,36 @@ class _PhoneNumberScreenState extends State<PhoneNumberScreen> {
           myCustomPrintStatement("⚠️ Tentative de retour bloquée - Numéro de téléphone requis");
         }
       },
-      child: Scaffold(
-        appBar: CustomAppBar(
+      child: kIsWeb ? _buildWebLayout(context) : _buildMobileLayout(context),
+    ); // Fermeture de PopScope
+  }
+
+  /// Présentation web : carte blanche centrée (parité WebAuthScreen) au lieu
+  /// du Scaffold mobile pleine largeur. Même contenu, même logique.
+  Widget _buildWebLayout(BuildContext context) {
+    return WebCardShell(
+      title: translate("Verify Phone Number"),
+      footer: Center(
+        child: TextButton.icon(
+          onPressed: () {
+            Provider.of<CustomAuthProvider>(context, listen: false)
+                .logout(context);
+          },
+          icon: const Icon(Icons.logout, size: 18, color: Colors.black54),
+          label: Text(
+            translate("logout"),
+            style: const TextStyle(color: Colors.black54),
+          ),
+        ),
+      ),
+      child: _buildFormContent(context),
+    );
+  }
+
+  /// Présentation mobile d'origine (inchangée).
+  Widget _buildMobileLayout(BuildContext context) {
+    return Scaffold(
+      appBar: CustomAppBar(
         actions: [
           IconButton(
             onPressed: () {
@@ -104,14 +134,25 @@ class _PhoneNumberScreenState extends State<PhoneNumberScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 18.0),
         child: Center(
           child: SingleChildScrollView(
-            child: Column(
+            child: _buildFormContent(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Contenu commun mobile/web : textes, champ téléphone + indicatif, bouton
+  /// « Suivant » avec toute la logique de vérification/OTP existante.
+  Widget _buildFormContent(BuildContext context) {
+    return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 ParagraphText(
                   translate("Please enter your phone number"),
                   fontWeight: FontWeight.w400,
                   color: MyColors.blackThemeColor06(),
-                  fontSize: 24,
+                  fontSize: kIsWeb ? 18 : 24,
                 ),
                 ParagraphText(
                   translate("pleaseEnterNewPhoneNumberMsg"),
@@ -300,11 +341,6 @@ class _PhoneNumberScreenState extends State<PhoneNumberScreen> {
                   );
                 })
               ],
-            ),
-          ),
-        ),
-      ),
-    ),
-    ); // Fermeture de PopScope
+            );
   }
 }

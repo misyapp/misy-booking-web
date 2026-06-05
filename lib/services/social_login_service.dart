@@ -1,5 +1,6 @@
 import 'package:rider_ride_hailing_app/utils/platform.dart';
 import 'dart:math';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -461,6 +462,163 @@ class SocialLoginServices {
     myCustomPrintStatement('❌ Fin de facebookLogin sans résultat');
     isFacebookSignInInProgress = false;
     return null;
+  }
+
+  /// Connexion Apple — **web uniquement** dans ce fork (book.misy.app).
+  ///
+  /// Sur web, `signInWithPopup(OAuthProvider('apple.com'))` gère tout le flow
+  /// OAuth (pas besoin du package natif `sign_in_with_apple` ni de nonce
+  /// manuel). Réutilise le Services ID Apple déjà configuré pour le portail
+  /// chauffeur web — `book.misy.app` doit être déclaré dans ses domaines
+  /// (+ provider Apple activé dans Firebase Auth), sinon popup
+  /// `auth/operation-not-allowed`.
+  ///
+  /// Spécificités Apple gérées : `displayName` et `email` peuvent être
+  /// absents (masquage d'email, 2ᵉ connexion sans re-partage du nom).
+  Future<UserSocialLoginDeatilModal?> appleLogin() async {
+    showHomePageMenuNoti.value = true;
+    final firebaseAuth = FirebaseAuth.instance;
+    try {
+      myCustomPrintStatement(' Début connexion Apple...');
+
+      if (!kIsWeb) {
+        // Fork web : le chemin natif iOS vit dans la riderapp, pas ici.
+        showSnackbar(
+            "La connexion Apple est disponible sur le web et l'app iOS.");
+        return null;
+      }
+
+      // Activer le flag pour bloquer les navigations du listener
+      isAppleSignInInProgress = true;
+      myCustomPrintStatement(
+          '🚫 Apple Sign-In en cours - navigation listener bloquée');
+
+      // Même précaution que Google/Facebook : déconnecter un éventuel
+      // utilisateur anonyme (mode invité) avant le popup.
+      final currentUser = firebaseAuth.currentUser;
+      final wasAnonymous = currentUser?.isAnonymous ?? false;
+      if (currentUser != null && wasAnonymous) {
+        myCustomPrintStatement('🔄 Déconnexion de l\'utilisateur anonyme');
+        await firebaseAuth.signOut();
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+
+      final provider = OAuthProvider('apple.com')
+        ..addScope('email')
+        ..addScope('name');
+
+      final authResult = await firebaseAuth.signInWithPopup(provider);
+
+      if (authResult.user == null) {
+        myCustomPrintStatement("⚠️ Connexion Apple annulée ou user null");
+        isAppleSignInInProgress = false;
+        return null;
+      }
+
+      await showLoading();
+
+      // Apple ne fournit pas toujours displayName/email (relay privé,
+      // connexions suivantes) → fallbacks sûrs.
+      final email = authResult.user?.email ?? '';
+      final displayName = (authResult.user?.displayName ?? '').trim();
+      final nameParts =
+          displayName.isEmpty ? <String>[] : displayName.split(' ');
+      final firstName = nameParts.isNotEmpty ? nameParts.first : '';
+      final lastName = nameParts.length > 1 ? nameParts.last : '';
+      final fallbackName = displayName.isNotEmpty
+          ? displayName
+          : (email.isNotEmpty ? email.split('@').first : 'Utilisateur Misy');
+
+      final DocumentSnapshot userSnapshot =
+          await FirestoreServices.users.doc(authResult.user?.uid).get();
+      CustomAuthProvider customAuthProvider = Provider.of<CustomAuthProvider>(
+          MyGlobalKeys.navigatorKey.currentContext!,
+          listen: false);
+
+      if (userSnapshot.exists == false) {
+        // Nouveau compte — même squelette de doc `users` que Google/Facebook.
+        Map<String, dynamic> request = {
+          'id': authResult.user?.uid,
+          'name': fallbackName,
+          'lastName': lastName,
+          'firstName': firstName.isNotEmpty ? firstName : fallbackName,
+          'email': email,
+          "verified": true,
+          "isBlocked": false,
+          "accountDeleted": false,
+          "isCustomer": true,
+          'phoneNo': "",
+          "countryName": "United States",
+          'password': authResult.user?.uid,
+          'profileImage': authResult.user?.photoURL ?? dummyUserImage,
+        };
+
+        await customAuthProvider.signup(
+          MyGlobalKeys.navigatorKey.currentContext!,
+          request,
+          socialLogin: true,
+        );
+        await customAuthProvider.clearGuestDataOnly();
+        customAuthProvider.currentUser = authResult.user;
+        await customAuthProvider.getAndUpdateUserModal(showLoader: false);
+        hideLoading();
+
+        // Nouveau compte → capture du numéro de téléphone, comme Google.
+        pushAndRemoveUntil(
+          context: MyGlobalKeys.navigatorKey.currentContext!,
+          screen: const PhoneNumberScreen(),
+        );
+        isAppleSignInInProgress = false;
+        myCustomPrintStatement(
+            "✅ Nouveau compte Apple créé - Navigation vers PhoneNumberScreen");
+      } else {
+        // Compte existant — même chemin que Google : maj user + navigation
+        // selon présence du numéro de téléphone.
+        await customAuthProvider.clearGuestDataOnly();
+        customAuthProvider.currentUser = authResult.user;
+        await customAuthProvider.getAndUpdateUserModal();
+        hideLoading();
+
+        final userPhoneNo = userData.value?.phoneNo;
+        final bool hasPhoneNumber =
+            userPhoneNo != null && userPhoneNo.isNotEmpty;
+        pushAndRemoveUntil(
+          context: MyGlobalKeys.navigatorKey.currentContext!,
+          screen: hasPhoneNumber
+              ? const MainNavigationScreen()
+              : const PhoneNumberScreen(),
+        );
+        isAppleSignInInProgress = false;
+        myCustomPrintStatement("✅ Connexion Apple terminée - Flag désactivé");
+      }
+
+      return UserSocialLoginDeatilModal(
+          socialLoginId: authResult.user!.uid,
+          emailId: email,
+          userName: fallbackName);
+    } on FirebaseAuthException catch (e) {
+      myCustomPrintStatement(
+          "❌ FirebaseAuthException Apple: ${e.code} - ${e.message}");
+      isAppleSignInInProgress = false;
+      hideLoading();
+      if (e.code == 'account-exists-with-different-credential') {
+        showSnackbar(
+            "Ce compte existe déjà avec un autre fournisseur. Veuillez vous connecter avec Google ou Facebook.");
+      } else if (e.code == 'popup-closed-by-user' ||
+          e.code == 'cancelled-popup-request') {
+        // Fermeture volontaire du popup : pas une erreur.
+        myCustomPrintStatement("ℹ️ Popup Apple fermé par l'utilisateur");
+      } else {
+        showSnackbar("Erreur lors de la connexion Apple: ${e.message}");
+      }
+      return null;
+    } catch (e) {
+      myCustomPrintStatement("❌ Error during Apple sign-in: $e");
+      isAppleSignInInProgress = false;
+      hideLoading();
+      showSnackbar("Erreur lors de la connexion Apple: ${e.toString()}");
+      return null;
+    }
   }
 
   String generateNonce([int length = 32]) {

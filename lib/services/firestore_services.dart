@@ -1,5 +1,7 @@
 import 'package:rider_ride_hailing_app/utils/platform.dart';
 
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -225,6 +227,24 @@ class FirestoreServices {
     //   await EasyLoading.dismiss();
     // }
     return imageURLs;
+  }
+
+  /// Upload de bytes en mémoire vers Storage (web-safe : pas de `File` disque).
+  /// Utilisé pour persister les factures PDF générées côté navigateur.
+  static Future<String> uploadBytes(Uint8List bytes, String path,
+      String fileName, {String contentType = 'application/pdf'}) async {
+    try {
+      final Reference storageReference =
+          FirebaseStorage.instance.ref(path).child(fileName);
+      final TaskSnapshot uploadTask = await storageReference.putData(
+        bytes,
+        SettableMetadata(contentType: contentType),
+      );
+      return await uploadTask.ref.getDownloadURL();
+    } catch (err) {
+      myCustomPrintStatement('uploadBytes error: $err');
+      return "";
+    }
   }
 
   static Future<String> uploadFile(File file, String path,

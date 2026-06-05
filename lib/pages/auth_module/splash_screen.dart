@@ -2,16 +2,13 @@ import 'dart:html' as html;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/my_colors.dart';
 import 'package:rider_ride_hailing_app/pages/test_invoice_regeneration_page.dart';
-import 'package:rider_ride_hailing_app/pages/view_module/transport_editor/editor_dashboard_screen.dart';
 
 import '../../../contants/my_image_url.dart';
 import '../../../provider/auth_provider.dart';
-import 'phone_number_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -41,11 +38,11 @@ class _SplashScreenState extends State<SplashScreen> {
       _currentUrl().contains('transport-login') ||
       _currentUrl().contains('transport-iam');
 
-  // Force l'écran de login (depuis beta.misy.app → "Connexion" ou "S'inscrire")
-  // login=1 et signup=1 partagent le même flow (PhoneNumberScreen) car l'inscription
-  // se fait via numéro de téléphone, identique à la connexion.
-  bool get _isForceLoginMode =>
-      _currentUrl().contains('login=1') || _currentUrl().contains('signup=1');
+  // NOTE: les params `login=1` / `signup=1` (CTA "Connexion"/"S'inscrire" de
+  // beta.misy.app) ne court-circuitent plus le splash : ils sont capturés par
+  // DeepLinkParams et c'est HomeScreenWeb qui ouvre le dialog WebAuthScreen
+  // dans le bon mode (cf. _maybeOpenAuthDialogFromUrl). L'ancien push direct
+  // de PhoneNumberScreen donnait l'écran mobile brut, hors charte web.
 
   @override
   void initState() {
@@ -74,18 +71,6 @@ class _SplashScreenState extends State<SplashScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         auth = Provider.of<CustomAuthProvider>(context, listen: false);
         auth.setAuthListener(context);
-      });
-      return;
-    }
-
-    // Mode "force login" : l'utilisateur arrive depuis le CTA "Connectez-vous"
-    // de beta.misy.app. On push directement PhoneNumberScreen, peu importe
-    // l'état d'auth en cache.
-    if (_isForceLoginMode) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const PhoneNumberScreen()),
-        );
       });
       return;
     }

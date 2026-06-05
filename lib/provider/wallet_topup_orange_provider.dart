@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'dart:convert' as convert;
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:rider_ride_hailing_app/contants/global_data.dart';
 import 'package:rider_ride_hailing_app/contants/global_keys.dart';
 import 'package:rider_ride_hailing_app/contants/language_strings.dart';
@@ -187,7 +189,26 @@ class WalletTopUpOrangeProvider with ChangeNotifier {
   /// Ouvre la WebView pour le paiement Orange
   Future<void> _openPaymentWebView() async {
     if (paymentUrl.isEmpty) return;
-    
+
+    // Web : `webview_flutter` n'a pas d'implémentation web → ouvrir la page
+    // de paiement Orange dans un nouvel onglet du navigateur. Le polling
+    // `_startStatusChecking` suit la transaction exactement comme sur mobile
+    // (l'utilisateur revient sur l'onglet book.misy.app après paiement).
+    if (kIsWeb) {
+      try {
+        await launchUrl(
+          Uri.parse(paymentUrl),
+          webOnlyWindowName: '_blank',
+        );
+        _startStatusChecking();
+      } catch (error) {
+        myCustomPrintStatement(
+            'Error opening Orange payment URL on web: $error');
+        showSnackbar(translate("browserOpenError"));
+      }
+      return;
+    }
+
     try {
       await push(
         context: MyGlobalKeys.navigatorKey.currentContext!,

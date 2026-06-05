@@ -55,6 +55,8 @@ ValueNotifier<Map<String, TotalTimeDistanceModal>> nearestDriverTime =
 bool isGoogleSignInInProgress = false;
 // Flag pour bloquer la navigation automatique du listener pendant Facebook Sign-In
 bool isFacebookSignInInProgress = false;
+// Flag pour bloquer la navigation automatique du listener pendant Apple Sign-In
+bool isAppleSignInInProgress = false;
 // Flag pour bloquer la navigation automatique du listener pendant le logout/suppression de compte
 bool isLogoutInProgress = false;
 

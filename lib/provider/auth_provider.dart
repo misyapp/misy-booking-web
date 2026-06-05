@@ -220,6 +220,10 @@ class CustomAuthProvider with ChangeNotifier {
         myCustomPrintStatement("🚫 Navigation bloquée - Facebook Sign-In en cours");
         return; // Ne pas naviguer
       }
+      if (isAppleSignInInProgress) {
+        myCustomPrintStatement("🚫 Navigation bloquée - Apple Sign-In en cours");
+        return; // Ne pas naviguer
+      }
       // 🚫 BLOQUER la navigation si logout/suppression de compte est en cours
       // Cela empêche la double navigation (logout manuel + listener automatique)
       if (isLogoutInProgress) {

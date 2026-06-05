@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:rider_ride_hailing_app/utils/platform.dart';
 import 'dart:math';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../utils/ios_map_fix.dart';
 import '../utils/map_utils.dart';
 
@@ -6595,6 +6596,31 @@ class TripProvider extends ChangeNotifier {
           bookingDetails: bookingCopy,
           customerDetails: userData.value!,
           driverData: driverDetails);
+
+      // Web : pas de système de fichiers (`getApplicationDocumentsDirectory`
+      // lève) → upload direct des bytes en Storage. Avant ce chemin, la
+      // génération échouait silencieusement et `rider_invoice` restait sur
+      // sa valeur `pending_…` pour toutes les courses réservées sur le web.
+      if (kIsWeb) {
+        final ts = DateTime.now().microsecondsSinceEpoch;
+        final prefix = userData.value!.id.substring(0, 4);
+        String riderInvoiceUrl = await FirestoreServices.uploadBytes(
+            uint8list, 'invoice', '${prefix}2$ts.pdf');
+
+        Uint8List uint8listDriver = await generateDriverInvoice(
+            bookingDetails: bookingCopy, driverData: driverDetails);
+        String driverInvoiceUrl = await FirestoreServices.uploadBytes(
+            uint8listDriver, 'invoice', '${prefix}1$ts.pdf');
+
+        await FirestoreServices.bookingHistory.doc(bookingId).update({
+          if (riderInvoiceUrl.isNotEmpty) 'rider_invoice': riderInvoiceUrl,
+          if (driverInvoiceUrl.isNotEmpty) 'driver_invoice': driverInvoiceUrl,
+        });
+        myCustomPrintStatement(
+            '🔶 PDF_BACKGROUND: Invoices uploaded via bytes (web)');
+        return;
+      }
+
       final dir = await getApplicationDocumentsDirectory();
       var file = File(
           "${dir.path.split("app_flutter").first}${userData.value!.id.substring(0, 4)}2${DateTime.now().microsecondsSinceEpoch}.pdf");

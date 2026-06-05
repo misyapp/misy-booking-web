@@ -39,11 +39,11 @@ import 'package:rider_ride_hailing_app/pages/auth_module/signup_screen.dart' sho
 import 'package:rider_ride_hailing_app/pages/auth_module/web_auth_screen.dart'
     show WebAuthMode, WebAuthScreen;
 import 'package:rider_ride_hailing_app/contants/transit_strings.dart' show AppLocale;
-import 'package:rider_ride_hailing_app/pages/auth_module/edit_profile_screen.dart';
+import 'package:rider_ride_hailing_app/pages/account_web/account_shell_web.dart'
+    show AccountSection;
 import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/phone_number_screen.dart';
-import 'package:rider_ride_hailing_app/pages/view_module/my_booking_screen.dart';
-import 'package:rider_ride_hailing_app/functions/navigation_functions.dart';
+import 'package:rider_ride_hailing_app/services/feature_toggle_service.dart';
 import 'package:rider_ride_hailing_app/services/guest_storage_service.dart';
 import 'package:rider_ride_hailing_app/models/guest_session.dart';
 import 'package:rider_ride_hailing_app/bottom_sheet_widget/request_for_ride.dart';
@@ -560,6 +560,25 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         if (mode == 'transit' || mode == 'transport') {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) _setHomeMode(HomeMode.publicTransport);
+          });
+        }
+
+        // Deep-link auth (CTA "Connexion"/"S'inscrire" du header beta.misy.app :
+        // book.misy.app/?login=1 ou ?signup=1) : ouvrir la carte WebAuthScreen
+        // dans le bon mode par-dessus la home. Remplace l'ancien push direct de
+        // PhoneNumberScreen depuis le splash (écran mobile brut, hors charte).
+        if (params['login'] == '1' || params['signup'] == '1') {
+          final authMode = params['signup'] == '1'
+              ? WebAuthMode.signup
+              : WebAuthMode.login;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            // Ne rien ouvrir si un vrai compte est déjà connecté (lien
+            // re-visité / rechargement) — l'anonyme du mode invité compte
+            // comme « non connecté ».
+            final user = FirebaseAuth.instance.currentUser;
+            if (mounted && (user == null || user.isAnonymous)) {
+              _showWebAuthDialog(authMode);
+            }
           });
         }
 
@@ -2435,9 +2454,14 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
               } else if (value == 'transport-editor') {
                 Navigator.of(context).pushNamed('/transport-editor');
               } else if (value == 'profile') {
-                push(context: context, screen: const EditProfileScreen());
+                Navigator.of(context).pushNamed('/account',
+                    arguments: AccountSection.profile);
               } else if (value == 'trips') {
-                push(context: context, screen: const MyBookingScreen());
+                Navigator.of(context).pushNamed('/account',
+                    arguments: AccountSection.trips);
+              } else if (value == 'wallet') {
+                Navigator.of(context).pushNamed('/account',
+                    arguments: AccountSection.wallet);
               } else if (value.startsWith('lang.')) {
                 final loc = AppLocale.values.firstWhere(
                   (l) => 'lang.${l.name}' == value,
@@ -2468,6 +2492,19 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                   ],
                 ),
               ),
+              // Portefeuille : entrée masquée si la feature est désactivée
+              // côté admin (aucune mention, parité espace compte).
+              if (FeatureToggleService.instance.isDigitalWalletEnabled())
+                const PopupMenuItem(
+                  value: 'wallet',
+                  child: Row(
+                    children: [
+                      Icon(Icons.account_balance_wallet_outlined),
+                      SizedBox(width: 8),
+                      Text('Portefeuille'),
+                    ],
+                  ),
+                ),
               if (_isTransportEditor) ...[
                 const PopupMenuDivider(),
                 const PopupMenuItem(

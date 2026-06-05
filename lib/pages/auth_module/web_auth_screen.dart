@@ -666,6 +666,14 @@ class _WebAuthScreenState extends State<WebAuthScreen> {
                 onTap: _onFacebookTap,
               ),
             ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _socialButton(
+                label: "Apple",
+                iconData: Icons.apple,
+                onTap: _onAppleTap,
+              ),
+            ),
           ],
         ),
       ],
@@ -676,6 +684,7 @@ class _WebAuthScreenState extends State<WebAuthScreen> {
     required String label,
     String? iconSvg,
     String? iconAsset,
+    IconData? iconData,
     required VoidCallback onTap,
   }) {
     return SizedBox(
@@ -703,7 +712,9 @@ class _WebAuthScreenState extends State<WebAuthScreen> {
                   height: 20,
                   fit: BoxFit.cover,
                 ),
-              ),
+              )
+            else if (iconData != null)
+              Icon(iconData, size: 20, color: const Color(0xFF1D1D1F)),
             const SizedBox(width: 8),
             Text(
               label,
@@ -753,6 +764,25 @@ class _WebAuthScreenState extends State<WebAuthScreen> {
     } catch (e) {
       EasyLoading.dismiss();
       myCustomPrintStatement("Facebook login error: $e");
+    }
+  }
+
+  Future<void> _onAppleTap() async {
+    EasyLoading.show(
+      status: 'Connexion avec Apple...',
+      maskType: EasyLoadingMaskType.black,
+      dismissOnTap: false,
+    );
+    try {
+      final UserSocialLoginDeatilModal? res =
+          await SocialLoginServices().appleLogin();
+      EasyLoading.dismiss();
+      if (res != null) {
+        myCustomPrintStatement("Apple login: ${res.toJson()}");
+      }
+    } catch (e) {
+      EasyLoading.dismiss();
+      myCustomPrintStatement("Apple login error: $e");
     }
   }
 

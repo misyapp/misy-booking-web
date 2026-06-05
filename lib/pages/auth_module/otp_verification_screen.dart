@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
+import 'package:rider_ride_hailing_app/widget/web_card_shell.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 import 'package:rider_ride_hailing_app/contants/language_strings.dart';
 import 'package:flutter/material.dart';
@@ -73,34 +75,56 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     });
   }
 
+  /// Retour : re-saisie du numéro (flow téléphone) ou retour login (flow
+  /// email). Partagé entre l'AppBar mobile et le bouton retour de la carte web.
+  void _goBack() {
+    if (widget.request['email'] == null) {
+      pushReplacement(screen: const PhoneNumberScreen(), context: context);
+    } else {
+      pushReplacement(context: context, screen: const LoginPage());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (kIsWeb) {
+      // Présentation web : carte blanche centrée (parité WebAuthScreen).
+      return WebCardShell(
+        title: translate('verifyMobileTitle'),
+        onBack: _goBack,
+        child: _buildFormContent(context),
+      );
+    }
     return Scaffold(
       appBar: CustomAppBar(
         title: translate('verifyMobileTitle'),
-        onPressed: () {
-          if (widget.request['email'] == null) {
-            pushReplacement(
-                screen: const PhoneNumberScreen(), context: context);
-          } else {
-            pushReplacement(context: context, screen: const LoginPage());
-          }
-        },
+        onPressed: _goBack,
       ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(
               horizontal: globalHorizontalPadding, vertical: 30),
           child: SingleChildScrollView(
-            child: Column(
+            child: _buildFormContent(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Contenu commun mobile/web : textes, champ PIN, compte à rebours de
+  /// renvoi et bouton « Valider » — logique d'origine inchangée.
+  Widget _buildFormContent(BuildContext context) {
+    return Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                vSizedBox8,
+                if (!kIsWeb) vSizedBox8,
                 ParagraphText(
                   translate("enterYourOTP"),
                   fontWeight: FontWeight.w500,
-                  fontSize: 35,
+                  fontSize: kIsWeb ? 22 : 35,
                 ),
                 vSizedBox2,
                 ParagraphText(
@@ -291,11 +315,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                 }),
                 vSizedBox,
               ],
-            ),
-          ),
-        ),
-      ),
-    );
+            );
   }
 
   formattedTime({required int timeInSecond}) {
