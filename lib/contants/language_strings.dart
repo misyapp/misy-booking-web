@@ -363,7 +363,7 @@ class MultiLangStrings {
     "Passwordchangedsuccessfully":
         "Votre nouveau mot de passe est bien enregistré.",
     "youalreadyhaveschedulebooking":
-        "Vous avez déjà une reservation au même moment.",
+        "Vous avez déjà une réservation au même moment.",
     "youalreadyhaveschedulebooking30":
         "Vous avez déjà une réservation dans les 30 prochaines minutes.",
     "myRoutes": "Mon itinéraire",
@@ -811,7 +811,7 @@ class MultiLangStrings {
     "The ride may be offered to another driver.":
         "La course pourra être proposée à un autre chauffeur.",
     "Please cancel at least 2 hours before pickup.":
-        "Veuillez annuler au moins 2 heure avant la prise en charge",
+        "Veuillez annuler au moins 2 heures avant la prise en charge",
     "This allows the passenger to be matched with a new driver.":
         "Cela laisse le temps au passager d'être mis en relation avec un nouveau chauffeur.",
     "Please provide a professional service.":
@@ -1165,11 +1165,11 @@ class MultiLangStrings {
     "registrationSuccess": "Vita ny fisoratana anarana",
     "registrationSucessMsg":
         "Misaotra anao tamin'ny fisoratana. Nahazo ny antontan-taratasinao ny ekipanay ary hanamarina ny mombamomba anao. Hiverina aminao izahay ao anatin'ny 5 andro fiasana.",
-    "logout": "Hivoka",
+    "logout": "Hivoaka",
     "areYouSure": "Tena izay ?",
     "deleteAllNotiAlert": "Fafao daholo ny fampahafantarana",
     "deleteBankDetailAlert": "Fafao ny kaonty banky",
-    "youWantToLogout": "Hivoka",
+    "youWantToLogout": "Hivoaka",
     "cancel": "Manafoana",
     "home": "Fandraisana",
     "language": "Fiteny",
@@ -5010,7 +5010,7 @@ class MultiLangStrings {
     "totalDistance": "Całkowity Dystans",
     "tripDuration": "Czas Przejazdu",
     // Store review
-    "storeReviewTitle": "Podoba Ci sie Misy?",
+    "storeReviewTitle": "Podoba Ci się Misy?",
     "storeReviewMessage": "Twoja opinia ma znaczenie! Poswiec kilka sekund, aby nas ocenic w sklepie i pomoc innym uzytkownikom odkryc Misy.",
     "storeReviewButton": "Zostaw opinie",
     "storeReviewYes": "Tak, zostaw opinie",

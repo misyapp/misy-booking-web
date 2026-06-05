@@ -254,7 +254,7 @@ class TransitStrings {
       AppLocale.fr:
           'Le réseau est en cours de chargement. Réessayez dans un instant.',
       AppLocale.mg:
-          'Mbola eo ampampidirana ny tambazotra. Andramo indray.',
+          'Mbola eo am-pampidirana ny tambazotra. Andramo indray.',
       AppLocale.en:
           'Network is loading. Please try again shortly.',
       AppLocale.it:
@@ -414,7 +414,7 @@ class TransitStrings {
     },
     'route.calculating': {
       AppLocale.fr: 'Calcul en cours…',
-      AppLocale.mg: 'Eo ampandinihana…',
+      AppLocale.mg: 'Eo am-pandinihana…',
       AppLocale.en: 'Calculating…',
       AppLocale.it: 'Calcolo in corso…',
       AppLocale.pl: 'Obliczanie…',
