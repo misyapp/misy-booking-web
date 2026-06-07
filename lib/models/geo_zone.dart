@@ -17,6 +17,10 @@ class GeoZone {
   final bool allowPriceNegotiation; // Autoriser la négociation de prix par les chauffeurs
   final List<String> negotiationDisabledCategories; // Catégories exclues de la négociation
   final bool enableOtpVerification; // Vérification OTP au signup dans cette zone
+  // book.misy.app UNIQUEMENT : autorise les courses immédiates dans cette zone.
+  // false = réservation à l'avance seulement (web). L'app mobile native ignore
+  // ce champ (flag web-only). Défaut false → l'instant doit être explicitement activé.
+  final bool webInstantBookingEnabled;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -33,6 +37,7 @@ class GeoZone {
     this.allowPriceNegotiation = false,
     this.negotiationDisabledCategories = const [],
     this.enableOtpVerification = false,
+    this.webInstantBookingEnabled = false,
     this.createdAt,
     this.updatedAt,
   });
@@ -105,6 +110,7 @@ class GeoZone {
       negotiationDisabledCategories:
           List<String>.from(data['negotiationDisabledCategories'] ?? []),
       enableOtpVerification: data['enableOtpVerification'] ?? false,
+      webInstantBookingEnabled: data['webInstantBookingEnabled'] == true,
       createdAt: data['createdAt'] != null
           ? (data['createdAt'] as Timestamp).toDate()
           : null,
@@ -129,6 +135,7 @@ class GeoZone {
       'allowPriceNegotiation': allowPriceNegotiation,
       'negotiationDisabledCategories': negotiationDisabledCategories,
       'enableOtpVerification': enableOtpVerification,
+      'webInstantBookingEnabled': webInstantBookingEnabled,
       'createdAt': createdAt ?? FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -196,6 +203,7 @@ class GeoZone {
     bool? allowPriceNegotiation,
     List<String>? negotiationDisabledCategories,
     bool? enableOtpVerification,
+    bool? webInstantBookingEnabled,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -215,6 +223,8 @@ class GeoZone {
           negotiationDisabledCategories ?? this.negotiationDisabledCategories,
       enableOtpVerification:
           enableOtpVerification ?? this.enableOtpVerification,
+      webInstantBookingEnabled:
+          webInstantBookingEnabled ?? this.webInstantBookingEnabled,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

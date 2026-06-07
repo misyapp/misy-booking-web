@@ -178,6 +178,19 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   // Planification de course: null = immédiate, sinon = date/heure planifiée
   DateTime? _scheduledDateTime;
 
+  // Réservation à l'avance forcée (book.misy.app uniquement) : true quand la
+  // zone du départ n'autorise pas les courses immédiates (hors Antananarivo)
+  // ou via deep-link ?scheduledOnly=1 (tuile ville de province). Les chauffeurs
+  // ne sont pas encore présents en instantané hors capitale.
+  bool _deepLinkScheduledOnly = false;
+  bool _scheduledOnlyZone = false;
+  bool get _forceScheduledOnly => _deepLinkScheduledOnly || _scheduledOnlyZone;
+
+  // Tuile ville (focus=1) → à l'ouverture, zoomer sur la ville + proposer ses
+  // adresses connues (PopularDestinations centrées sur ses coordonnées).
+  bool _focusCityOnOpen = false;
+  double? _focusCityZoom;
+
   // Debounce timers
   Timer? _pickupDebounceTimer;
   Timer? _destinationDebounceTimer;
@@ -242,6 +255,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         _zoneVehicles = filtered;
         // La liste affichée change → l'index de sélection ne vaut plus rien.
         _selectedVehicleIndex = -1;
+        // book.misy.app : hors zone autorisant l'instant → réservation à l'avance.
+        _scheduledOnlyZone = !geo.instantAllowedForCurrentZone;
       });
     } catch (e) {
       debugPrint('GeoZone refresh véhicules: $e');
@@ -706,7 +721,17 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         final destLng = params['destLng'];
         final scheduledAtStr = params['scheduledAt'];
 
-        print('📍 URL params: pickup=$pickup, destination=$destination, scheduledAt=$scheduledAtStr');
+        // Réservation à l'avance imposée (tuile ville de province : ?scheduledOnly=1).
+        if (params['scheduledOnly'] == '1') {
+          _deepLinkScheduledOnly = true;
+        }
+        // Tuile ville : ouvrir zoomé sur la ville + adresses connues.
+        if (params['focus'] == '1') {
+          _focusCityOnOpen = true;
+          _focusCityZoom = double.tryParse(params['zoom'] ?? '');
+        }
+
+        print('📍 URL params: pickup=$pickup, destination=$destination, scheduledAt=$scheduledAtStr, scheduledOnly=$_deepLinkScheduledOnly, focus=$_focusCityOnOpen');
 
         // Trajet planifié (deep-link depuis beta.misy.app → "Planifier mon trajet")
         if (scheduledAtStr != null && scheduledAtStr.isNotEmpty) {
@@ -756,6 +781,24 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         // Focus sur le champ approprié et déclencher l'autocomplete
         Future.delayed(const Duration(milliseconds: 800), () async {
           if (mounted) {
+            // Tuile ville (focus=1) : pickup ancré sur la ville, destination
+            // vide → zoomer sur la ville et orienter la recherche de destination
+            // vers ses adresses locales (biais autocomplete Google Places).
+            if (_focusCityOnOpen &&
+                _pickupLocation['lat'] != null &&
+                _destinationLocation['lat'] == null) {
+              final cityLatLng = ll.LatLng(
+                (_pickupLocation['lat'] as num).toDouble(),
+                (_pickupLocation['lng'] as num).toDouble(),
+              );
+              _mapController?.move(cityLatLng, _focusCityZoom ?? 12.5);
+              PlacesAutocompleteWeb.setLocationBias(
+                cityLatLng.latitude,
+                cityLatLng.longitude,
+              );
+              _destinationFocusNode.requestFocus();
+              return;
+            }
             // Si les 2 champs ont des coordonnées (ex: deep-link depuis beta.misy.app) → auto-search
             if (_pickupLocation['lat'] != null && _destinationLocation['lat'] != null) {
               print('📍 Deep-link complet → _onSearch() auto (→ choix véhicule)');
@@ -2215,6 +2258,18 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         ),
       );
       _navigateToLogin();
+      return;
+    }
+
+    // book.misy.app : hors Antananarivo, l'instant est interdit (chauffeurs pas
+    // encore présents) → imposer le choix d'un créneau avant de continuer.
+    if (_forceScheduledOnly && _scheduledDateTime == null) {
+      final locale =
+          Provider.of<LocaleProvider>(context, listen: false).locale;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(TransitStrings.t('web.scheduledOnlyNotice', locale)),
+      ));
+      _showSchedulePicker();
       return;
     }
 
@@ -6163,10 +6218,15 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// Liste de suggestions étendue style Apple Maps (prend tout l'espace disponible)
   /// En-tête de section style Apple
   Widget _buildScheduleOptions() {
+    final locale = context.watch<LocaleProvider>().locale;
     final isScheduled = _scheduledDateTime != null;
     final displayText = isScheduled
         ? _formatScheduledDateTime(_scheduledDateTime!)
-        : 'Maintenant';
+        // Hors Antananarivo (book.misy.app) : pas de « Maintenant », invite à
+        // choisir un créneau de réservation à l'avance.
+        : (_forceScheduledOnly
+            ? TransitStrings.t('web.chooseSlot', locale)
+            : 'Maintenant');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -6220,7 +6280,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                       ),
                     ),
                   ),
-                  if (isScheduled)
+                  // Le « X » (retour à Maintenant) est masqué en zone planifié-only.
+                  if (isScheduled && !_forceScheduledOnly)
                     InkWell(
                       onTap: () {
                         setState(() => _scheduledDateTime = null);
@@ -6234,6 +6295,29 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             ),
           ),
         ),
+        // Bandeau d'explication hors Antananarivo : réservation à l'avance.
+        if (_forceScheduledOnly)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.info_outline,
+                    size: 14, color: Color(0xFF86868B)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    TransitStrings.t('web.scheduledOnlyNotice', locale),
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      height: 1.3,
+                      color: Color(0xFF86868B),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }
@@ -6261,6 +6345,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       context: context,
       builder: (context) => _SchedulePickerDialog(
         initialDateTime: _scheduledDateTime,
+        allowImmediate: !_forceScheduledOnly,
         onConfirm: (dateTime) {
           setState(() => _scheduledDateTime = dateTime);
         },
@@ -6499,11 +6584,14 @@ class _SchedulePickerDialog extends StatefulWidget {
   final DateTime? initialDateTime;
   final Function(DateTime) onConfirm;
   final VoidCallback onImmediate;
+  // false hors Antananarivo (book.misy.app) : masque l'option « Maintenant ».
+  final bool allowImmediate;
 
   const _SchedulePickerDialog({
     this.initialDateTime,
     required this.onConfirm,
     required this.onImmediate,
+    this.allowImmediate = true,
   });
 
   @override
@@ -6544,44 +6632,45 @@ class _SchedulePickerDialogState extends State<_SchedulePickerDialog> {
             ),
             const SizedBox(height: 20),
 
-            // Option immédiate
-            InkWell(
-              onTap: () {
-                widget.onImmediate();
-                Navigator.pop(context);
-              },
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: widget.initialDateTime == null
-                      ? MyColors.primaryColor.withOpacity(0.1)
-                      : Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                  border: widget.initialDateTime == null
-                      ? Border.all(color: MyColors.primaryColor)
-                      : null,
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.flash_on, color: MyColors.primaryColor),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Maintenant',
-                        style: TextStyle(fontWeight: FontWeight.w500),
+            // Option immédiate (masquée hors Antananarivo : instant interdit)
+            if (widget.allowImmediate) ...[
+              InkWell(
+                onTap: () {
+                  widget.onImmediate();
+                  Navigator.pop(context);
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: widget.initialDateTime == null
+                        ? MyColors.primaryColor.withOpacity(0.1)
+                        : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                    border: widget.initialDateTime == null
+                        ? Border.all(color: MyColors.primaryColor)
+                        : null,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.flash_on, color: MyColors.primaryColor),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Maintenant',
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
                       ),
-                    ),
-                    if (widget.initialDateTime == null)
-                      Icon(Icons.check, color: MyColors.primaryColor),
-                  ],
+                      if (widget.initialDateTime == null)
+                        Icon(Icons.check, color: MyColors.primaryColor),
+                    ],
+                  ),
                 ),
               ),
-            ),
-
-            const SizedBox(height: 12),
-            const Divider(),
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
+              const Divider(),
+              const SizedBox(height: 12),
+            ],
 
             // Sélecteur de date
             Text(TransitStrings.t('web.date', locale),

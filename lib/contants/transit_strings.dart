@@ -117,6 +117,24 @@ class TransitStrings {
       AppLocale.pl: 'Zamów',
       AppLocale.de: 'Bestellen',
     },
+    // Réservation à l'avance imposée hors Antananarivo (chauffeurs pas encore
+    // présents en instantané) — cf. flag geo-zone webInstantBookingEnabled.
+    'web.chooseSlot': {
+      AppLocale.fr: 'Choisir un créneau',
+      AppLocale.mg: 'Misafidiana fotoana',
+      AppLocale.en: 'Pick a time',
+      AppLocale.it: 'Scegli un orario',
+      AppLocale.pl: 'Wybierz termin',
+      AppLocale.de: 'Zeit wählen',
+    },
+    'web.scheduledOnlyNotice': {
+      AppLocale.fr: 'Ici, réservez votre course à l\'avance — un chauffeur vous sera attribué.',
+      AppLocale.mg: 'Eto, mamandrika ny dianao mialoha — hmisy mpamily homena anao.',
+      AppLocale.en: 'Here, book your ride in advance — a driver will be assigned to you.',
+      AppLocale.it: 'Qui, prenota la corsa in anticipo — ti verrà assegnato un autista.',
+      AppLocale.pl: 'Tutaj zarezerwuj przejazd z wyprzedzeniem — kierowca zostanie przydzielony.',
+      AppLocale.de: 'Hier die Fahrt im Voraus buchen — ein Fahrer wird zugewiesen.',
+    },
     'web.transitTileSub': {
       AppLocale.fr: 'Taxi-be — voir l\'itinéraire',
       AppLocale.mg: 'Taxi-be — jereo ny lalana',
