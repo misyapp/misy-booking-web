@@ -18,6 +18,27 @@ class GeoZoneProvider extends ChangeNotifier {
   String? get error => _error;
   bool get hasCurrentZone => _currentZone != null;
 
+  /// book.misy.app UNIQUEMENT : la zone du point de départ autorise-t-elle les
+  /// courses immédiates ? Sinon → réservation à l'avance seulement (les
+  /// chauffeurs ne sont pas encore présents en instantané hors capitale).
+  ///
+  /// Règle : la zone courante porte explicitement [webInstantBookingEnabled].
+  /// Fallback de sécurité tant que l'admin n'a coché aucune zone (toutes false) :
+  /// on autorise l'instant uniquement si la zone est Antananarivo (par nom).
+  /// Hors de toute zone → instant interdit.
+  bool get instantAllowedForCurrentZone {
+    final zone = _currentZone;
+    if (zone == null) return false;
+    if (zone.webInstantBookingEnabled) return true;
+    final anyZoneEnablesInstant =
+        _zones.any((z) => z.webInstantBookingEnabled);
+    if (!anyZoneEnablesInstant) {
+      return RegExp(r'tana|antananarivo', caseSensitive: false)
+          .hasMatch(zone.name);
+    }
+    return false;
+  }
+
   /// Initialise le provider et charge les zones
   Future<void> initialize() async {
     if (_zones.isNotEmpty) return; // Déjà initialisé

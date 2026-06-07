@@ -17,6 +17,20 @@ class PlacesAutocompleteWeb {
   }
 
   /// Recherche des prédictions d'adresses
+  // Biais de localisation optionnel (tuile ville de province sur book.misy.app) :
+  // oriente les suggestions vers la ville ouverte. null = pas de biais.
+  static double? _biasLat;
+  static double? _biasLng;
+  static double _biasRadiusMeters = 25000;
+
+  /// Définit (ou retire avec null) le centre vers lequel biaiser les suggestions.
+  static void setLocationBias(double? lat, double? lng,
+      {double radiusMeters = 25000}) {
+    _biasLat = lat;
+    _biasLng = lng;
+    _biasRadiusMeters = radiusMeters;
+  }
+
   static Future<List<Map<String, dynamic>>> getPlacePredictions(String input) async {
     if (input.isEmpty || input.length < 3) {
       return [];
@@ -26,10 +40,17 @@ class PlacesAutocompleteWeb {
 
     final completer = Completer<List<Map<String, dynamic>>>();
 
-    final request = AutocompletionRequest(
-      input: input,
-      componentRestrictions: ComponentRestrictions(country: 'mg'),
-    );
+    final request = (_biasLat != null && _biasLng != null)
+        ? AutocompletionRequest(
+            input: input,
+            componentRestrictions: ComponentRestrictions(country: 'mg'),
+            location: GoogleLatLng(_biasLat!, _biasLng!),
+            radius: _biasRadiusMeters,
+          )
+        : AutocompletionRequest(
+            input: input,
+            componentRestrictions: ComponentRestrictions(country: 'mg'),
+          );
 
     _autocompleteService!.getPlacePredictions(
       request,
@@ -131,6 +152,8 @@ extension type AutocompletionRequest._(JSObject _) implements JSObject {
   external factory AutocompletionRequest({
     String input,
     ComponentRestrictions? componentRestrictions,
+    GoogleLatLng? location,
+    num? radius,
   });
 }
 
@@ -175,6 +198,7 @@ extension type PlaceGeometry._(JSObject _) implements JSObject {
 
 @JS('google.maps.LatLng')
 extension type GoogleLatLng._(JSObject _) implements JSObject {
+  external factory GoogleLatLng(double lat, double lng);
   external double lat();
   external double lng();
 }
