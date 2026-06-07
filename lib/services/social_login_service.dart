@@ -23,6 +23,83 @@ import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import 'package:rider_ride_hailing_app/widget/show_snackbar.dart';
 
 class SocialLoginServices {
+  /// Downstream commun aux connexions sociales WEB (book.misy.app) : crée ou
+  /// met à jour le compte Firestore puis navigue. Sur le web, Google/Facebook
+  /// passent par `signInWithPopup` (les plugins natifs ne marchent pas en
+  /// navigateur) — ce helper reprend la logique d'origine à partir du
+  /// `UserCredential` obtenu. Le chemin natif iOS/Android reste inchangé.
+  Future<UserSocialLoginDeatilModal?> _finalizeWebSocialLogin(
+    UserCredential authResult,
+    String type,
+    void Function(bool) setFlag,
+  ) async {
+    final user = authResult.user;
+    if (user == null) {
+      setFlag(false);
+      hideLoading();
+      return null;
+    }
+
+    final fullName = user.displayName ?? '';
+    final userSnapshot = await FirestoreServices.users.doc(user.uid).get();
+    final customAuthProvider = Provider.of<CustomAuthProvider>(
+        MyGlobalKeys.navigatorKey.currentContext!,
+        listen: false);
+
+    if (userSnapshot.exists == false) {
+      final request = {
+        'id': user.uid,
+        'name': fullName,
+        'lastName': fullName.isEmpty ? '' : fullName.split(" ").last,
+        'firstName': fullName.isEmpty ? '' : fullName.split(" ").first,
+        'email': user.email ?? '',
+        "verified": true,
+        "isBlocked": false,
+        "accountDeleted": false,
+        "isCustomer": true,
+        'phoneNo': "",
+        "countryName": "United States",
+        'password': user.uid,
+        'profileImage': user.photoURL ?? dummyUserImage,
+      };
+      await customAuthProvider.signup(
+        MyGlobalKeys.navigatorKey.currentContext!,
+        request,
+        socialLogin: true,
+      );
+      await customAuthProvider.clearGuestDataOnly();
+      customAuthProvider.currentUser = user;
+      await customAuthProvider.getAndUpdateUserModal(showLoader: false);
+      hideLoading();
+      // Tout nouveau compte → renseigner le numéro de téléphone.
+      pushAndRemoveUntil(
+        context: MyGlobalKeys.navigatorKey.currentContext!,
+        screen: const PhoneNumberScreen(),
+      );
+      setFlag(false);
+    } else {
+      await customAuthProvider.clearGuestDataOnly();
+      customAuthProvider.currentUser = user;
+      await customAuthProvider.getAndUpdateUserModal();
+      hideLoading();
+      final userPhoneNo = userData.value?.phoneNo;
+      final hasPhoneNumber = userPhoneNo != null && userPhoneNo.isNotEmpty;
+      pushAndRemoveUntil(
+        context: MyGlobalKeys.navigatorKey.currentContext!,
+        screen: hasPhoneNumber
+            ? const MainNavigationScreen()
+            : const PhoneNumberScreen(),
+      );
+      setFlag(false);
+    }
+
+    return UserSocialLoginDeatilModal(
+      socialLoginId: user.uid,
+      emailId: user.email ?? '',
+      userName: user.displayName ?? '',
+    );
+  }
+
   Future<UserSocialLoginDeatilModal?> signInWithGoogle() async {
     showHomePageMenuNoti.value = true;
     final firebaseAuth = FirebaseAuth.instance;
@@ -46,6 +123,16 @@ class SocialLoginServices {
         await Future.delayed(Duration(milliseconds: 300));
       } else if (currentUser != null && !wasAnonymous) {
         myCustomPrintStatement('ℹ️ Utilisateur déjà connecté - pas de déconnexion');
+      }
+
+      // Web (book.misy.app) : le plugin google_sign_in ne fonctionne pas en
+      // navigateur (token null) → flux Firebase popup, comme Apple.
+      if (kIsWeb) {
+        final provider = GoogleAuthProvider()..addScope('email');
+        final authResult = await firebaseAuth.signInWithPopup(provider);
+        await showLoading();
+        return await _finalizeWebSocialLogin(
+            authResult, 'Google', (v) => isGoogleSignInInProgress = v);
       }
 
       GoogleSignIn googleSignIn = GoogleSignIn(
@@ -254,6 +341,18 @@ class SocialLoginServices {
         await Future.delayed(Duration(milliseconds: 300));
       } else if (currentUser != null && !wasAnonymous) {
         myCustomPrintStatement('ℹ️ Utilisateur déjà connecté - pas de déconnexion');
+      }
+
+      // Web (book.misy.app) : flutter_facebook_auth exige le SDK JS (window.FB)
+      // → flux Firebase popup à la place, comme Apple.
+      if (kIsWeb) {
+        final provider = FacebookAuthProvider()
+          ..addScope('email')
+          ..addScope('public_profile');
+        final authResult = await firebaseAuth.signInWithPopup(provider);
+        await showLoading();
+        return await _finalizeWebSocialLogin(
+            authResult, 'Facebook', (v) => isFacebookSignInInProgress = v);
       }
 
       // Create an instance of FacebookLogin
