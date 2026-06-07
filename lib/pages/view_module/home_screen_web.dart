@@ -2660,6 +2660,19 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
   }
 
+  /// Padding pour `fitCamera` des itinéraires : réserve la largeur du panneau
+  /// gauche (course / choix véhicule) afin que la route tienne dans la zone
+  /// VISIBLE de la carte, pas sous le panneau. Sur écran étroit (mobile,
+  /// panneau en bas), padding symétrique. Même logique que _zoomToPublicLine.
+  EdgeInsets _routeFitPadding() {
+    const panelRightEdge = 16.0 + 320.0; // inset gauche + largeur du panneau
+    final screenW = MediaQuery.of(context).size.width;
+    final wideEnough = screenW - panelRightEdge > 360;
+    return wideEnough
+        ? const EdgeInsets.fromLTRB(panelRightEdge + 32, 80, 48, 80)
+        : const EdgeInsets.all(80);
+  }
+
   /// Recentre la carte sur l'itinéraire complet
   void _fitMapToRoute() {
     if (_routeCoordinates.isEmpty) return;
@@ -2683,7 +2696,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           ll.LatLng(maxLat, maxLng),
           ll.LatLng(minLat, minLng),
         ),
-        padding: const EdgeInsets.all(80),
+        padding: _routeFitPadding(),
       ),
     );
   }
@@ -3117,10 +3130,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // Zoom d'ouverture serré (échelle quartier, feedback 04/06) — vaut
       // pour les DEUX modes (Course et Transport en commun).
       initialZoom: 15.5,
-      // Bornes refonte transit : zoom 11–18 + caméra limitée autour de Tana.
-      minZoom: _minZoom,
+      // Bornes : en Transport en commun, caméra VERROUILLÉE autour de Tana
+      // (réseau Tana-only, zoom 11–18). En mode Course on DÉVERROUILLE — sinon
+      // le focus sur une ville de province (Nosy Be…) et le dézoom sont clampés.
+      minZoom: _homeMode == HomeMode.course ? 5.0 : _minZoom,
       maxZoom: _maxZoom,
-      cameraBounds: gma.toLLBounds(_tanaBounds),
+      cameraBounds:
+          _homeMode == HomeMode.course ? null : gma.toLLBounds(_tanaBounds),
       satellite: _currentMapType == MapType.satellite,
       // MÊME fond de plan dans les deux onglets (demande 05/06 : avec le
       // style misy2 déjà clair, le filtre désaturé du mode TC ne se
@@ -3371,7 +3387,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           ll.LatLng(maxLat, maxLng),
           ll.LatLng(minLat, minLng),
         ),
-        padding: const EdgeInsets.all(80),
+        padding: _routeFitPadding(),
       ));
     } else if (origin != null) {
       controller.move(gma.toLL(origin), 17);
@@ -3580,7 +3596,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             ll.LatLng(maxLat, maxLng),
             ll.LatLng(minLat, minLng),
           ),
-          padding: const EdgeInsets.all(80),
+          padding: _routeFitPadding(),
         ),
       );
     }
