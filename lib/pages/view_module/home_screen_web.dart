@@ -2669,7 +2669,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     final screenW = MediaQuery.of(context).size.width;
     final wideEnough = screenW - panelRightEdge > 360;
     return wideEnough
-        ? const EdgeInsets.fromLTRB(panelRightEdge + 32, 80, 48, 80)
+        ? const EdgeInsets.fromLTRB(panelRightEdge + 64, 80, 48, 80)
         : const EdgeInsets.all(80);
   }
 
@@ -6506,7 +6506,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         _mapController?.fitCamera(
           fm.CameraFit.bounds(
               bounds: gma.toLLBounds(bounds),
-              padding: const EdgeInsets.all(80)),
+              padding: _routeFitPadding()),
         );
       }
 
