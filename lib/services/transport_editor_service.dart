@@ -759,7 +759,23 @@ class TransportEditorService {
       'is_deleted': true,
       'deleted_at': now,
       'deleted_by': uid,
+      // La demande est traitée : on efface aussi son drapeau côté edited.
+      'delete_requested': FieldValue.delete(),
+      'delete_request_reason': FieldValue.delete(),
       'last_updated': now,
+    }, SetOptions(merge: true));
+
+    // La demande vient d'être satisfaite → on retire `delete_requested*` de
+    // `transport_line_validations`, sinon la carte « Demandes de suppression »
+    // (filtrée sur ce drapeau, en StreamBuilder) garde la ligne affichée et
+    // l'admin a l'impression que « Confirmer la suppression » ne fait rien.
+    await _db.collection(collValidations).doc(lineNumber).set({
+      'delete_requested': FieldValue.delete(),
+      'delete_request_reason': FieldValue.delete(),
+      'delete_requested_at': FieldValue.delete(),
+      'delete_requested_by_email': FieldValue.delete(),
+      'updated_at': now,
+      'updated_by_email': email,
     }, SetOptions(merge: true));
 
     await _appendLog(
