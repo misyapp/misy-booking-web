@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "last_updated": "2026-06-02",
-  "total_lines": 91,
+  "last_updated": "2026-06-10",
+  "total_lines": 100,
   "source": "transport_lines_published Firestore (admin-approved only)",
   "lines": [
     {
@@ -136,7 +136,7 @@
       "transport_type": "bus",
       "color": "0xFF1565C0",
       "is_bundled": true,
-      "importance_tier": 3,
+      "importance_tier": 2,
       "aller": {
         "direction": "aller",
         "num_stops": 27,
@@ -222,7 +222,7 @@
     },
     {
       "line_number": "114 Bleu-Rouge",
-      "display_name": "Ligne 114",
+      "display_name": "Ligne 114 Bleu-Rouge",
       "transport_type": "bus",
       "color": "0xFF1565C0",
       "is_bundled": true,
@@ -254,6 +254,24 @@
         "direction": "retour",
         "num_stops": 22,
         "asset_path": "assets/transport_lines_public/core/114_Vert-Jaune_retour.geojson"
+      }
+    },
+    {
+      "line_number": "115",
+      "display_name": "Ligne 115",
+      "transport_type": "bus",
+      "color": "0xFF4527A0",
+      "is_bundled": true,
+      "importance_tier": 2,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 8,
+        "asset_path": "assets/transport_lines_public/core/115_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 6,
+        "asset_path": "assets/transport_lines_public/core/115_retour.geojson"
       }
     },
     {
@@ -416,6 +434,24 @@
         "direction": "retour",
         "num_stops": 24,
         "asset_path": "assets/transport_lines_public/core/128_retour.geojson"
+      }
+    },
+    {
+      "line_number": "128 Rouge",
+      "display_name": "Ligne 128 Rouge",
+      "transport_type": "bus",
+      "color": "0xFFE53935",
+      "is_bundled": true,
+      "importance_tier": 2,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 23,
+        "asset_path": "assets/transport_lines_public/core/128_Rouge_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 10,
+        "asset_path": "assets/transport_lines_public/core/128_Rouge_retour.geojson"
       }
     },
     {
@@ -689,21 +725,39 @@
       }
     },
     {
-      "line_number": "143",
-      "display_name": "Ligne 143",
+      "line_number": "142",
+      "display_name": "Ligne 142",
       "transport_type": "bus",
-      "color": "0xFFEF6C00",
+      "color": "0xFF1565C0",
       "is_bundled": true,
       "importance_tier": 2,
       "aller": {
         "direction": "aller",
-        "num_stops": 23,
-        "asset_path": "assets/transport_lines_public/core/143_aller.geojson"
+        "num_stops": 11,
+        "asset_path": "assets/transport_lines_public/core/142_aller.geojson"
       },
       "retour": {
         "direction": "retour",
-        "num_stops": 22,
-        "asset_path": "assets/transport_lines_public/core/143_retour.geojson"
+        "num_stops": 8,
+        "asset_path": "assets/transport_lines_public/core/142_retour.geojson"
+      }
+    },
+    {
+      "line_number": "143 Bleu",
+      "display_name": "Ligne 143 Bleu",
+      "transport_type": "bus",
+      "color": "0xFF43A047",
+      "is_bundled": true,
+      "importance_tier": 2,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 28,
+        "asset_path": "assets/transport_lines_public/core/143_Bleu_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 27,
+        "asset_path": "assets/transport_lines_public/core/143_Bleu_retour.geojson"
       }
     },
     {
@@ -1124,7 +1178,7 @@
       "line_number": "162",
       "display_name": "Ligne 162 - 67Ha",
       "transport_type": "bus",
-      "color": "0xFF7E57C2",
+      "color": "0xFF6A1B9A",
       "is_bundled": true,
       "importance_tier": 2,
       "aller": {
@@ -1136,6 +1190,42 @@
         "direction": "retour",
         "num_stops": 30,
         "asset_path": "assets/transport_lines_public/core/162_retour.geojson"
+      }
+    },
+    {
+      "line_number": "162 - Ambohijatovo",
+      "display_name": "Ligne 162 - Ambohijatovo",
+      "transport_type": "bus",
+      "color": "0xFF1565C0",
+      "is_bundled": true,
+      "importance_tier": 3,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 26,
+        "asset_path": "assets/transport_lines_public/core/162_-_Ambohijatovo_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 34,
+        "asset_path": "assets/transport_lines_public/core/162_-_Ambohijatovo_retour.geojson"
+      }
+    },
+    {
+      "line_number": "163",
+      "display_name": "Ligne 163",
+      "transport_type": "bus",
+      "color": "0xFF1B5E20",
+      "is_bundled": true,
+      "importance_tier": 2,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 38,
+        "asset_path": "assets/transport_lines_public/core/163_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 41,
+        "asset_path": "assets/transport_lines_public/core/163_retour.geojson"
       }
     },
     {
@@ -1373,6 +1463,24 @@
       }
     },
     {
+      "line_number": "186B",
+      "display_name": "Ligne 186B",
+      "transport_type": "bus",
+      "color": "0xFF1565C0",
+      "is_bundled": true,
+      "importance_tier": 3,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 17,
+        "asset_path": "assets/transport_lines_public/core/186B_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 20,
+        "asset_path": "assets/transport_lines_public/core/186B_retour.geojson"
+      }
+    },
+    {
       "line_number": "187",
       "display_name": "Ligne 187",
       "transport_type": "bus",
@@ -1424,6 +1532,60 @@
         "direction": "retour",
         "num_stops": 21,
         "asset_path": "assets/transport_lines_public/core/191_retour.geojson"
+      }
+    },
+    {
+      "line_number": "192",
+      "display_name": "Ligne 192",
+      "transport_type": "bus",
+      "color": "0xFF42A5F5",
+      "is_bundled": true,
+      "importance_tier": 2,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 39,
+        "asset_path": "assets/transport_lines_public/core/192_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 43,
+        "asset_path": "assets/transport_lines_public/core/192_retour.geojson"
+      }
+    },
+    {
+      "line_number": "192A",
+      "display_name": "Ligne 192A",
+      "transport_type": "bus",
+      "color": "0xFF1565C0",
+      "is_bundled": true,
+      "importance_tier": 3,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 37,
+        "asset_path": "assets/transport_lines_public/core/192A_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 44,
+        "asset_path": "assets/transport_lines_public/core/192A_retour.geojson"
+      }
+    },
+    {
+      "line_number": "192B",
+      "display_name": "Ligne 192B",
+      "transport_type": "bus",
+      "color": "0xFF1565C0",
+      "is_bundled": true,
+      "importance_tier": 3,
+      "aller": {
+        "direction": "aller",
+        "num_stops": 39,
+        "asset_path": "assets/transport_lines_public/core/192B_aller.geojson"
+      },
+      "retour": {
+        "direction": "retour",
+        "num_stops": 42,
+        "asset_path": "assets/transport_lines_public/core/192B_retour.geojson"
       }
     },
     {
