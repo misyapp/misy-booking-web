@@ -402,7 +402,7 @@ class _BookingDetailsState extends State<BookingDetails> {
   }
 
   // ===========================================================================
-  // BUILD — mise en page façon « détail de course » Uber
+  // BUILD — détail de course, mise en page web compacte (2 colonnes ≥ 720px)
   // ===========================================================================
   @override
   Widget build(BuildContext context) {
@@ -423,20 +423,13 @@ class _BookingDetailsState extends State<BookingDetails> {
         body: booking['requestTime'] == null
             ? const SizedBox.shrink()
             : SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildHeader(),
-                      _buildMap(),
-                      _buildRatingSection(),
-                      _buildRideDetails(),
-                      _buildItinerary(),
-                      _buildDriverCard(),
-                      _buildPriceBreakdown(),
-                      _buildCancelButton(),
-                    ],
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 980),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+                      child: _buildContent(context),
+                    ),
                   ),
                 ),
               ),
@@ -444,11 +437,81 @@ class _BookingDetailsState extends State<BookingDetails> {
     );
   }
 
+  Widget _buildContent(BuildContext context) {
+    final Widget header = _buildHeader();
+    final Widget? map = _buildMap();
+    final Widget? rating = _buildRatingSection();
+    final Widget? details = _buildRideDetails();
+    final Widget? itinerary = _buildItinerary();
+    final Widget? driverCard = _buildDriverCard();
+    final Widget? price = _buildPriceBreakdown();
+    final Widget? cancel = _buildCancelButton();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool wide = constraints.maxWidth >= 720;
+
+        if (wide && map != null) {
+          // Web : carte + itinéraire à gauche, infos à droite.
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              header,
+              const SizedBox(height: 22),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 6,
+                    child: _stack([map, itinerary], dividers: false),
+                  ),
+                  const SizedBox(width: 34),
+                  Expanded(
+                    flex: 5,
+                    child: _stack([rating, details, driverCard, price]),
+                  ),
+                ],
+              ),
+              if (cancel != null) ...[const SizedBox(height: 26), cancel],
+            ],
+          );
+        }
+
+        // Mobile / écran étroit : pile unique.
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            header,
+            const SizedBox(height: 6),
+            _stack([map, rating, details, itinerary, driverCard, price]),
+            if (cancel != null) ...[const SizedBox(height: 26), cancel],
+          ],
+        );
+      },
+    );
+  }
+
+  // Empile des sections (en ignorant les nulles), séparées par un filet fin.
+  Widget _stack(List<Widget?> sections, {bool dividers = true}) {
+    final visible = sections.whereType<Widget>().toList();
+    final children = <Widget>[];
+    for (var i = 0; i < visible.length; i++) {
+      if (i > 0) {
+        children.add(dividers ? _sectionDivider() : const SizedBox(height: 20));
+      }
+      children.add(visible[i]);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
+  }
+
   // ---------------------------------------------------------------------------
-  // Sections
+  // Sections (retournent null quand vides → ignorées par _stack)
   // ---------------------------------------------------------------------------
 
-  // En-tête : grand titre, sous-titre date (+ chauffeur), pastille de statut.
+  // En-tête : titre, sous-titre date (+ chauffeur), pastille de statut.
   Widget _buildHeader() {
     final Timestamp? ts = (_isScheduled && booking['scheduleTime'] != null)
         ? booking['scheduleTime'] as Timestamp
@@ -466,26 +529,25 @@ class _BookingDetailsState extends State<BookingDetails> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 4),
         Text(
           translate("YourRide"),
           style: TextStyle(
-            fontSize: 26,
+            fontSize: 22,
             fontWeight: FontWeight.w700,
             color: MyColors.blackThemeColor(),
           ),
         ),
         if (subtitle.isNotEmpty) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
           Text(
             subtitle,
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 13.5,
               color: MyColors.blackThemeColorWithOpacity(0.6),
             ),
           ),
         ],
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
         _statusChip(),
       ],
     );
@@ -513,7 +575,7 @@ class _BookingDetailsState extends State<BookingDetails> {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
       decoration: BoxDecoration(
         color: color.withOpacity(0.10),
         borderRadius: BorderRadius.circular(20),
@@ -530,52 +592,46 @@ class _BookingDetailsState extends State<BookingDetails> {
           Text(
             label,
             style: TextStyle(
-                color: color, fontWeight: FontWeight.w600, fontSize: 13),
+                color: color, fontWeight: FontWeight.w600, fontSize: 12.5),
           ),
         ],
       ),
     );
   }
 
-  // Carte arrondie : trajet réel (terminée) ou pickup→drop (planifiée).
-  Widget _buildMap() {
+  // Carte arrondie : trajet réel (terminée) ou pickup→drop (coords valides).
+  Widget? _buildMap() {
     Widget? map;
     if (_isCompleted &&
         booking['suggestPath'] != null &&
         (booking['suggestPath'] as List).isNotEmpty) {
       map = _completedTripMap();
-    } else if (!_isCompleted && !_isCancelled && _hasValidCoordinates()) {
+    } else if (_hasValidCoordinates()) {
       map = _plannedTripMap();
     }
-    if (map == null) return const SizedBox.shrink();
+    if (map == null) return null;
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 22),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: SizedBox(height: 210, width: double.infinity, child: map),
-      ),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: SizedBox(height: 240, width: double.infinity, child: map),
     );
   }
 
   // Section « Note du trajet » (uniquement pour les courses terminées).
-  Widget _buildRatingSection() {
-    if (!_isCompleted) return const SizedBox.shrink();
+  Widget? _buildRatingSection() {
+    if (!_isCompleted) return null;
     final hasRating = booking['rating_by_customer'] != null;
     final hasDriverRating = booking['rating_by_driver'] != null;
-    if (!hasRating && !hasDriverRating && driver == null) {
-      return const SizedBox.shrink();
-    }
+    if (!hasRating && !hasDriverRating && driver == null) return null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionDivider(),
         _sectionTitle(translate("TripRating")),
         if (hasRating) ...[
           _stars(
               (booking['rating_by_customer']['rating'] as num).toDouble(),
-              size: 24),
+              size: 22),
           if ((booking['rating_by_customer']['review'] ?? '')
               .toString()
               .isNotEmpty) ...[
@@ -592,7 +648,7 @@ class _BookingDetailsState extends State<BookingDetails> {
         ] else if (driver != null)
           RoundEdgedButton(
             text: translate("Rate"),
-            height: 42,
+            height: 40,
             width: 130,
             onTap: () async {
               Map b = {
@@ -610,11 +666,11 @@ class _BookingDetailsState extends State<BookingDetails> {
             },
           ),
         if (hasDriverRating) ...[
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
           Text(
             "${translate("RatingFromDriver")}:",
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 13.5,
               fontWeight: FontWeight.w600,
               color: MyColors.blackThemeColorWithOpacity(0.7),
             ),
@@ -641,7 +697,7 @@ class _BookingDetailsState extends State<BookingDetails> {
   }
 
   // Section « Détails de la course » : distance, paiement, prix indicatif.
-  Widget _buildRideDetails() {
+  Widget? _buildRideDetails() {
     final bool hasDistance = booking['total_distance'] != null;
     final bool hasPayment =
         (booking['paymentMethod'] ?? '').toString().isNotEmpty;
@@ -651,14 +707,11 @@ class _BookingDetailsState extends State<BookingDetails> {
           "${formatAriary(double.parse(booking['ride_price_to_pay'].toString()))} ${globalSettings.currency}";
     }
 
-    if (!hasDistance && !hasPayment && approxPrice == null) {
-      return const SizedBox.shrink();
-    }
+    if (!hasDistance && !hasPayment && approxPrice == null) return null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionDivider(),
         _sectionTitle(translate("RideDetailsTitle")),
         if (hasDistance)
           _detailRow(Icons.straighten, translate("Distance"),
@@ -675,15 +728,14 @@ class _BookingDetailsState extends State<BookingDetails> {
   }
 
   // Section « Itinéraire » : timeline départ → arrivée.
-  Widget _buildItinerary() {
+  Widget? _buildItinerary() {
     final String pick = (booking['pickAddress'] ?? '').toString();
     final String drop = (booking['dropAddress'] ?? '').toString();
-    if (pick.isEmpty && drop.isEmpty) return const SizedBox.shrink();
+    if (pick.isEmpty && drop.isEmpty) return null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionDivider(),
         _sectionTitle(translate("TripRoute")),
         IntrinsicHeight(
           child: Row(
@@ -692,8 +744,8 @@ class _BookingDetailsState extends State<BookingDetails> {
               Column(
                 children: [
                   Container(
-                    width: 12,
-                    height: 12,
+                    width: 11,
+                    height: 11,
                     decoration: BoxDecoration(
                       color: MyColors.blackThemeColor(),
                       borderRadius: BorderRadius.circular(2),
@@ -707,8 +759,8 @@ class _BookingDetailsState extends State<BookingDetails> {
                     ),
                   ),
                   Container(
-                    width: 12,
-                    height: 12,
+                    width: 11,
+                    height: 11,
                     decoration: BoxDecoration(
                       color: MyColors.coralPink,
                       shape: BoxShape.circle,
@@ -716,13 +768,13 @@ class _BookingDetailsState extends State<BookingDetails> {
                   ),
                 ],
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 13),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _itineraryStop(pick),
-                    const SizedBox(height: 26),
+                    const SizedBox(height: 22),
                     _itineraryStop(drop),
                   ],
                 ),
@@ -735,8 +787,8 @@ class _BookingDetailsState extends State<BookingDetails> {
   }
 
   // Carte chauffeur (photo, nom, badge, note, véhicule) + contact si imminent.
-  Widget _buildDriverCard() {
-    if (driver == null) return const SizedBox.shrink();
+  Widget? _buildDriverCard() {
+    if (driver == null) return null;
 
     final bool showContact = _statusValue <
             BookingStatusType.RIDE_COMPLETE.value &&
@@ -752,13 +804,12 @@ class _BookingDetailsState extends State<BookingDetails> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionDivider(),
         _sectionTitle(translate("YourDriver")),
         Row(
           children: [
             Container(
-              height: 54,
-              width: 54,
+              height: 50,
+              width: 50,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
@@ -769,7 +820,7 @@ class _BookingDetailsState extends State<BookingDetails> {
                 ),
               ),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 13),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -781,7 +832,7 @@ class _BookingDetailsState extends State<BookingDetails> {
                           _isScheduled ? driver!.firstName : driver!.fullName,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: 15,
                             fontWeight: FontWeight.w600,
                             color: MyColors.blackThemeColor(),
                           ),
@@ -791,17 +842,17 @@ class _BookingDetailsState extends State<BookingDetails> {
                         const SizedBox(width: 5),
                         Image.asset(
                           MyImagesUrl.verifiedStatusIcon,
-                          height: 18,
-                          width: 18,
+                          height: 17,
+                          width: 17,
                           color: BadgeTypes.getColor(driver!.batchStatus),
                         ),
                       ],
                     ],
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 3),
                   Row(
                     children: [
-                      _stars(driver!.averageRating, size: 13),
+                      _stars(driver!.averageRating, size: 12),
                       const SizedBox(width: 6),
                       Text(
                         "(${driver!.totalReveiwCount} ${translate("Reviews")})",
@@ -820,7 +871,7 @@ class _BookingDetailsState extends State<BookingDetails> {
               Text(
                 brand,
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 12.5,
                   color: MyColors.blackThemeColorWithOpacity(0.7),
                 ),
               ),
@@ -828,7 +879,7 @@ class _BookingDetailsState extends State<BookingDetails> {
           ],
         ),
         if (showContact) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           Row(
             children: [
               InkWell(
@@ -837,11 +888,11 @@ class _BookingDetailsState extends State<BookingDetails> {
                       "${driver!.countryCode}${driver!.phone.startsWith("0") ? driver!.phone.substring(1) : driver!.phone}");
                 },
                 child: CircleAvatar(
-                  radius: 22,
+                  radius: 21,
                   backgroundColor: MyColors.textFillThemeColor(),
                   child: Image.asset(
                     MyImagesUrl.whatsAppIcon,
-                    width: 26,
+                    width: 25,
                     color: MyColors.blackThemeColor(),
                   ),
                 ),
@@ -849,7 +900,7 @@ class _BookingDetailsState extends State<BookingDetails> {
               const SizedBox(width: 12),
               RoundEdgedButton(
                 text: translate("Call"),
-                height: 42,
+                height: 40,
                 width: 100,
                 onTap: () async {
                   var url =
@@ -867,8 +918,8 @@ class _BookingDetailsState extends State<BookingDetails> {
   }
 
   // Ventilation tarifaire (uniquement pour les courses terminées).
-  Widget _buildPriceBreakdown() {
-    if (!_isCompleted) return const SizedBox.shrink();
+  Widget? _buildPriceBreakdown() {
+    if (!_isCompleted) return null;
     final String currency = globalSettings.currency;
     double d(dynamic v) => double.parse((v ?? 0).toString());
     final double rideAmount = (d(booking['ride_price_to_pay']) +
@@ -880,7 +931,6 @@ class _BookingDetailsState extends State<BookingDetails> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionDivider(),
         _sectionTitle(translate("Payment")),
         _priceRow(
           "${translate("RideAmount")} (${booking['total_distance']} km)",
@@ -899,7 +949,7 @@ class _BookingDetailsState extends State<BookingDetails> {
           translate("Discount"),
           "-${formatAriary(d(booking['ride_bonus_price']))} $currency",
         ),
-        Divider(height: 26, color: MyColors.blackThemeColorWithOpacity(0.1)),
+        Divider(height: 22, color: MyColors.blackThemeColorWithOpacity(0.1)),
         _priceRow(
           translate("TotalAmount"),
           "${formatAriary(d(booking['ride_price_to_pay']))} $currency",
@@ -910,18 +960,15 @@ class _BookingDetailsState extends State<BookingDetails> {
   }
 
   // Bouton d'annulation (uniquement pour les courses annulables).
-  Widget _buildCancelButton() {
-    if (!canBeCancelled) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: 30),
-      child: RoundEdgedButton(
-        text: translate("cancelBooking"),
-        color: Colors.red,
-        textColor: Colors.white,
-        borderRadius: 10,
-        onTap: () => _showCancelBookingDialog(context),
-        width: double.infinity,
-      ),
+  Widget? _buildCancelButton() {
+    if (!canBeCancelled) return null;
+    return RoundEdgedButton(
+      text: translate("cancelBooking"),
+      color: Colors.red,
+      textColor: Colors.white,
+      borderRadius: 10,
+      onTap: () => _showCancelBookingDialog(context),
+      width: double.infinity,
     );
   }
 
@@ -929,11 +976,11 @@ class _BookingDetailsState extends State<BookingDetails> {
   // Petits widgets réutilisables
   // ---------------------------------------------------------------------------
   Widget _sectionTitle(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.only(bottom: 10),
         child: Text(
           text,
           style: TextStyle(
-            fontSize: 17,
+            fontSize: 15,
             fontWeight: FontWeight.w700,
             color: MyColors.blackThemeColor(),
           ),
@@ -941,7 +988,7 @@ class _BookingDetailsState extends State<BookingDetails> {
       );
 
   Widget _sectionDivider() => Divider(
-        height: 40,
+        height: 28,
         thickness: 1,
         color: MyColors.blackThemeColorWithOpacity(0.08),
       );
@@ -949,16 +996,16 @@ class _BookingDetailsState extends State<BookingDetails> {
   Widget _detailRow(IconData icon, String label, String value,
       {bool highlight = false}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.only(bottom: 11),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: MyColors.blackThemeColorWithOpacity(0.55)),
-          const SizedBox(width: 12),
+          Icon(icon, size: 19, color: MyColors.blackThemeColorWithOpacity(0.55)),
+          const SizedBox(width: 11),
           Expanded(
             child: Text(
               label,
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 13.5,
                 color: MyColors.blackThemeColorWithOpacity(0.7),
               ),
             ),
@@ -966,7 +1013,7 @@ class _BookingDetailsState extends State<BookingDetails> {
           Text(
             value,
             style: TextStyle(
-              fontSize: 15,
+              fontSize: 14,
               fontWeight: highlight ? FontWeight.w700 : FontWeight.w600,
               color: MyColors.blackThemeColor(),
             ),
@@ -977,14 +1024,14 @@ class _BookingDetailsState extends State<BookingDetails> {
   }
 
   Widget _priceRow(String label, String value, {bool bold = false}) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.only(bottom: 9),
         child: Row(
           children: [
             Expanded(
               child: Text(
                 label,
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 13.5,
                   fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
                   color: MyColors.blackThemeColor(),
                 ),
@@ -993,7 +1040,7 @@ class _BookingDetailsState extends State<BookingDetails> {
             Text(
               value,
               style: TextStyle(
-                fontSize: 15,
+                fontSize: 14,
                 fontWeight: FontWeight.w700,
                 color: MyColors.blackThemeColor(),
               ),
@@ -1005,7 +1052,7 @@ class _BookingDetailsState extends State<BookingDetails> {
   Widget _itineraryStop(String address) => Text(
         address.isEmpty ? '—' : address,
         style: TextStyle(
-          fontSize: 15,
+          fontSize: 14,
           fontWeight: FontWeight.w500,
           color: MyColors.blackThemeColor(),
         ),
@@ -1033,7 +1080,7 @@ class _BookingDetailsState extends State<BookingDetails> {
   // Cartes
   // ---------------------------------------------------------------------------
 
-  // Carte d'une course planifiée : marqueurs pickup/drop + ligne directe.
+  // Carte d'une course planifiée/en cours : marqueurs pickup/drop + ligne directe.
   Widget _plannedTripMap() {
     return FutureBuilder<Set<Marker>>(
       future: _createCustomMarkers(),
@@ -1136,6 +1183,25 @@ class _BookingDetailsState extends State<BookingDetails> {
     );
   }
 
+  // Conversion robuste num | String → double (Google Places renvoie parfois
+  // les coordonnées en chaîne).
+  double _toDouble(dynamic v) {
+    if (v == null) return 0.0;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? 0.0;
+  }
+
+  // Première coordonnée non nulle parmi plusieurs noms de champs possibles.
+  double _coord(List<String> keys) {
+    for (final k in keys) {
+      if (booking[k] != null) {
+        final d = _toDouble(booking[k]);
+        if (d != 0.0) return d;
+      }
+    }
+    return 0.0;
+  }
+
   // Vérifie si les coordonnées sont valides
   bool _hasValidCoordinates() {
     return (_getPickupLatitude() != 0 &&
@@ -1144,37 +1210,17 @@ class _BookingDetailsState extends State<BookingDetails> {
         _getDropLongitude() != 0);
   }
 
-  // Obtient la latitude de pickup en essayant différents noms de champs
-  double _getPickupLatitude() {
-    return (booking['pickupLatitude']?.toDouble() ??
-        booking['pickup_latitude']?.toDouble() ??
-        booking['pickLat']?.toDouble() ??
-        0.0);
-  }
+  double _getPickupLatitude() =>
+      _coord(['pickupLatitude', 'pickup_latitude', 'pickLat']);
 
-  // Obtient la longitude de pickup en essayant différents noms de champs
-  double _getPickupLongitude() {
-    return (booking['pickupLongitude']?.toDouble() ??
-        booking['pickup_longitude']?.toDouble() ??
-        booking['pickLng']?.toDouble() ??
-        0.0);
-  }
+  double _getPickupLongitude() =>
+      _coord(['pickupLongitude', 'pickup_longitude', 'pickLng']);
 
-  // Obtient la latitude de drop en essayant différents noms de champs
-  double _getDropLatitude() {
-    return (booking['dropLatitude']?.toDouble() ??
-        booking['drop_latitude']?.toDouble() ??
-        booking['dropLat']?.toDouble() ??
-        0.0);
-  }
+  double _getDropLatitude() =>
+      _coord(['dropLatitude', 'drop_latitude', 'dropLat']);
 
-  // Obtient la longitude de drop en essayant différents noms de champs
-  double _getDropLongitude() {
-    return (booking['dropLongitude']?.toDouble() ??
-        booking['drop_longitude']?.toDouble() ??
-        booking['dropLng']?.toDouble() ??
-        0.0);
-  }
+  double _getDropLongitude() =>
+      _coord(['dropLongitude', 'drop_longitude', 'dropLng']);
 
   // Crée les marqueurs personnalisés (carré pour pickup, rond pour drop)
   Future<Set<Marker>> _createCustomMarkers() async {
