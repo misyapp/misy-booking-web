@@ -45,6 +45,7 @@ import 'package:rider_ride_hailing_app/contants/transit_strings.dart';
 import 'package:rider_ride_hailing_app/pages/account_web/account_shell_web.dart'
     show AccountSection;
 import 'package:rider_ride_hailing_app/provider/locale_provider.dart';
+import 'package:rider_ride_hailing_app/pages/view_module/widgets/account_menu_web.dart';
 import 'package:rider_ride_hailing_app/pages/auth_module/phone_number_screen.dart';
 import 'package:rider_ride_hailing_app/services/feature_toggle_service.dart';
 import 'package:rider_ride_hailing_app/services/guest_storage_service.dart';
@@ -2754,10 +2755,27 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
             );
           }
 
-          return PopupMenuButton<String>(
-            offset: const Offset(0, 45),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
+          return InkWell(
+            customBorder: const CircleBorder(),
+            onTap: () => showAccountMenu(
+              context,
+              user: user,
+              locale: locale,
+              walletEnabled:
+                  FeatureToggleService.instance.isDigitalWalletEnabled(),
+              isEditor: _isTransportEditor,
+              onActivity: () => Navigator.of(context)
+                  .pushNamed('/account', arguments: AccountSection.trips),
+              onWallet: () => Navigator.of(context)
+                  .pushNamed('/account', arguments: AccountSection.wallet),
+              onProfile: () => Navigator.of(context)
+                  .pushNamed('/account', arguments: AccountSection.profile),
+              onEditor: () =>
+                  Navigator.of(context).pushNamed('/transport-editor'),
+              onSettings: () => showAccountSettingsSheet(context, locale),
+              onLogout: () =>
+                  Provider.of<CustomAuthProvider>(context, listen: false)
+                      .logout(context),
             ),
             child: Container(
               padding: const EdgeInsets.all(4),
@@ -2776,136 +2794,10 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
                     : null,
               ),
             ),
-            onSelected: (value) {
-              if (value == 'logout') {
-                final authProvider = Provider.of<CustomAuthProvider>(context, listen: false);
-                authProvider.logout(context);
-              } else if (value == 'transport-editor') {
-                Navigator.of(context).pushNamed('/transport-editor');
-              } else if (value == 'profile') {
-                Navigator.of(context).pushNamed('/account',
-                    arguments: AccountSection.profile);
-              } else if (value == 'trips') {
-                Navigator.of(context).pushNamed('/account',
-                    arguments: AccountSection.trips);
-              } else if (value == 'wallet') {
-                Navigator.of(context).pushNamed('/account',
-                    arguments: AccountSection.wallet);
-              } else if (value.startsWith('lang.')) {
-                final loc = AppLocale.values.firstWhere(
-                  (l) => 'lang.${l.name}' == value,
-                  orElse: () => AppLocale.fr,
-                );
-                Provider.of<LocaleProvider>(context, listen: false)
-                    .setLocale(loc);
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'profile',
-                child: Row(
-                  children: [
-                    const Icon(Icons.person_outline),
-                    const SizedBox(width: 8),
-                    Text('${user?.fullName ?? 'Mon profil'}'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'trips',
-                child: Row(
-                  children: [
-                    Icon(Icons.history),
-                    SizedBox(width: 8),
-                    Text('Mes trajets'),
-                  ],
-                ),
-              ),
-              // Portefeuille : entrée masquée si la feature est désactivée
-              // côté admin (aucune mention, parité espace compte).
-              if (FeatureToggleService.instance.isDigitalWalletEnabled())
-                const PopupMenuItem(
-                  value: 'wallet',
-                  child: Row(
-                    children: [
-                      Icon(Icons.account_balance_wallet_outlined),
-                      SizedBox(width: 8),
-                      Text('Portefeuille'),
-                    ],
-                  ),
-                ),
-              if (_isTransportEditor) ...[
-                const PopupMenuDivider(),
-                const PopupMenuItem(
-                  value: 'transport-editor',
-                  child: Row(
-                    children: [
-                      Icon(Icons.edit_road, color: Color(0xFF1565C0)),
-                      SizedBox(width: 8),
-                      Text('Éditeur terrain',
-                          style: TextStyle(color: Color(0xFF1565C0))),
-                    ],
-                  ),
-                ),
-              ],
-              const PopupMenuDivider(),
-              ..._buildLanguageMenuItems(context),
-              const PopupMenuDivider(),
-              PopupMenuItem(
-                value: 'logout',
-                child: Row(
-                  children: [
-                    const Icon(Icons.logout, color: Colors.red),
-                    const SizedBox(width: 8),
-                    Text(TransitStrings.t('web.signOut', locale),
-                        style: const TextStyle(color: Colors.red)),
-                  ],
-                ),
-              ),
-            ],
           );
         },
       ),
     );
-  }
-
-  /// Construit la sous-section "Langue" du popup profil. 3 choix
-  /// (FR/MG/EN), avec une coche sur la langue active.
-  List<PopupMenuEntry<String>> _buildLanguageMenuItems(BuildContext context) {
-    final current = Provider.of<LocaleProvider>(context, listen: false).locale;
-    const labels = {
-      AppLocale.fr: 'Français',
-      AppLocale.mg: 'Malagasy',
-      AppLocale.en: 'English',
-      AppLocale.it: 'Italiano',
-      AppLocale.pl: 'Polski',
-      AppLocale.de: 'Deutsch',
-    };
-    return [
-      for (final loc in AppLocale.values)
-        PopupMenuItem<String>(
-          value: 'lang.${loc.name}',
-          child: Row(
-            children: [
-              Icon(
-                loc == current ? Icons.check : Icons.language,
-                size: 18,
-                color: loc == current
-                    ? const Color(0xFF1D3557)
-                    : Colors.grey.shade500,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                labels[loc] ?? loc.name,
-                style: TextStyle(
-                  fontWeight:
-                      loc == current ? FontWeight.w600 : FontWeight.w400,
-                ),
-              ),
-            ],
-          ),
-        ),
-    ];
   }
 
   /// Bouton "Contribuer" affiché en haut à droite en mode Transport en
