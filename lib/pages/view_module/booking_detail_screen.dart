@@ -2,7 +2,6 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -10,7 +9,6 @@ import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:rider_ride_hailing_app/widgets/booking_map.dart';
 import 'package:rider_ride_hailing_app/utils/gmap_flutter_adapter.dart' as gma;
-import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:provider/provider.dart';
 import 'dart:ui' as ui;
 import 'package:rider_ride_hailing_app/contants/language_strings.dart';
@@ -27,16 +25,13 @@ import 'package:rider_ride_hailing_app/pages/view_module/rate_us_screen.dart';
 import 'package:rider_ride_hailing_app/provider/google_map_provider.dart';
 import 'package:rider_ride_hailing_app/provider/trip_provider.dart';
 import 'package:rider_ride_hailing_app/services/firestore_services.dart';
-import 'package:rider_ride_hailing_app/services/location.dart';
 import 'package:rider_ride_hailing_app/services/share_prefrence_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../contants/global_data.dart';
 import '../../../contants/my_colors.dart';
 import '../../../contants/my_image_url.dart';
-import '../../../contants/sized_box.dart';
 import '../../../widget/custom_appbar.dart';
-import '../../../widget/custom_text.dart';
 import '../../../widget/round_edged_button.dart';
 
 class BookingDetails extends StatefulWidget {
@@ -62,6 +57,24 @@ class _BookingDetailsState extends State<BookingDetails> {
     getdata();
     super.initState();
   }
+
+  // ---------------------------------------------------------------------------
+  // Helpers d'état (statut numérique de la course)
+  // ---------------------------------------------------------------------------
+  int get _statusValue {
+    final s = booking['status'];
+    if (s is int) return s;
+    if (s is num) return s.toInt();
+    return BookingStatusType.PENDING_REQUEST.value;
+  }
+
+  bool get _isCompleted => _statusValue == BookingStatusType.RIDE_COMPLETE.value;
+
+  bool get _isCancelled =>
+      _statusValue == BookingStatusType.CANCELLED.value ||
+      _statusValue == BookingStatusType.CANCELLED_BY_RIDER.value;
+
+  bool get _isScheduled => booking['isSchedule'] == true;
 
   // Détermine si cette course peut être annulée
   bool get canBeCancelled {
@@ -199,7 +212,8 @@ class _BookingDetailsState extends State<BookingDetails> {
               },
               child: Text(
                 translate("yesCancel"),
-                style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                    color: Colors.red, fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -270,7 +284,8 @@ class _BookingDetailsState extends State<BookingDetails> {
               },
               child: Text(
                 translate("confirmCancellation"),
-                style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                    color: Colors.red, fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -315,7 +330,9 @@ class _BookingDetailsState extends State<BookingDetails> {
         historyData['ride_status'] = 'Cancelled by Rider';
         historyData['endTime'] = FieldValue.serverTimestamp();
 
-        await FirestoreServices.bookingHistory.doc(booking['id']).set(historyData);
+        await FirestoreServices.bookingHistory
+            .doc(booking['id'])
+            .set(historyData);
         await FirestoreServices.bookingRequest.doc(booking['id']).delete();
       } else {
         // Si aucun chauffeur n'a accepté, supprimer directement
@@ -329,7 +346,8 @@ class _BookingDetailsState extends State<BookingDetails> {
       final tripProvider = Provider.of<TripProvider>(context, listen: false);
 
       // Si le booking annulé est le booking actuel, nettoyer complètement
-      if (tripProvider.booking != null && tripProvider.booking!['id'] == booking['id']) {
+      if (tripProvider.booking != null &&
+          tripProvider.booking!['id'] == booking['id']) {
         await tripProvider.clearAllTripData();
         tripProvider.setScreen(CustomTripType.setYourDestination);
       }
@@ -351,7 +369,6 @@ class _BookingDetailsState extends State<BookingDetails> {
 
       // Retourner au menu principal
       _returnToMainMenu();
-
     } catch (e) {
       // Masquer le loading en cas d'erreur
       Navigator.of(context).pop();
@@ -384,6 +401,9 @@ class _BookingDetailsState extends State<BookingDetails> {
     }
   }
 
+  // ===========================================================================
+  // BUILD — mise en page façon « détail de course » Uber
+  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -392,6 +412,7 @@ class _BookingDetailsState extends State<BookingDetails> {
         return false; // Empêche la navigation par défaut
       },
       child: Scaffold(
+        backgroundColor: MyColors.whiteThemeColor(),
         appBar: CustomAppBar(
           isBackIcon: true,
           title: translate("BookingDetails"),
@@ -399,823 +420,717 @@ class _BookingDetailsState extends State<BookingDetails> {
           titleFontWeight: FontWeight.w600,
           onPressed: _returnToMainMenu,
         ),
-        body: SingleChildScrollView(
-          child: Column(
-            children: [
-              if (booking['requestTime'] != null)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-                  margin: const EdgeInsets.symmetric(vertical: 15),
-                  decoration: BoxDecoration(
-                      color: MyColors.whiteThemeColor(),
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
-                        BoxShadow(
-                            blurRadius: 6,
-                            color: MyColors.blackThemeColorWithOpacity(0.09)),
-                      ]),
+        body: booking['requestTime'] == null
+            ? const SizedBox.shrink()
+            : SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (booking['isSchedule'] == false &&
-                          booking['status'] !=
-                              BookingStatusType.RIDE_COMPLETE.value)
-                        Row(
-                          children: [
-                            // GlowingOverscrollIndicator(axisDirection: AxisDirection.right, color: Colors.green),
-                            Text(
-                              translate("Running"),
-                              style: const TextStyle(color: Colors.blue),
-                            ),
-                            hSizedBox,
-                            Expanded(
-                                child: LoadingAnimationWidget.twistingDots(
-                              leftDotColor: MyColors.coralPink,
-                              rightDotColor: MyColors.horizonBlue,
-                              size: 20.0,
-                            )),
-                          ],
-                        ),
-                      if (booking['isSchedule'] == true)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8.0),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.watch_later_outlined),
-                              hSizedBox,
-                              Text(
-                                "${translate("Scheduledon")}: ",
-                                style: const TextStyle(
-                                    color: Colors.deepOrange,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                    fontStyle: FontStyle.italic),
-                              ),
-                              Text(formatTimestamp(booking['scheduleTime']),
-                                  style: const TextStyle(
-                                      color: Colors.deepOrange,
-                                      fontStyle: FontStyle.italic,
-                                      fontSize: 12))
-                            ],
-                          ),
-                        ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          ParagraphText(
-                            "${translate("id")}:${booking['id']}",
-                            fontSize: 11,
-                            color: MyColors.blackThemeColor(),
-                          ),
-                          ParagraphText(
-                            formatTimestamp(booking['requestTime']),
-                            fontSize: 11,
-                            color: MyColors.blackThemeColor(),
-                          ),
-                        ],
-                      ),
-                      vSizedBox,
-                      vSizedBox05,
-                      Row(
-                        children: [
-                          Column(
-                            children: [
-                              CircleAvatar(
-                                radius: 10,
-                                backgroundColor:
-                                    MyColors.blackThemeColorWithOpacity(0.1),
-                                child: Icon(
-                                  Icons.circle,
-                                  color: MyColors.primaryColor,
-                                  size: 14,
-                                ),
-                              ),
-                              Container(
-                                margin:
-                                    const EdgeInsets.only(top: 2.5, bottom: 1),
-                                width: 3,
-                                height: 34,
-                                color: MyColors.blackThemeColorWithOpacity(0.4),
-                              ),
-                              Image.asset(
-                                MyImagesUrl.location,
-                                scale: 4,
-                                color:
-                                    Theme.of(context).scaffoldBackgroundColor ==
-                                            Colors.white
-                                        ? null
-                                        : MyColors.primaryColor,
-                              )
-                            ],
-                          ),
-                          hSizedBox,
-                          Expanded(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                ParagraphText(
-                                  booking['pickAddress'],
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w500,
-                                  color: MyColors.blackThemeColor(),
-                                ),
-                                // Masquer le 2ème itinéraire (destination) uniquement pour les courses terminées
-                                if (booking['status'] != BookingStatusType.RIDE_COMPLETE.value) ...[
-                                  Divider(
-                                    height: 38,
-                                    color:
-                                        MyColors.blackThemeColorWithOpacity(0.09),
-                                  ),
-                                  ParagraphText(
-                                    booking['dropAddress'],
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w500,
-                                    color: MyColors.blackThemeColor(),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          )
-                        ],
-                      ),
-                      vSizedBox2,
-                      // Carte avec itinéraire pour les courses planifiées à venir uniquement
-                      if (booking['isSchedule'] == true && 
-                          booking['status'] != BookingStatusType.RIDE_COMPLETE.value &&
-                          _hasValidCoordinates())
-                        Container(
-                          height: 250,
-                          margin: const EdgeInsets.symmetric(vertical: 16),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 10,
-                                offset: const Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: FutureBuilder<Set<Marker>>(
-                              future: _createCustomMarkers(),
-                              builder: (context, snapshot) {
-                                return BookingMap(
-                                  controller: _summaryMapController,
-                                  initialCenter: ll.LatLng(
-                                    (_getPickupLatitude() + _getDropLatitude()) / 2,
-                                    (_getPickupLongitude() + _getDropLongitude()) / 2,
-                                  ),
-                                  initialZoom: 12,
-                                  // Cadre pickup→drop dès l'affichage (ex-fit onMapCreated).
-                                  initialCameraFit: fm.CameraFit.bounds(
-                                    bounds: fm.LatLngBounds(
-                                      ll.LatLng(_getPickupLatitude(), _getPickupLongitude()),
-                                      ll.LatLng(_getDropLatitude(), _getDropLongitude()),
-                                    ),
-                                    padding: const EdgeInsets.all(50),
-                                  ),
-                                  interactive: false, // mini-carte récap figée
-                                  showZoomControls: false,
-                                  children: [
-                                    fm.PolylineLayer(
-                                        polylines:
-                                            gma.toFmPolylines(_createPolylines())),
-                                    if (snapshot.data != null)
-                                      fm.MarkerLayer(
-                                          markers: gma.toFmMarkers(snapshot.data!)),
-                                  ],
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      if (driver != null)
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            ParagraphText(
-                              " ${translate("YourDriver")}:",
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: MyColors.blackThemeColor(),
-                            ),
-                            if (booking['status'] !=
-                                BookingStatusType.RIDE_COMPLETE.value)
-                              Column(
-                                children: [
-                                  Text(
-                                    translate('Approx'),
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
-                                  ParagraphText(
-                                    "${formatAriary(double.parse(booking['ride_price_to_pay'].toString()))} ${globalSettings.currency}",
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    color: MyColors.blackThemeColor(),
-                                  ),
-                                ],
-                              ),
-                            if (booking['status'] ==
-                                BookingStatusType.RIDE_COMPLETE.value)
-                              ParagraphText(
-                                "${formatAriary(double.parse(booking['ride_price_to_pay'].toString()))} ${globalSettings.currency}",
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: MyColors.blackThemeColor(),
-                              ),
-                          ],
-                        ),
-                      vSizedBox,
-                      if (driver != null)
-                        Row(
-                          children: [
-                            Container(
-                              alignment: Alignment.bottomCenter,
-                              height: 50,
-                              width: 50,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                    color: BadgeTypes.getColor(
-                                        driver!.batchStatus),
-                                    width: 3.8),
-                                image: DecorationImage(
-                                  image: NetworkImage(
-                                    driver!.profileImage,
-                                  ),
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                            ),
-                            hSizedBox,
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          ParagraphText(
-                                            booking['isSchedule']
-                                                ? driver!.firstName
-                                                : driver!.fullName,
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w600,
-                                            color: MyColors.blackThemeColor(),
-                                          ),
-                                          if (driver!.batchStatus !=
-                                              BadgeTypes.noBadge)hSizedBox05,
-                                          if (driver!.batchStatus !=
-                                              BadgeTypes.noBadge)
-                                            Image.asset(
-                                              MyImagesUrl.verifiedStatusIcon,
-                                              height: 20,
-                                              width: 20,
-                                              color: BadgeTypes.getColor(
-                                                driver!.batchStatus,
-                                              ),
-                                            )
-                                        ],
-                                      ),
-                                      ParagraphText(
-                                        driver!.vehicleData!.vehicleBrandName,
-                                        fontSize: 13,
-                                        color: MyColors.blackThemeColor(),
-                                      ),
-                                    ],
-                                  ),
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          RatingBar(
-                                            initialRating:
-                                                driver!.averageRating,
-                                            itemSize: 12,
-                                            direction: Axis.horizontal,
-                                            allowHalfRating: true,
-                                            itemCount: 5,
-                                            ignoreGestures: true,
-                                            ratingWidget: RatingWidget(
-                                              full: Image.asset(
-                                                MyImagesUrl.star,
-                                                color:
-                                                    MyColors.colorStartColor(),
-                                              ),
-                                              half: Image.asset(
-                                                MyImagesUrl.star,
-                                                color:
-                                                    MyColors.colorStartColor(),
-                                              ),
-                                              empty: Image.asset(
-                                                MyImagesUrl.star,
-                                                color: MyColors.blackThemeColor()
-                                                    .withOpacity(0.3),
-                                              ),
-                                            ),
-                                            itemPadding:
-                                                const EdgeInsets.symmetric(
-                                                    horizontal: 1.0),
-                                            onRatingUpdate: (rating) {},
-                                          ),
-                                          ParagraphText(
-                                            " (${driver!.totalReveiwCount} ${translate("Reviews")})",
-                                            fontSize: 11,
-                                            color: MyColors
-                                                .blackThemeColorWithOpacity(
-                                                    0.4),
-                                          ),
-                                        ],
-                                      ),
-                                      ParagraphText(
-                                        booking['paymentMethod'],
-                                        fontSize: 13,
-                                        color: MyColors.blackThemeColor(),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      vSizedBox,
-                      // 🔒 Masquer les boutons de contact pour les courses terminées OU annulées
-                      // (status >= RIDE_COMPLETE inclut RIDE_COMPLETE, CANCELLED, CANCELLED_BY_RIDER)
-                      if (driver != null &&
-                          booking['status'] < BookingStatusType.RIDE_COMPLETE.value &&
-                          booking['isSchedule'] == true)
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (driver != null &&
-                                booking['status'] < BookingStatusType.RIDE_COMPLETE.value &&
-                                booking['isSchedule'] == true &&
-                                (booking['scheduleTime'] as Timestamp)
-                                        .toDate()
-                                        .difference(Timestamp.now().toDate())
-                                        .inMinutes <
-                                    5)
-                            InkWell(
-                              onTap: () async {
-                               await openWhatsApp("${driver!.countryCode}${driver!.phone.startsWith("0") ? driver!.phone.substring(1) : driver!.phone}");
-                              },
-                              child: CircleAvatar(
-                                radius: 23,
-                                backgroundColor: MyColors.textFillThemeColor(),
-                                child: Image.asset(
-                                  MyImagesUrl.whatsAppIcon,
-                                  width: 28,
-                                  color: MyColors.blackThemeColor(),
-                                ),
-                              ),
-                            ),
-                            if (driver != null &&
-                                booking['status'] < BookingStatusType.RIDE_COMPLETE.value &&
-                                booking['isSchedule'] == true &&
-                                (booking['scheduleTime'] as Timestamp)
-                                        .toDate()
-                                        .difference(Timestamp.now().toDate())
-                                        .inMinutes <
-                                    5)
-                            hSizedBox,
-                            if (driver != null &&
-                                booking['status'] < BookingStatusType.RIDE_COMPLETE.value &&
-                                booking['isSchedule'] == true &&
-                                (booking['scheduleTime'] as Timestamp)
-                                        .toDate()
-                                        .difference(Timestamp.now().toDate())
-                                        .inMinutes <
-                                    5)
-                              RoundEdgedButton(
-                                  text: translate("Call"),
-                                  height: 40,
-                                  width: 90,
-                                  onTap: () async {
-                                    var url =
-                                        "tel:${driver!.countryCode}${driver!.phone.startsWith("0") ? driver!.phone.substring(1) : driver!.phone}";
-                                    if (await canLaunch(url)) {
-                                      await launch(url);
-                                    }
-                                  }),
-                          ],
-                        ),
-                      // if (index == 0)
-                      if (booking['rating_by_customer'] == null &&
-                          booking['status'] ==
-                              BookingStatusType.RIDE_COMPLETE.value)
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: RoundEdgedButton(
-                              text: translate("Rate"),
-                              height: 40,
-                              width: 90,
-                              verticalMargin: 5,
-                              onTap: () async {
-                                Map b = {
-                                  "booking_id": booking['id'],
-                                  "userId": driver!.id,
-                                  "profile": driver!.profileImage,
-                                  "name": driver!.fullName,
-                                  "review_count": driver!.totalReveiwCount,
-                                  "rating": driver!.averageRating,
-                                  "deviceId": driver!.deviceIdList,
-                                  "preferedLanguage": driver!.preferedLanguage
-                                };
-                                await push(
-                                    context: context,
-                                    screen: RateUsScreen(booking: b));
-                                getdata();
-                              }),
-                        ),
-                      // if (index == 1)
-                      if (booking['rating_by_customer'] != null)
-                        Container(
-                          width: MediaQuery.of(context).size.width,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: MyColors.blackThemeColorWithOpacity(0.09),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              RatingBar(
-                                initialRating: booking['rating_by_customer']
-                                    ['rating'],
-                                ignoreGestures: false,
-                                itemSize: 16,
-                                direction: Axis.horizontal,
-                                allowHalfRating: false,
-                                itemCount: 5,
-                                ratingWidget: RatingWidget(
-                                  full: Image.asset(
-                                    MyImagesUrl.star,
-                                    color: MyColors.colorStartColor(),
-                                  ),
-                                  half: Image.asset(
-                                    MyImagesUrl.star,
-                                    color: MyColors.colorStartColor(),
-                                  ),
-                                  empty: Image.asset(
-                                    MyImagesUrl.star,
-                                    color: MyColors.blackThemeColor()
-                                        .withOpacity(0.3),
-                                  ),
-                                ),
-                                itemPadding:
-                                    const EdgeInsets.symmetric(horizontal: 1.0),
-                                onRatingUpdate: (rating) {},
-                              ),
-                              vSizedBox05,
-                              ParagraphText(
-                                booking['rating_by_customer']['review'],
-                                fontSize: 12,
-                                fontStyle: FontStyle.italic,
-                                color: MyColors.blackThemeColor(),
-                              ),
-                            ],
-                          ),
-                        ),
-                      if (booking['rating_by_customer'] != null) vSizedBox,
-                      if (booking['rating_by_driver'] != null)
-                        ParagraphText(
-                          "${translate("RatingFromDriver")}:",
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: MyColors.blackThemeColor(),
-                        ),
-                      if (booking['rating_by_driver'] != null) vSizedBox05,
-                      if (booking['rating_by_driver'] != null)
-                        Container(
-                          width: MediaQuery.of(context).size.width,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: MyColors.blackThemeColorWithOpacity(0.09),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              RatingBar(
-                                initialRating: booking['rating_by_driver']
-                                    ['rating'],
-                                ignoreGestures: false,
-                                itemSize: 16,
-                                direction: Axis.horizontal,
-                                allowHalfRating: false,
-                                itemCount: 5,
-                                ratingWidget: RatingWidget(
-                                  full: Image.asset(
-                                    MyImagesUrl.star,
-                                    color: MyColors.colorStartColor(),
-                                  ),
-                                  half: Image.asset(
-                                    MyImagesUrl.star,
-                                    color: MyColors.colorStartColor(),
-                                  ),
-                                  empty: Image.asset(
-                                    MyImagesUrl.star,
-                                    color: MyColors.blackThemeColor()
-                                        .withOpacity(0.3),
-                                  ),
-                                ),
-                                itemPadding:
-                                    const EdgeInsets.symmetric(horizontal: 1.0),
-                                onRatingUpdate: (rating) {},
-                              ),
-                              vSizedBox05,
-                              ParagraphText(
-                                booking['rating_by_driver']['review'],
-                                fontSize: 12,
-                                fontStyle: FontStyle.italic,
-                                color: MyColors.blackThemeColor(),
-                              ),
-                            ],
-                          ),
-                        ),
-                      if (booking['rating_by_driver'] != null) vSizedBox,
-                      if (booking['status'] ==
-                              BookingStatusType.RIDE_COMPLETE.value &&
-                          booking['suggestPath'] != null &&
-                          (booking['suggestPath'] as List).isNotEmpty)
-                        SizedBox(
-                          height: 250,
-                          width: double.infinity,
-                          child: Consumer<GoogleMapProvider>(
-                            builder: (context, mapProvider, child) =>
-                                ValueListenableBuilder(
-                              valueListenable: bookingDetailMarker,
-                              builder:
-                                  (context, bookingDetailMarkerValue, child) =>
-                                      BookingMap(
-                                controller: _trackMapController,
-                                initialCenter: ll.LatLng(
-                                    booking['suggestPath'][0]['latitude'],
-                                    booking['suggestPath'][0]['longitude']),
-                                initialZoom: 12.80,
-                                showZoomControls: false,
-                                // Cadre tout le trajet dès l'affichage
-                                // (remplace le fit animé de l'ex-onMapCreated).
-                                initialCameraFit: fm.CameraFit.bounds(
-                                  bounds: fm.LatLngBounds.fromPoints(
-                                    List.generate(
-                                      booking['suggestPath'].length,
-                                      (index) => ll.LatLng(
-                                          booking['suggestPath'][index]
-                                              ['latitude'],
-                                          booking['suggestPath'][index]
-                                              ['longitude']),
-                                    ),
-                                  ),
-                                  padding: const EdgeInsets.all(50),
-                                ),
-                                children: [
-                                  fm.PolylineLayer(
-                                      polylines: gma.toFmPolylines({
-                                    Polyline(
-                                        polylineId: const PolylineId('path'),
-                                        color: MyColors.blackColor,
-                                        width: 5,
-                                        points: List.generate(
-                                            booking['suggestPath'].length,
-                                            (index) => LatLng(
-                                                booking['suggestPath'][index]
-                                                    ['latitude'],
-                                                booking['suggestPath'][index]
-                                                    ['longitude']))),
-                                    Polyline(
-                                        polylineId: const PolylineId('path1'),
-                                        color: MyColors.primaryColor,
-                                        width: 5,
-                                        points: List.generate(
-                                            booking['coveredPath'].length,
-                                            (index) => LatLng(
-                                                booking['coveredPath'][index]
-                                                    ['lat'],
-                                                booking['coveredPath'][index]
-                                                    ['lng']))),
-                                  })),
-                                  fm.MarkerLayer(markers: gma.toFmMarkers({
-                                    Marker(
-                                        markerId:
-                                            const MarkerId('pickupPoint'),
-                                        position: LatLng(
-                                            booking['suggestPath'][0]
-                                                ['latitude'],
-                                            booking['suggestPath'][0]
-                                                ['longitude'])),
-                                    Marker(
-                                        markerId:
-                                            const MarkerId('dropingPoint'),
-                                        position: LatLng(
-                                            booking['suggestPath'][
-                                                booking['suggestPath'].length -
-                                                    1]['latitude'],
-                                            booking['suggestPath'][
-                                                booking['suggestPath'].length -
-                                                    1]['longitude'])),
-                                  })),
-                                ],
-                                // cameraTargetBounds: CameraTargetBounds(
-                                //   mapProvider.getLatLongBounds([
-                                //     [
-                                //       booking['suggestPath'][0]['latitude'],
-                                //       booking['suggestPath'][0]['longitude']
-                                //     ],
-                                //     [
-                                //       booking['suggestPath'][
-                                //               booking['suggestPath'].length - 1]
-                                //           ['latitude'],
-                                //       booking['suggestPath'][
-                                //               booking['suggestPath'].length - 1]
-                                //           ['longitude']
-                                //     ],
-                                //   ]),
-                                // ),
-                              ),
-                            ),
-                          ),
-                        ),
-
-                      if (booking['status'] ==
-                          BookingStatusType.RIDE_COMPLETE.value)
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            vSizedBox4,
-                            Row(
-                              children: [
-                                Expanded(
-                                  flex: 2,
-                                  child: ParagraphText(
-                                    "${translate("RideAmount")}(${booking['total_distance']}km):",
-                                    fontSize: 15,
-                                    // fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                Expanded(
-                                  child: ParagraphText(
-                                    "${formatAriary((double.parse(booking['ride_price_to_pay'].toString()) + double.parse(booking['ride_bonus_price'].toString()) - double.parse(booking['vehicle_base_price'].toString()) - (booking['isSchedule'] == true ? booking['rideScheduledServiceFee'] : 0)).abs())} ${globalSettings.currency}",
-                                    textAlign: TextAlign.right,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Row(
-                              children: [
-                                Expanded(
-                                  flex: 2,
-                                  child: ParagraphText(
-                                    "${translate("BasePrice")}:",
-                                    fontSize: 15,
-                                    // fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                Expanded(
-                                  child: ParagraphText(
-                                    '${formatAriary(double.parse(booking['vehicle_base_price'].toString()))} ${globalSettings.currency}',
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    textAlign: TextAlign.right,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (booking['isSchedule'] == true)
-                              Row(
-                                children: [
-                                  Expanded(
-                                    flex: 2,
-                                    child: ParagraphText(
-                                      "${translate("Schedule fee")}:",
-                                      fontSize: 15,
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: ParagraphText(
-                                      '${formatAriary(booking['rideScheduledServiceFee'])} ${globalSettings.currency}',
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
-                                      textAlign: TextAlign.right,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            Row(
-                              children: [
-                                Expanded(
-                                  flex: 2,
-                                  child: ParagraphText(
-                                    "${translate("Discount")}:",
-                                    fontSize: 15,
-                                    // fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                Expanded(
-                                  child: ParagraphText(
-                                    '-${formatAriary(double.parse(booking['ride_bonus_price'].toString()))} ${globalSettings.currency}',
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    textAlign: TextAlign.right,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const Divider(),
-                            Row(
-                              children: [
-                                Expanded(
-                                  flex: 2,
-                                  child: ParagraphText(
-                                    "${translate("TotalAmount")}:",
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                Expanded(
-                                  child: ParagraphText(
-                                    '${formatAriary(double.parse(booking['ride_price_to_pay'].toString()))}  ${globalSettings.currency}',
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    textAlign: TextAlign.right,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const Divider(),
-                          ],
-                        )
+                      _buildHeader(),
+                      _buildMap(),
+                      _buildRatingSection(),
+                      _buildRideDetails(),
+                      _buildItinerary(),
+                      _buildDriverCard(),
+                      _buildPriceBreakdown(),
+                      _buildCancelButton(),
                     ],
                   ),
                 ),
+              ),
+      ),
+    );
+  }
 
-                // NOUVELLE SECTION : Bouton d'annulation (uniquement pour les courses réservées)
-                if (canBeCancelled)
+  // ---------------------------------------------------------------------------
+  // Sections
+  // ---------------------------------------------------------------------------
+
+  // En-tête : grand titre, sous-titre date (+ chauffeur), pastille de statut.
+  Widget _buildHeader() {
+    final Timestamp? ts = (_isScheduled && booking['scheduleTime'] != null)
+        ? booking['scheduleTime'] as Timestamp
+        : booking['requestTime'] as Timestamp?;
+    final String dateLabel = ts != null
+        ? formatTimestamp(ts, formateString: 'EEEE d MMMM yyyy, HH:mm')
+        : '';
+    final String driverName = driver != null
+        ? (_isScheduled ? driver!.firstName : driver!.fullName)
+        : '';
+    final String subtitle = driverName.isNotEmpty
+        ? (dateLabel.isNotEmpty ? "$dateLabel · $driverName" : driverName)
+        : dateLabel;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 4),
+        Text(
+          translate("YourRide"),
+          style: TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w700,
+            color: MyColors.blackThemeColor(),
+          ),
+        ),
+        if (subtitle.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 14,
+              color: MyColors.blackThemeColorWithOpacity(0.6),
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
+        _statusChip(),
+      ],
+    );
+  }
+
+  // Pastille de statut colorée (annulée / terminée / planifiée / en cours).
+  Widget _statusChip() {
+    String label;
+    Color color;
+    if (_isCancelled) {
+      label = translate("RideCancelled");
+      color = Colors.red;
+    } else if (_isCompleted) {
+      label = translate("rideCompleted");
+      color = const Color(0xFF1FA463);
+    } else if (_isScheduled) {
+      final when = booking['scheduleTime'] != null
+          ? formatTimestamp(booking['scheduleTime'])
+          : '';
+      label = "${translate("Scheduledon")} $when".trim();
+      color = Colors.deepOrange;
+    } else {
+      label = translate("Running");
+      color = MyColors.horizonBlue;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+                color: color, fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Carte arrondie : trajet réel (terminée) ou pickup→drop (planifiée).
+  Widget _buildMap() {
+    Widget? map;
+    if (_isCompleted &&
+        booking['suggestPath'] != null &&
+        (booking['suggestPath'] as List).isNotEmpty) {
+      map = _completedTripMap();
+    } else if (!_isCompleted && !_isCancelled && _hasValidCoordinates()) {
+      map = _plannedTripMap();
+    }
+    if (map == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 22),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(height: 210, width: double.infinity, child: map),
+      ),
+    );
+  }
+
+  // Section « Note du trajet » (uniquement pour les courses terminées).
+  Widget _buildRatingSection() {
+    if (!_isCompleted) return const SizedBox.shrink();
+    final hasRating = booking['rating_by_customer'] != null;
+    final hasDriverRating = booking['rating_by_driver'] != null;
+    if (!hasRating && !hasDriverRating && driver == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionDivider(),
+        _sectionTitle(translate("TripRating")),
+        if (hasRating) ...[
+          _stars(
+              (booking['rating_by_customer']['rating'] as num).toDouble(),
+              size: 24),
+          if ((booking['rating_by_customer']['review'] ?? '')
+              .toString()
+              .isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              booking['rating_by_customer']['review'],
+              style: TextStyle(
+                fontSize: 13,
+                fontStyle: FontStyle.italic,
+                color: MyColors.blackThemeColorWithOpacity(0.7),
+              ),
+            ),
+          ],
+        ] else if (driver != null)
+          RoundEdgedButton(
+            text: translate("Rate"),
+            height: 42,
+            width: 130,
+            onTap: () async {
+              Map b = {
+                "booking_id": booking['id'],
+                "userId": driver!.id,
+                "profile": driver!.profileImage,
+                "name": driver!.fullName,
+                "review_count": driver!.totalReveiwCount,
+                "rating": driver!.averageRating,
+                "deviceId": driver!.deviceIdList,
+                "preferedLanguage": driver!.preferedLanguage
+              };
+              await push(context: context, screen: RateUsScreen(booking: b));
+              getdata();
+            },
+          ),
+        if (hasDriverRating) ...[
+          const SizedBox(height: 18),
+          Text(
+            "${translate("RatingFromDriver")}:",
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: MyColors.blackThemeColorWithOpacity(0.7),
+            ),
+          ),
+          const SizedBox(height: 6),
+          _stars((booking['rating_by_driver']['rating'] as num).toDouble(),
+              size: 18),
+          if ((booking['rating_by_driver']['review'] ?? '')
+              .toString()
+              .isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              booking['rating_by_driver']['review'],
+              style: TextStyle(
+                fontSize: 13,
+                fontStyle: FontStyle.italic,
+                color: MyColors.blackThemeColorWithOpacity(0.7),
+              ),
+            ),
+          ],
+        ],
+      ],
+    );
+  }
+
+  // Section « Détails de la course » : distance, paiement, prix indicatif.
+  Widget _buildRideDetails() {
+    final bool hasDistance = booking['total_distance'] != null;
+    final bool hasPayment =
+        (booking['paymentMethod'] ?? '').toString().isNotEmpty;
+    String? approxPrice;
+    if (!_isCompleted && booking['ride_price_to_pay'] != null) {
+      approxPrice =
+          "${formatAriary(double.parse(booking['ride_price_to_pay'].toString()))} ${globalSettings.currency}";
+    }
+
+    if (!hasDistance && !hasPayment && approxPrice == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionDivider(),
+        _sectionTitle(translate("RideDetailsTitle")),
+        if (hasDistance)
+          _detailRow(Icons.straighten, translate("Distance"),
+              "${booking['total_distance']} km"),
+        if (hasPayment)
+          _detailRow(Icons.payments_outlined, translate("PaymentMethod"),
+              booking['paymentMethod']),
+        if (approxPrice != null)
+          _detailRow(Icons.account_balance_wallet_outlined,
+              translate("Approx"), approxPrice,
+              highlight: true),
+      ],
+    );
+  }
+
+  // Section « Itinéraire » : timeline départ → arrivée.
+  Widget _buildItinerary() {
+    final String pick = (booking['pickAddress'] ?? '').toString();
+    final String drop = (booking['dropAddress'] ?? '').toString();
+    if (pick.isEmpty && drop.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionDivider(),
+        _sectionTitle(translate("TripRoute")),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Column(
+                children: [
                   Container(
-                    margin: const EdgeInsets.fromLTRB(0, 15, 0, 40), // Marge supplémentaire en bas
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
-                    child: RoundEdgedButton(
-                      text: translate("cancelBooking"),
-                      color: Colors.red,
-                      textColor: Colors.white,
-                      borderRadius: 10,
-                      onTap: () => _showCancelBookingDialog(context),
-                      width: double.infinity,
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: MyColors.blackThemeColor(),
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-
-              // IconButton(
-              //     onPressed: () async {
-              //       // Uint8List uint8list = await generateCustomerInvoice(
-              //       //     bookingDetails: booking, customerDetails: customer!);
-              //       // final dir = await getApplicationDocumentsDirectory();
-              //       // // var file = File(
-              //       // //     "${dir.path.split("app_flutter").first}1${(booking['endTime'] as Timestamp).toDate().microsecondsSinceEpoch}.pdf");
-              //       // var file = File(
-              //       //     "${dir.path.split("app_flutter").first}${userData.value!.id.substring(0, 4)}2${(booking['endTime'] as Timestamp).toDate().microsecondsSinceEpoch}.pdf");
-
-              //       // file.writeAsBytesSync(uint8list);
-              //       // FirestoreServices.uploadFile(
-              //       //   file,
-              //       //   'invoice',
-              //       //   showloader: false,
-              //       // );
-              //       Uint8List uint8listDriver = await generateDriverInvoice(
-              //           bookingDetails: booking,
-              //           // customerDetails: userData.value!,
-              //           driverData: driver!);
-              //       final dirDriver = await getApplicationDocumentsDirectory();
-              //       var fileDriver = File(
-              //           "${dirDriver.path.split("app_flutter").first}${userData.value!.id.substring(0, 4)}1${(booking['endTime'] as Timestamp).toDate().microsecondsSinceEpoch}.pdf");
-
-              //       fileDriver.writeAsBytesSync(uint8listDriver);
-
-              //       // FirestoreServices.uploadFile(
-              //       //   fileDriver,
-              //       //   'invoice',
-              //       //   showloader: false,
-              //       // );
-              //       push(
-              //           context: context,
-              //           screen: CustomPdfViewWidget(file: fileDriver));
-              //     },
-              //     icon: Icon(Icons.picture_as_pdf)),
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      color: MyColors.blackThemeColorWithOpacity(0.2),
+                    ),
+                  ),
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: MyColors.coralPink,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _itineraryStop(pick),
+                    const SizedBox(height: 26),
+                    _itineraryStop(drop),
+                  ],
+                ),
+              ),
             ],
           ),
+        ),
+      ],
+    );
+  }
+
+  // Carte chauffeur (photo, nom, badge, note, véhicule) + contact si imminent.
+  Widget _buildDriverCard() {
+    if (driver == null) return const SizedBox.shrink();
+
+    final bool showContact = _statusValue <
+            BookingStatusType.RIDE_COMPLETE.value &&
+        _isScheduled &&
+        booking['scheduleTime'] != null &&
+        (booking['scheduleTime'] as Timestamp)
+                .toDate()
+                .difference(Timestamp.now().toDate())
+                .inMinutes <
+            5;
+    final String brand = driver!.vehicleData?.vehicleBrandName ?? '';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionDivider(),
+        _sectionTitle(translate("YourDriver")),
+        Row(
+          children: [
+            Container(
+              height: 54,
+              width: 54,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: BadgeTypes.getColor(driver!.batchStatus), width: 3),
+                image: DecorationImage(
+                  image: NetworkImage(driver!.profileImage),
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          _isScheduled ? driver!.firstName : driver!.fullName,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: MyColors.blackThemeColor(),
+                          ),
+                        ),
+                      ),
+                      if (driver!.batchStatus != BadgeTypes.noBadge) ...[
+                        const SizedBox(width: 5),
+                        Image.asset(
+                          MyImagesUrl.verifiedStatusIcon,
+                          height: 18,
+                          width: 18,
+                          color: BadgeTypes.getColor(driver!.batchStatus),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      _stars(driver!.averageRating, size: 13),
+                      const SizedBox(width: 6),
+                      Text(
+                        "(${driver!.totalReveiwCount} ${translate("Reviews")})",
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: MyColors.blackThemeColorWithOpacity(0.45),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            if (brand.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Text(
+                brand,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: MyColors.blackThemeColorWithOpacity(0.7),
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (showContact) ...[
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              InkWell(
+                onTap: () async {
+                  await openWhatsApp(
+                      "${driver!.countryCode}${driver!.phone.startsWith("0") ? driver!.phone.substring(1) : driver!.phone}");
+                },
+                child: CircleAvatar(
+                  radius: 22,
+                  backgroundColor: MyColors.textFillThemeColor(),
+                  child: Image.asset(
+                    MyImagesUrl.whatsAppIcon,
+                    width: 26,
+                    color: MyColors.blackThemeColor(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              RoundEdgedButton(
+                text: translate("Call"),
+                height: 42,
+                width: 100,
+                onTap: () async {
+                  var url =
+                      "tel:${driver!.countryCode}${driver!.phone.startsWith("0") ? driver!.phone.substring(1) : driver!.phone}";
+                  if (await canLaunch(url)) {
+                    await launch(url);
+                  }
+                },
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  // Ventilation tarifaire (uniquement pour les courses terminées).
+  Widget _buildPriceBreakdown() {
+    if (!_isCompleted) return const SizedBox.shrink();
+    final String currency = globalSettings.currency;
+    double d(dynamic v) => double.parse((v ?? 0).toString());
+    final double rideAmount = (d(booking['ride_price_to_pay']) +
+            d(booking['ride_bonus_price']) -
+            d(booking['vehicle_base_price']) -
+            (_isScheduled ? d(booking['rideScheduledServiceFee']) : 0))
+        .abs();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionDivider(),
+        _sectionTitle(translate("Payment")),
+        _priceRow(
+          "${translate("RideAmount")} (${booking['total_distance']} km)",
+          "${formatAriary(rideAmount)} $currency",
+        ),
+        _priceRow(
+          translate("BasePrice"),
+          "${formatAriary(d(booking['vehicle_base_price']))} $currency",
+        ),
+        if (_isScheduled)
+          _priceRow(
+            translate("Schedule fee"),
+            "${formatAriary(booking['rideScheduledServiceFee'])} $currency",
+          ),
+        _priceRow(
+          translate("Discount"),
+          "-${formatAriary(d(booking['ride_bonus_price']))} $currency",
+        ),
+        Divider(height: 26, color: MyColors.blackThemeColorWithOpacity(0.1)),
+        _priceRow(
+          translate("TotalAmount"),
+          "${formatAriary(d(booking['ride_price_to_pay']))} $currency",
+          bold: true,
+        ),
+      ],
+    );
+  }
+
+  // Bouton d'annulation (uniquement pour les courses annulables).
+  Widget _buildCancelButton() {
+    if (!canBeCancelled) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 30),
+      child: RoundEdgedButton(
+        text: translate("cancelBooking"),
+        color: Colors.red,
+        textColor: Colors.white,
+        borderRadius: 10,
+        onTap: () => _showCancelBookingDialog(context),
+        width: double.infinity,
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Petits widgets réutilisables
+  // ---------------------------------------------------------------------------
+  Widget _sectionTitle(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            color: MyColors.blackThemeColor(),
+          ),
+        ),
+      );
+
+  Widget _sectionDivider() => Divider(
+        height: 40,
+        thickness: 1,
+        color: MyColors.blackThemeColorWithOpacity(0.08),
+      );
+
+  Widget _detailRow(IconData icon, String label, String value,
+      {bool highlight = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: MyColors.blackThemeColorWithOpacity(0.55)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                color: MyColors.blackThemeColorWithOpacity(0.7),
+              ),
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: highlight ? FontWeight.w700 : FontWeight.w600,
+              color: MyColors.blackThemeColor(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _priceRow(String label, String value, {bool bold = false}) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+                  color: MyColors.blackThemeColor(),
+                ),
+              ),
+            ),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: MyColors.blackThemeColor(),
+              ),
+            ),
+          ],
+        ),
+      );
+
+  Widget _itineraryStop(String address) => Text(
+        address.isEmpty ? '—' : address,
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w500,
+          color: MyColors.blackThemeColor(),
+        ),
+      );
+
+  // Étoiles en lecture seule (note client / chauffeur).
+  Widget _stars(double rating, {double size = 18}) => RatingBar(
+        initialRating: rating,
+        itemSize: size,
+        direction: Axis.horizontal,
+        allowHalfRating: true,
+        itemCount: 5,
+        ignoreGestures: true,
+        ratingWidget: RatingWidget(
+          full: Image.asset(MyImagesUrl.star, color: MyColors.colorStartColor()),
+          half: Image.asset(MyImagesUrl.star, color: MyColors.colorStartColor()),
+          empty: Image.asset(MyImagesUrl.star,
+              color: MyColors.blackThemeColorWithOpacity(0.25)),
+        ),
+        itemPadding: const EdgeInsets.symmetric(horizontal: 1.0),
+        onRatingUpdate: (r) {},
+      );
+
+  // ---------------------------------------------------------------------------
+  // Cartes
+  // ---------------------------------------------------------------------------
+
+  // Carte d'une course planifiée : marqueurs pickup/drop + ligne directe.
+  Widget _plannedTripMap() {
+    return FutureBuilder<Set<Marker>>(
+      future: _createCustomMarkers(),
+      builder: (context, snapshot) {
+        return BookingMap(
+          controller: _summaryMapController,
+          initialCenter: ll.LatLng(
+            (_getPickupLatitude() + _getDropLatitude()) / 2,
+            (_getPickupLongitude() + _getDropLongitude()) / 2,
+          ),
+          initialZoom: 12,
+          // Cadre pickup→drop dès l'affichage (ex-fit onMapCreated).
+          initialCameraFit: fm.CameraFit.bounds(
+            bounds: fm.LatLngBounds(
+              ll.LatLng(_getPickupLatitude(), _getPickupLongitude()),
+              ll.LatLng(_getDropLatitude(), _getDropLongitude()),
+            ),
+            padding: const EdgeInsets.all(50),
+          ),
+          interactive: false, // mini-carte récap figée
+          showZoomControls: false,
+          children: [
+            fm.PolylineLayer(
+                polylines: gma.toFmPolylines(_createPolylines())),
+            if (snapshot.data != null)
+              fm.MarkerLayer(markers: gma.toFmMarkers(snapshot.data!)),
+          ],
+        );
+      },
+    );
+  }
+
+  // Carte d'une course terminée : trajet réel (noir) + portion couverte (corail).
+  Widget _completedTripMap() {
+    final List path = booking['suggestPath'] as List;
+
+    final Set<Polyline> polylines = {
+      Polyline(
+        polylineId: const PolylineId('path'),
+        color: MyColors.blackColor,
+        width: 5,
+        points: List.generate(
+          path.length,
+          (index) =>
+              LatLng(path[index]['latitude'], path[index]['longitude']),
+        ),
+      ),
+    };
+    if (booking['coveredPath'] != null) {
+      final List covered = booking['coveredPath'] as List;
+      polylines.add(Polyline(
+        polylineId: const PolylineId('path1'),
+        color: MyColors.primaryColor,
+        width: 5,
+        points: List.generate(
+          covered.length,
+          (index) => LatLng(covered[index]['lat'], covered[index]['lng']),
+        ),
+      ));
+    }
+
+    return Consumer<GoogleMapProvider>(
+      builder: (context, mapProvider, child) => ValueListenableBuilder(
+        valueListenable: bookingDetailMarker,
+        builder: (context, bookingDetailMarkerValue, child) => BookingMap(
+          controller: _trackMapController,
+          initialCenter:
+              ll.LatLng(path[0]['latitude'], path[0]['longitude']),
+          initialZoom: 12.80,
+          showZoomControls: false,
+          interactive: false,
+          // Cadre tout le trajet dès l'affichage.
+          initialCameraFit: fm.CameraFit.bounds(
+            bounds: fm.LatLngBounds.fromPoints(
+              List.generate(
+                path.length,
+                (index) => ll.LatLng(
+                    path[index]['latitude'], path[index]['longitude']),
+              ),
+            ),
+            padding: const EdgeInsets.all(50),
+          ),
+          children: [
+            fm.PolylineLayer(polylines: gma.toFmPolylines(polylines)),
+            fm.MarkerLayer(markers: gma.toFmMarkers({
+              Marker(
+                markerId: const MarkerId('pickupPoint'),
+                position:
+                    LatLng(path[0]['latitude'], path[0]['longitude']),
+              ),
+              Marker(
+                markerId: const MarkerId('dropingPoint'),
+                position: LatLng(path[path.length - 1]['latitude'],
+                    path[path.length - 1]['longitude']),
+              ),
+            })),
+          ],
         ),
       ),
     );
@@ -1223,42 +1138,42 @@ class _BookingDetailsState extends State<BookingDetails> {
 
   // Vérifie si les coordonnées sont valides
   bool _hasValidCoordinates() {
-    return (_getPickupLatitude() != 0 && 
-            _getPickupLongitude() != 0 &&
-            _getDropLatitude() != 0 && 
-            _getDropLongitude() != 0);
+    return (_getPickupLatitude() != 0 &&
+        _getPickupLongitude() != 0 &&
+        _getDropLatitude() != 0 &&
+        _getDropLongitude() != 0);
   }
 
   // Obtient la latitude de pickup en essayant différents noms de champs
   double _getPickupLatitude() {
-    return (booking['pickupLatitude']?.toDouble() ?? 
-            booking['pickup_latitude']?.toDouble() ??
-            booking['pickLat']?.toDouble() ??
-            0.0);
+    return (booking['pickupLatitude']?.toDouble() ??
+        booking['pickup_latitude']?.toDouble() ??
+        booking['pickLat']?.toDouble() ??
+        0.0);
   }
 
   // Obtient la longitude de pickup en essayant différents noms de champs
   double _getPickupLongitude() {
-    return (booking['pickupLongitude']?.toDouble() ?? 
-            booking['pickup_longitude']?.toDouble() ??
-            booking['pickLng']?.toDouble() ??
-            0.0);
+    return (booking['pickupLongitude']?.toDouble() ??
+        booking['pickup_longitude']?.toDouble() ??
+        booking['pickLng']?.toDouble() ??
+        0.0);
   }
 
   // Obtient la latitude de drop en essayant différents noms de champs
   double _getDropLatitude() {
-    return (booking['dropLatitude']?.toDouble() ?? 
-            booking['drop_latitude']?.toDouble() ??
-            booking['dropLat']?.toDouble() ??
-            0.0);
+    return (booking['dropLatitude']?.toDouble() ??
+        booking['drop_latitude']?.toDouble() ??
+        booking['dropLat']?.toDouble() ??
+        0.0);
   }
 
   // Obtient la longitude de drop en essayant différents noms de champs
   double _getDropLongitude() {
-    return (booking['dropLongitude']?.toDouble() ?? 
-            booking['drop_longitude']?.toDouble() ??
-            booking['dropLng']?.toDouble() ??
-            0.0);
+    return (booking['dropLongitude']?.toDouble() ??
+        booking['drop_longitude']?.toDouble() ??
+        booking['dropLng']?.toDouble() ??
+        0.0);
   }
 
   // Crée les marqueurs personnalisés (carré pour pickup, rond pour drop)
@@ -1304,12 +1219,12 @@ class _BookingDetailsState extends State<BookingDetails> {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     const size = 48.0;
-    
+
     // Dessiner un carré rouge
     final paint = Paint()
       ..color = const Color(0xFFFF5357)
       ..style = PaintingStyle.fill;
-    
+
     // Carré avec bordure blanche
     canvas.drawRRect(
       RRect.fromRectAndRadius(
@@ -1318,7 +1233,7 @@ class _BookingDetailsState extends State<BookingDetails> {
       ),
       Paint()..color = Colors.white,
     );
-    
+
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         const Rect.fromLTWH(6, 6, size - 12, size - 12),
@@ -1326,11 +1241,11 @@ class _BookingDetailsState extends State<BookingDetails> {
       ),
       paint,
     );
-    
+
     final picture = recorder.endRecording();
     final img = await picture.toImage(size.toInt(), size.toInt());
     final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
-    
+
     return BitmapDescriptor.fromBytes(bytes!.buffer.asUint8List());
   }
 
@@ -1339,29 +1254,29 @@ class _BookingDetailsState extends State<BookingDetails> {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     const size = 48.0;
-    
+
     // Dessiner un cercle rouge
     final paint = Paint()
       ..color = const Color(0xFFFF5357)
       ..style = PaintingStyle.fill;
-    
+
     // Cercle avec bordure blanche
     canvas.drawCircle(
       const Offset(size / 2, size / 2),
       (size - 8) / 2,
       Paint()..color = Colors.white,
     );
-    
+
     canvas.drawCircle(
       const Offset(size / 2, size / 2),
       (size - 12) / 2,
       paint,
     );
-    
+
     final picture = recorder.endRecording();
     final img = await picture.toImage(size.toInt(), size.toInt());
     final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
-    
+
     return BitmapDescriptor.fromBytes(bytes!.buffer.asUint8List());
   }
 
