@@ -59,7 +59,7 @@
    "source": "openmaptiles",
    "source-layer": "park",
    "paint": {
-    "fill-color": "#C5E3BC",
+    "fill-color": "#9FD584",
     "fill-opacity": 0.9
    }
   },
@@ -439,7 +439,7 @@
     "line-join": "round"
    },
    "paint": {
-    "line-color": "#BFC7D3",
+    "line-color": "#8398CC",
     "line-width": {
      "base": 1.35,
      "stops": [
@@ -483,7 +483,7 @@
     "line-join": "round"
    },
    "paint": {
-    "line-color": "#FFFFFF",
+    "line-color": "#B9C6EC",
     "line-width": {
      "base": 1.35,
      "stops": [
