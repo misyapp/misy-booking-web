@@ -714,6 +714,29 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
           });
         }
 
+        // Deep-link "Mon compte" depuis le menu compte de misy.app
+        // (book.misy.app/?account=trips|wallet|profile). L'app boote toujours
+        // sur le splash → on route vers l'espace compte sur la bonne section
+        // si un vrai compte est connecté ; sinon on propose la connexion.
+        final accountParam = params['account'];
+        if (accountParam != null) {
+          const sectionByName = {
+            'trips': AccountSection.trips,
+            'wallet': AccountSection.wallet,
+            'profile': AccountSection.profile,
+          };
+          final section = sectionByName[accountParam] ?? AccountSection.trips;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            final user = FirebaseAuth.instance.currentUser;
+            if (user != null && !user.isAnonymous) {
+              Navigator.of(context).pushNamed('/account', arguments: section);
+            } else {
+              _showWebAuthDialog(WebAuthMode.login);
+            }
+          });
+        }
+
         final pickup = params['pickup'];
         final destination = params['destination'];
         final pickupLat = params['pickupLat'];
