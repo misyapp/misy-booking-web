@@ -62,6 +62,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'provider/trip_provider.dart';
 import 'provider/trip_chat_provider.dart';
 import 'provider/geo_zone_provider.dart';
+import 'utils/misy_session_bridge.dart';
 
 /// 🚀 OPTIMISATION: Clear du cache Firestore en arrière-plan (non-bloquant)
 /// Exécuté une seule fois pour résoudre les données corrompues
@@ -179,7 +180,17 @@ Future<void> bootstrap() async {
       firebaseInitialized = true;
       print("✅ Firebase already initialized (${Firebase.apps.length} apps), skipping...");
     }
-    
+
+    // book.misy.app ↔ misy.app : déconnexion demandée depuis le menu compte
+    // du site vitrine (?logout=1) → signOut puis redirection. Sinon, démarre
+    // la synchro de l'état de connexion vers le cookie .misy.app (web only).
+    if (kIsWeb) {
+      if (await MisySessionBridge.handleLogoutDeepLink()) {
+        return; // la page redirige vers misy.app, on stoppe le boot.
+      }
+      MisySessionBridge.start();
+    }
+
     // 🚀 OPTIMISATION: Analytics init en arrière-plan (gain ~500ms)
     // N'est pas critique pour l'affichage du splash
     print("🚀 Starting Analytics initialization (background)...");

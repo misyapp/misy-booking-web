@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/contants/global_data.dart';
@@ -50,7 +51,22 @@ class _AccountShellWebState extends State<AccountShellWeb> {
     if (!_sectionInitialized) {
       _sectionInitialized = true;
       final args = ModalRoute.of(context)?.settings.arguments;
-      if (args is AccountSection) _section = args;
+      if (args is AccountSection) {
+        _section = args;
+      } else if (kIsWeb) {
+        // Deep-link depuis le menu compte de misy.app (?section=…).
+        switch (Uri.base.queryParameters['section']) {
+          case 'profile':
+            _section = AccountSection.profile;
+            break;
+          case 'wallet':
+            _section = AccountSection.wallet;
+            break;
+          case 'trips':
+            _section = AccountSection.trips;
+            break;
+        }
+      }
     }
   }
 
@@ -178,9 +194,13 @@ class _AccountShellWebState extends State<AccountShellWeb> {
             ),
             const Spacer(),
             PopupMenuButton<String>(
-              offset: const Offset(0, 48),
+              offset: const Offset(0, 52),
+              color: Colors.white,
+              surfaceTintColor: Colors.white,
+              elevation: 8,
+              shadowColor: Colors.black.withOpacity(0.18),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(16),
               ),
               onSelected: (value) {
                 if (value == 'logout') {
@@ -248,6 +268,9 @@ class _AccountShellWebState extends State<AccountShellWeb> {
       AppLocale.fr: 'Français',
       AppLocale.mg: 'Malagasy',
       AppLocale.en: 'English',
+      AppLocale.it: 'Italiano',
+      AppLocale.pl: 'Polski',
+      AppLocale.de: 'Deutsch',
     };
     return [
       for (final loc in AppLocale.values)
