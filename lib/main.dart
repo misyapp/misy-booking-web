@@ -38,6 +38,7 @@ import 'package:rider_ride_hailing_app/provider/wallet_topup_orange_provider.dar
 import 'package:rider_ride_hailing_app/provider/wallet_topup_telma_provider.dart';
 import 'package:rider_ride_hailing_app/provider/loyalty_chest_provider.dart';
 import 'package:rider_ride_hailing_app/services/firebase_push_notifications.dart';
+import 'package:rider_ride_hailing_app/services/surge_service.dart';
 import 'package:rider_ride_hailing_app/services/share_prefrence_service.dart';
 import 'package:rider_ride_hailing_app/provider/internet_connectivity_provider.dart';
 import 'package:rider_ride_hailing_app/provider/navigation_provider.dart';
@@ -342,6 +343,10 @@ Future<void> bootstrap() async {
   });
 
   await initializeDateFormatting("en_US", null);
+
+  // Surge pricing : démarre les listeners surge_state + surge_config.
+  SurgeService.init();
+
   runApp(
     MultiProvider(
       providers: [

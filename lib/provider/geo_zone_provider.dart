@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:rider_ride_hailing_app/functions/print_function.dart';
 import 'package:rider_ride_hailing_app/models/geo_zone.dart';
 import 'package:rider_ride_hailing_app/services/geo_zone_service.dart';
+import 'package:rider_ride_hailing_app/services/surge_service.dart';
 import 'package:rider_ride_hailing_app/modal/vehicle_modal.dart';
 
 /// Provider pour gérer les zones géographiques et leurs configurations
@@ -81,6 +82,9 @@ class GeoZoneProvider extends ChangeNotifier {
 
       // Synchroniser avec le service pour accès statique dans TripProvider
       GeoZoneService.currentZone = _currentZone;
+
+      // Surge dynamique : recalcule multiplicateur + frais d'approche pour ce départ.
+      SurgeService.updateForPickup(latitude, longitude);
 
       if (_currentZone != null) {
         myCustomPrintStatement(
@@ -250,6 +254,17 @@ class GeoZoneProvider extends ChangeNotifier {
     if (trafficMultiplier != 1.0) {
       myCustomPrintStatement('🚦 Application multiplicateur trafic zone: x$trafficMultiplier');
       total *= trafficMultiplier;
+    }
+
+    // ⚡ Surge dynamique temps réel (feat/surge-price) + frais d'approche fondu.
+    if (SurgeService.riderApplyEnabled) {
+      final surgeMult = SurgeService.currentSurgeMultiplier;
+      if (surgeMult > 1.0) {
+        total *= surgeMult;
+        myCustomPrintStatement('⚡ Surge dynamique: x$surgeMult');
+      }
+      final approach = SurgeService.currentApproachAmount;
+      if (approach > 0) total += approach;
     }
 
     // Appliquer le minimum si défini
