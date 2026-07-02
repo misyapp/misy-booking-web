@@ -57,10 +57,15 @@ class SurgeService {
     _sub?.cancel();
     _sub = _db.collection('surge_state').snapshots().listen((snap) {
       final cells = <_SurgeCell>[];
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
       for (final doc in snap.docs) {
         final d = doc.data();
         final mult = (d['multiplier'] as num?)?.toDouble() ?? 1.0;
-        if (mult <= 1.0001) continue;
+        // On garde surge (>1) ET prix bas (<1) ; seul le neutre est ignoré.
+        if ((mult - 1.0).abs() <= 0.0001) continue;
+        // Garde de fraîcheur : ignorer une cellule périmée (CF arrêtée).
+        final ts = d['updatedAt'];
+        if (ts is Timestamp && nowMs - ts.millisecondsSinceEpoch > 300000) continue;
         final rawBoundary = d['boundary'];
         if (rawBoundary is! List || rawBoundary.length < 3) continue;
         final boundary = <List<double>>[];

@@ -256,12 +256,14 @@ class GeoZoneProvider extends ChangeNotifier {
       total *= trafficMultiplier;
     }
 
-    // ⚡ Surge dynamique temps réel (feat/surge-price) + frais d'approche fondu.
-    if (SurgeService.riderApplyEnabled) {
+    // ⚡ Surge/prix bas dynamique (feat/surge-price) + frais d'approche fondu.
+    // Jamais sur un devis planifié (atTime fourni = heure future) — parité riderapp.
+    if (SurgeService.riderApplyEnabled && atTime == null) {
       final surgeMult = SurgeService.currentSurgeMultiplier;
-      if (surgeMult > 1.0) {
+      // Applique la hausse (>1) ET la baisse silencieuse (<1). Neutre ignoré.
+      if ((surgeMult - 1.0).abs() > 0.0001) {
         total *= surgeMult;
-        myCustomPrintStatement('⚡ Surge dynamique: x$surgeMult');
+        myCustomPrintStatement('⚡ Prix dynamique: x$surgeMult');
       }
       final approach = SurgeService.currentApproachAmount;
       if (approach > 0) total += approach;
