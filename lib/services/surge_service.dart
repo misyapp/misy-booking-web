@@ -49,6 +49,10 @@ class SurgeService {
   static double currentApproachAmount = 0; // Ar, fondu dans le prix affiché
   static double currentApproachDistKm = 0;
 
+  // Valeurs réellement appliquées au dernier devis (audit booking, anti-drift).
+  static double quotedMultiplier = 1.0;
+  static double quotedApproachAmount = 0;
+
   static FirebaseFirestore get _db => FirebaseFirestore.instance;
 
   /// À appeler une fois au démarrage de l'app.

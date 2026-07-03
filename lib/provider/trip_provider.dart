@@ -35,6 +35,7 @@ import 'package:rider_ride_hailing_app/provider/admin_settings_provider.dart';
 import 'package:rider_ride_hailing_app/provider/geo_zone_provider.dart';
 import 'package:rider_ride_hailing_app/models/geo_zone.dart';
 import 'package:rider_ride_hailing_app/services/geo_zone_service.dart';
+import 'package:rider_ride_hailing_app/services/surge_service.dart';
 import 'package:rider_ride_hailing_app/pages/view_module/rate_us_screen.dart';
 import 'package:rider_ride_hailing_app/provider/airtel_money_payment_gateway_provider.dart';
 import 'package:rider_ride_hailing_app/provider/google_map_provider.dart';
@@ -2764,6 +2765,24 @@ class TripProvider extends ChangeNotifier {
         if (config.isTrafficTime(requestTime)) {
           basePrice *= config.trafficMultiplier;
           myCustomPrintStatement('🚦 Global traffic multiplier: x${config.trafficMultiplier}');
+        }
+      }
+
+      // ⚡ Surge/prix bas dynamique temps réel (feat/surge-price) — parité riderapp.
+      // Jamais sur une course planifiée. N'affecte le prix que si enabled + riderApplyEnabled.
+      SurgeService.quotedMultiplier = 1.0;
+      SurgeService.quotedApproachAmount = 0;
+      if (SurgeService.riderApplyEnabled && !isScheduled) {
+        final surgeMult = SurgeService.currentSurgeMultiplier;
+        if ((surgeMult - 1.0).abs() > 0.0001) {
+          basePrice *= surgeMult;
+          SurgeService.quotedMultiplier = surgeMult;
+          myCustomPrintStatement('⚡ Prix dynamique: x$surgeMult');
+        }
+        final approach = SurgeService.currentApproachAmount;
+        if (approach > 0) {
+          basePrice += approach;
+          SurgeService.quotedApproachAmount = approach;
         }
       }
 
