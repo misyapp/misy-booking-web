@@ -9,8 +9,12 @@ class _SurgeCell {
   final double multiplier;
   final int demand;
   final List<List<double>> boundary; // [[lat,lng], ...]
-  _SurgeCell(this.hexId, this.multiplier, this.demand, this.boundary);
+  final int updatedAtMs; // fraîcheur : 0 si absent → considéré périmé
+  _SurgeCell(this.hexId, this.multiplier, this.demand, this.boundary, this.updatedAtMs);
 }
+
+/// Une cellule est valide au devis si elle a été rafraîchie il y a < 5 min.
+const int _kSurgeFreshnessMs = 300000;
 
 /// Surge pricing — accès statique côté riderapp.
 ///
@@ -63,9 +67,10 @@ class SurgeService {
         final mult = (d['multiplier'] as num?)?.toDouble() ?? 1.0;
         // On garde surge (>1) ET prix bas (<1) ; seul le neutre est ignoré.
         if ((mult - 1.0).abs() <= 0.0001) continue;
-        // Garde de fraîcheur : ignorer une cellule périmée (CF arrêtée).
+        // Fraîcheur : on exige un updatedAt Timestamp valide et récent (CF vivante).
         final ts = d['updatedAt'];
-        if (ts is Timestamp && nowMs - ts.millisecondsSinceEpoch > 300000) continue;
+        final int updatedAtMs = ts is Timestamp ? ts.millisecondsSinceEpoch : 0;
+        if (updatedAtMs == 0 || nowMs - updatedAtMs > _kSurgeFreshnessMs) continue;
         final rawBoundary = d['boundary'];
         if (rawBoundary is! List || rawBoundary.length < 3) continue;
         final boundary = <List<double>>[];
@@ -80,6 +85,7 @@ class SurgeService {
           mult,
           (d['demand'] as num?)?.toInt() ?? 0,
           boundary,
+          updatedAtMs,
         ));
       }
       _activeCells = cells;
@@ -151,7 +157,10 @@ class SurgeService {
   }
 
   static _SurgeCell? _cellForPoint(double lat, double lng) {
+    // Re-vérifie la fraîcheur AU DEVIS (CF arrêtée → pas de surge fantôme).
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
     for (final c in _activeCells) {
+      if (nowMs - c.updatedAtMs > _kSurgeFreshnessMs) continue;
       if (_pointInPolygon(lat, lng, c.boundary)) return c;
     }
     return null;
