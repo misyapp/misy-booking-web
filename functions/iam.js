@@ -66,7 +66,7 @@ function userRecordToPayload(u) {
 
 /* ─────────────────────────────────────────────────────────────── */
 
-exports.iamListTransportUsers = onCall(async (request) => {
+exports.iamListTransportUsers = onCall({ region: ["us-central1", "asia-east1"] }, async (request) => {
   assertAdmin(request);
 
   const result = [];
@@ -92,7 +92,7 @@ exports.iamListTransportUsers = onCall(async (request) => {
 
 /* ─────────────────────────────────────────────────────────────── */
 
-exports.iamCreateTransportUser = onCall(async (request) => {
+exports.iamCreateTransportUser = onCall({ region: ["us-central1", "asia-east1"] }, async (request) => {
   assertAdmin(request);
   const data = request.data || {};
 
@@ -149,7 +149,7 @@ exports.iamCreateTransportUser = onCall(async (request) => {
 
 /* ─────────────────────────────────────────────────────────────── */
 
-exports.iamSetTransportClaims = onCall(async (request) => {
+exports.iamSetTransportClaims = onCall({ region: ["us-central1", "asia-east1"] }, async (request) => {
   const auth = assertAdmin(request);
   const data = request.data || {};
 
@@ -193,7 +193,7 @@ exports.iamSetTransportClaims = onCall(async (request) => {
 
 /* ─────────────────────────────────────────────────────────────── */
 
-exports.iamResetTransportPassword = onCall(async (request) => {
+exports.iamResetTransportPassword = onCall({ region: ["us-central1", "asia-east1"] }, async (request) => {
   const auth = assertAdmin(request);
   const data = request.data || {};
 
@@ -221,7 +221,7 @@ exports.iamResetTransportPassword = onCall(async (request) => {
 
 /* ─────────────────────────────────────────────────────────────── */
 
-exports.iamDeleteTransportUser = onCall(async (request) => {
+exports.iamDeleteTransportUser = onCall({ region: ["us-central1", "asia-east1"] }, async (request) => {
   const auth = assertAdmin(request);
   const data = request.data || {};
 
