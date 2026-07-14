@@ -42,6 +42,11 @@ class _PhoneNumberScreenState extends State<PhoneNumberScreen> {
   @override
   void initState() {
     super.initState();
+    // 🐛 FIX: le loader (twistingDots rouge/bleu, EasyLoading maskType:none) du flux
+    // de login n'était pas masqué en arrivant ici → il tournait à l'infini par-dessus
+    // le formulaire. On le force à disparaître au 1er frame, quel que soit le chemin
+    // d'entrée sur cet écran.
+    WidgetsBinding.instance.addPostFrameCallback((_) => forceHideLoading());
     // ⚡ Pré-remplir le numéro de téléphone si disponible depuis les données utilisateur
     _prefillUserData();
   }

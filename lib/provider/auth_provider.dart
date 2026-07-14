@@ -341,6 +341,9 @@ class CustomAuthProvider with ChangeNotifier {
         // ⚡ FIX: Vérifier phoneNo qui est le champ sauvegardé dans Firestore (ligne 79 user_modal.dart)
         // Le champ 'phone' local est rempli depuis 'phoneNo' de Firestore
         if (userData.value != null && (userData.value!.phoneNo == null || userData.value!.phoneNo!.isEmpty)) {
+          // 🐛 FIX: masquer le loader du login AVANT d'afficher l'écran de saisie du
+          // numéro — sinon les twistingDots (rouge/bleu) tournent à l'infini dessus.
+          await hideLoading();
           var getRequest =
               await DevFestPreferences().getUserVerificationRequest();
           if (getRequest.isNotEmpty) {
