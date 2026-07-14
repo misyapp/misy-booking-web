@@ -108,18 +108,20 @@ class CustomAuthProvider with ChangeNotifier {
     if (languageCode.isEmpty) {
       // Pas de langue sauvegardée : utiliser la langue du téléphone ou anglais par défaut
       final deviceLang = deviceLocale.languageCode;
-      final supportedLangs = {'en': 0, 'mg': 1, 'fr': 2, 'it': 3, 'pl': 4};
-      final langNames = {'en': 'English', 'mg': 'Malagasy', 'fr': 'French', 'it': 'Italian', 'pl': 'Polish'};
+      // Auto-détection restreinte aux langues locales (fr/mg). Tout le reste
+      // (en, it, pl…) → français par défaut, marché malgache.
+      final supportedLangs = {'mg': 1, 'fr': 2};
+      final langNames = {'mg': 'Malagasy', 'fr': 'French'};
 
       if (supportedLangs.containsKey(deviceLang)) {
-        // Langue du téléphone supportée
+        // Langue du téléphone supportée localement
         selectedLanguageNotifier.value = languagesList[supportedLangs[deviceLang]!];
         selectedLanguage.value = langNames[deviceLang]!;
       } else {
-        // Langue du téléphone non supportée : fallback anglais
-        selectedLanguageNotifier.value = languagesList[0]; // English
-        selectedLanguage.value = 'English';
-        myCustomPrintStatement("Langue téléphone '$deviceLang' non supportée, fallback anglais");
+        // Langue du téléphone non locale : fallback français
+        selectedLanguageNotifier.value = languagesList[2]; // French
+        selectedLanguage.value = 'French';
+        myCustomPrintStatement("Langue téléphone '$deviceLang' non locale, fallback français");
       }
     } else {
       // Langue sauvegardée : utiliser celle-ci
@@ -128,11 +130,11 @@ class CustomAuthProvider with ChangeNotifier {
       if (languageIndex >= 0) {
         selectedLanguageNotifier.value = languagesList[languageIndex];
         final langNames = {'en': 'English', 'mg': 'Malagasy', 'fr': 'French', 'it': 'Italian', 'pl': 'Polish'};
-        selectedLanguage.value = langNames[languageCode] ?? 'English';
+        selectedLanguage.value = langNames[languageCode] ?? 'French';
       } else {
-        // Code langue invalide : fallback anglais
-        selectedLanguageNotifier.value = languagesList[0];
-        selectedLanguage.value = 'English';
+        // Code langue invalide : fallback français
+        selectedLanguageNotifier.value = languagesList[2];
+        selectedLanguage.value = 'French';
       }
     }
     myCustomPrintStatement(

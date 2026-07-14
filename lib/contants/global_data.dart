@@ -28,8 +28,10 @@ List languagesList = [
   {'key': 'it', 'value': 'Italian'},
   {'key': 'pl', 'value': 'Polish'},
 ];
+// Défaut = français (marché malgache). languagesList[2] = fr. Évite l'anglais
+// affiché sur les écrans d'auth avant que la logique de langue ne s'exécute.
 ValueNotifier<Map<String, dynamic>> selectedLanguageNotifier =
-    ValueNotifier(languagesList[0]);
+    ValueNotifier(languagesList[2]);
 List<Map> vehicleListMap = [];
 List<VehicleModal> vehicleListModal = [];
 Map<String, VehicleModal> vehicleMap = {};

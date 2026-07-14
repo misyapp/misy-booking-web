@@ -5,6 +5,10 @@ import "package:rider_ride_hailing_app/contants/global_data.dart";
 class MultiLangStrings {
   static const Map frenchStrings = {
     "Key": "French Translation",
+    "Amount": "Montant",
+    "Processing": "Traitement…",
+    "confirm": "Confirmer",
+    "pickuplocation": "Lieu de prise en charge",
     "loginWithSocial": "Via un réseau social",
     "continueWithFacebook": "Continuer avec Facebook",
     "continueWithGoogle": "Continuer avec Google",
