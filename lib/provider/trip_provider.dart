@@ -2731,14 +2731,12 @@ class TripProvider extends ChangeNotifier {
         }
       }
 
-      if (distance <= config.floorPriceThreshold) {
-        // Prix plancher pour courtes distances
-        basePrice = effectiveFloorPrice;
-      } else {
-        // Prix au kilomètre + prix de base
-        // Note: si perKmCharge = 0 (prix fixe), on garde le prix de base
-        basePrice = effectiveFloorPrice + (effectivePricePerKm * distance);
-      }
+      // Le prix plancher est un MINIMUM, pas un supplément qui s'ajoute au
+      // kilométrage : parité avec riderapp/lib/provider/pricing_provider.dart:426.
+      // Avant ce correctif le web additionnait floor + (perKm × km), ce qui
+      // surfacturait systématiquement le montant du plancher au-delà de
+      // floorPriceThreshold (ex. Classic 10 km : 31 000 au lieu de 23 000 Ar).
+      basePrice = max(effectiveFloorPrice, effectivePricePerKm * distance);
 
       // 2. Majoration pour courses longues
       if (distance > config.longTripThreshold) {

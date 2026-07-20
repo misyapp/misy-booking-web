@@ -82,57 +82,66 @@ class PricingConfigV2 {
     required this.roundingStep,
   });
   
-  /// Factory créant la configuration par défaut selon les spécifications Misy 2.0
-  /// 
-  /// Utilise les tarifs définis dans les spécifications :
-  /// - Prix plancher : Taxi-moto 6000, Classic 8000, Confort 11000, 4x4 13000, Van 15000
-  /// - Prix/km : Taxi-moto 2000, Classic 2750, Confort 3850, 4x4 4500, Van 5000
-  /// - Embouteillages : 7h-9h59 et 16h-18h59 (Lun-Ven), multiplicateur 1.4
-  /// - Réservation : Taxi-moto 3600, Classic 5000, Confort 7000, 4x4 8200, Van 9100
-  /// 
-  /// IMPORTANT: enableNewPricingSystem est initialisé à false
+  /// Factory créant la configuration par défaut.
+  ///
+  /// IMPORTANT (2026-07-20) : ces valeurs sont un COPIE CONFORME du filet de
+  /// secours de riderapp (`riderapp/lib/models/pricing/pricing_config_v2.dart`),
+  /// lui-même aligné sur la config V2 de PROD (`setting/pricing_config_v2`).
+  /// Elles ne servent que de DERNIER filet quand le web ne peut pas lire la
+  /// config Firestore.
+  ///
+  /// Avant ce correctif, ce fallback portait l'ancienne grille de spec
+  /// « Misy 2.0 » (2025), jamais resynchronisée : tarifs plus chers,
+  /// `longTripMultiplier` en MAJORATION là où la prod fait une REMISE,
+  /// catégories bajaj/colis/van_priority absentes (⇒ prix 0), et surtout
+  /// `enableNewPricingSystem: false` qui faisait basculer sur le tarif legacy
+  /// (8000/km) → prix ~2× affiché au client (incident terrain SALFA →
+  /// Talatamaty côté app). On veut un secours au BON tarif, jamais un tarif
+  /// gonflé ni un tarif nul.
+  ///
+  /// ⚠️ À resynchroniser avec riderapp ET la prod si la grille change. Ce
+  /// secours ne porte PAS les multiplicateurs par zone (tarif national de base).
   factory PricingConfigV2.defaultConfig() {
     return PricingConfigV2(
       version: "2.0",
-      enableNewPricingSystem: false, // CRITICAL: Ne pas activer par défaut
+      enableNewPricingSystem: true, // aligné sur la prod (V2 actif)
       floorPrices: {
-        'taxi_moto': 6000.0,
+        'taxi_moto': 5000.0,
         'classic': 8000.0,
-        'confort': 11000.0,
-        '4x4': 13000.0,
-        'van': 15000.0,
+        'confort': 10000.0,
+        '4x4': 20000.0,
+        'van': 16000.0,
+        'van_priority': 25000.0,
+        'bajaj': 6000.0,
+        'colis': 8000.0,
+        'taxi': 8000.0,
       },
       pricePerKm: {
         'taxi_moto': 2000.0,
         'classic': 2750.0,
-        'confort': 3850.0,
-        '4x4': 4500.0,
+        'confort': 3500.0,
+        '4x4': 5500.0,
         'van': 5000.0,
+        'van_priority': 8000.0,
+        'bajaj': 2250.0,
+        'colis': 2750.0,
+        'taxi': 2750.0,
       },
       floorPriceThreshold: 3.0,
-      trafficMultiplier: 1.4,
-      trafficPeriods: [
-        // Embouteillages du matin : 7h00 à 9h59, Lundi à Vendredi
-        TrafficPeriod(
-          startTime: TimeOfDay(hour: 7, minute: 0),
-          endTime: TimeOfDay(hour: 9, minute: 59),
-          daysOfWeek: [1, 2, 3, 4, 5], // Lun-Ven
-        ),
-        // Embouteillages du soir : 16h00 à 18h59, Lundi à Vendredi
-        TrafficPeriod(
-          startTime: TimeOfDay(hour: 16, minute: 0),
-          endTime: TimeOfDay(hour: 18, minute: 59),
-          daysOfWeek: [1, 2, 3, 4, 5], // Lun-Ven
-        ),
-      ],
-      longTripThreshold: 15.0,
-      longTripMultiplier: 1.2,
+      trafficMultiplier: 1.3,
+      trafficPeriods: const [], // prod : aucune fenêtre trafic globale (zones gèrent)
+      longTripThreshold: 5.0,
+      longTripMultiplier: 0.65, // remise au-delà de 5 km (prod)
       reservationSurcharge: {
-        'taxi_moto': 3600.0,
-        'classic': 5000.0,
-        'confort': 7000.0,
-        '4x4': 8200.0,
-        'van': 9100.0,
+        'taxi_moto': 0.0,
+        'classic': 0.0,
+        'confort': 0.0,
+        '4x4': 0.0,
+        'van': 0.0,
+        'van_priority': 0.0,
+        'bajaj': 0.0,
+        'colis': 0.0,
+        'taxi': 0.0,
       },
       reservationAdvanceMinutes: 10,
       enableRounding: true,
