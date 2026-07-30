@@ -42,7 +42,11 @@ const JobStatus = {
 const SCOPES = ['https://www.googleapis.com/auth/firebase.messaging'];
 
 const projectId = "misy-95336";
-const location = "us-central1";
+// Région des appels internes CF→CF (sendNotificationFunction, updateSchedulerJob).
+// Les deux tournent en dual-région ; viser asia-east1 évite un aller-retour vers
+// les États-Unis depuis Madagascar, et aligne ces appels sur le flag
+// `setting/cloud_functions_config` basculé le 08/07/2026.
+const location = "asia-east1";
 
 // Région où vivent les JOBS Cloud Scheduler. À NE PAS confondre avec la région
 // où tournent les fonctions (CF_REGIONS) : les apps construisent le chemin du
