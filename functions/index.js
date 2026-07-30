@@ -37,11 +37,20 @@ const Timestamp = admin.firestore.Timestamp;
 const JobStatus = {
   UPDATE: 0,
   DELETE: 1,
+  CREATE: 2,
 };
 const SCOPES = ['https://www.googleapis.com/auth/firebase.messaging'];
 
 const projectId = "misy-95336";
 const location = "us-central1";
+
+// Région où vivent les JOBS Cloud Scheduler. À NE PAS confondre avec la région
+// où tournent les fonctions (CF_REGIONS) : les apps construisent le chemin du
+// job avec la région de `mainFunction`, passée à asia-east1 le 08/07/2026.
+// Cette fonction cherchait encore en us-central1 → elle ne trouvait AUCUN des
+// jobs créés depuis (16 en asia-east1 contre 3 résiduels en us-central1), et
+// répondait 500 « Job not found » sur chaque UPDATE/DELETE.
+const SCHEDULER_JOB_LOCATION = "asia-east1";
 // const location = "us-east1";
 const _senderId = "1062917624003";
 
@@ -342,6 +351,35 @@ exports.mainFunction = functions.https.onRequest({ region: CF_REGIONS }, async (
   }
 });
 
+/**
+ * Vrai si l'erreur googleapis signifie « job introuvable », quelle que soit la
+ * forme renvoyée (code numérique, status HTTP imbriqué, ou reason "notFound").
+ */
+function isSchedulerNotFound(err) {
+  if (!err) return false;
+  if (err.code === 404 || err.status === 404) return true;
+  if (err.response && err.response.status === 404) return true;
+  const reason = err.errors && err.errors[0] && err.errors[0].reason;
+  return reason === "notFound";
+}
+
+/**
+ * Corps d'un job Cloud Scheduler ciblant mainFunction. Factorisé pour que les
+ * chemins CREATE et « UPDATE sur job absent » ne puissent pas diverger.
+ */
+function buildSchedulerJobBody(jobPath, newSchedule, bookingId) {
+  return {
+    name: jobPath,
+    schedule: newSchedule,
+    timeZone: "UTC",
+    httpTarget: {
+      uri: `https://${SCHEDULER_JOB_LOCATION}-${projectId}.cloudfunctions.net/mainFunction`,
+      httpMethod: "POST",
+      body: Buffer.from(JSON.stringify({ bookingId })).toString("base64"),
+    },
+  };
+}
+
 exports.updateSchedulerJob = functions.https.onRequest({ region: CF_REGIONS }, async (req, res) => {
   try {
     console.log("Update Job Request :", req.body);
@@ -382,15 +420,67 @@ exports.updateSchedulerJob = functions.https.onRequest({ region: CF_REGIONS }, a
 
 
     const jobPath =
-      `projects/${projectId}/locations/${location}/jobs/${bookingId}`;
+      `projects/${projectId}/locations/${SCHEDULER_JOB_LOCATION}/jobs/${bookingId}`;
+    const parentPath =
+      `projects/${projectId}/locations/${SCHEDULER_JOB_LOCATION}`;
 
     console.log("JOB PATH   :", jobPath);
 
-    const job = await cloudScheduler.
-      projects.locations.jobs.get({ name: jobPath });
-    console.log("job   :", job);
+    // Le job peut ne pas exister : jamais créé, déjà supprimé, ou nettoyé par
+    // un sweep. Un `get` sec levait une 404 que le catch global transformait en
+    // HTTP 500 — et mainFunction appelle cette fonction avec axios, qui lève
+    // sur 500. Chaque opération doit donc savoir gérer l'absence.
+    let job = null;
+    try {
+      job = await cloudScheduler.projects.locations.jobs.get({ name: jobPath });
+    } catch (getErr) {
+      if (!isSchedulerNotFound(getErr)) throw getErr;
+      console.log("Job absent:", jobPath);
+    }
 
-    if (jobStatus === JobStatus.UPDATE) {
+    if (jobStatus === JobStatus.CREATE) {
+      // Absente jusqu'ici : un jobStatus=2 traversait tout le if/else SANS
+      // qu'aucune réponse ne soit envoyée — la requête pendait jusqu'au
+      // timeout. C'est pourtant le cas le plus fréquent (nouvelle course
+      // planifiée) une fois les apps passées par cette fonction.
+      if (!newSchedule) {
+        res.status(400).send({ "message": "newSchedule required for CREATE" });
+        return;
+      }
+      if (job) {
+        // Déjà là → on aligne l'horaire plutôt que d'échouer (idempotence).
+        await cloudScheduler.projects.locations.jobs.patch({
+          name: jobPath,
+          updateMask: "schedule",
+          requestBody: { schedule: newSchedule },
+        });
+        console.log("Job déjà existant → horaire aligné:", jobPath);
+        res.status(200).send({ message: "ok-patched" });
+        return;
+      }
+      await cloudScheduler.projects.locations.jobs.create({
+        parent: parentPath,
+        requestBody: buildSchedulerJobBody(jobPath, newSchedule, bookingId),
+      });
+      console.log("Job créé:", jobPath, "schedule:", newSchedule);
+      res.status(200).send({ message: "ok" });
+      return;
+    } else if (jobStatus === JobStatus.UPDATE) {
+      if (!job) {
+        // Rien à patcher → on crée, exactement ce que fait l'app en repli.
+        if (!newSchedule) {
+          res.status(400).send({ "message": "newSchedule required to create missing job" });
+          return;
+        }
+        await cloudScheduler.projects.locations.jobs.create({
+          parent: parentPath,
+          requestBody: buildSchedulerJobBody(jobPath, newSchedule, bookingId),
+        });
+        console.log("Job absent → créé au lieu de patché:", jobPath);
+        res.status(200).send({ message: "ok-created" });
+        return;
+      }
+
       job.data.schedule = newSchedule;
 
       await cloudScheduler.projects.locations.jobs.patch({
@@ -399,20 +489,25 @@ exports.updateSchedulerJob = functions.https.onRequest({ region: CF_REGIONS }, a
         requestBody: job.data,
       });
 
-      // console.log("updatedJob   :", updatedJob);
       res.status(200).send({ message: "ok" });
       return;
     } else if (jobStatus === JobStatus.DELETE) {
-      job.data.schedule = newSchedule;
+      if (!job) {
+        // Supprimer ce qui n'existe pas est le résultat recherché.
+        console.log("Job déjà absent, rien à supprimer:", jobPath);
+        res.status(200).send({ message: "ok-absent" });
+        return;
+      }
 
-      // const deleteJob =
       await cloudScheduler.projects.locations.jobs.delete({ name: jobPath });
 
       console.log("Job deleted:", jobPath);
       res.status(200).send({ message: "ok" });
-
       return;
     }
+
+    // Aucune branche : sans ça la requête restait sans réponse.
+    res.status(400).send({ "message": "Invalid jobStatus" });
   } catch (error) {
     console.error("Error updating job:", error);
     res.status(500).send({ "error": error.message });
