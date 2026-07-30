@@ -3527,8 +3527,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // rubans — la carte est visible en ~1-2 s au lieu d'attendre les
       // 91×2 GeoJSON et les précalculs. L'ordre/squelette provisoires du
       // manifest sont remplacés par les vrais au chargement complet.
+      // En vue réseau à plat, ce fast path ne peut rien dessiner (les tracés
+      // bruts viennent des GeoJSON, pas des faisceaux) : on l'ignore et on
+      // attend le chargement complet plutôt que d'annoncer une carte vide.
       var loomReady = false;
-      if (LoomNetworkService.flagEnabled) {
+      if (LoomNetworkService.flagEnabled && !_networkFlatRendering) {
         final r = await Future.wait<dynamic>([
           svc.ensureManifest(),
           LoomNetworkService.instance.ensureLoaded(),
@@ -3546,17 +3549,22 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // antennes retour, clusters d'arrêts, index de recherche.
       await svc.ensureLoaded();
       if (!mounted) return;
-      // Fusion aller/retour par ligne (vue réseau) : tronc partagé + branches.
-      _precomputeMergedLines();
-      // Faisceaux : derrière --dart-define=LOOM_NETWORK=true, ordonnancement
-      // PRO pré-calculé au build par LOOM (tools/network, corridors complets
-      // ordonnés, croisements minimisés) ; sinon — ou si le JSON est absent —
-      // heuristique runtime historique : co-localisation (≥2 lignes même axe)
-      // → profils de slot -1/0/+1, ≤ 3 brins côte à côte, aucun trou.
-      if (loomReady || await LoomNetworkService.instance.ensureLoaded()) {
-        _populateStrandRunsFromLoom(); // avec retourSolo cette fois
-      } else {
-        _precomputeStrandRuns();
+      // Fusion aller/retour + faisceaux : inutiles en vue réseau à plat, qui
+      // dessine la géométrie brute (cf. [_networkFlatRendering]). On économise
+      // au passage tout le précalcul de corridors au chargement.
+      if (!_networkFlatRendering) {
+        // Fusion aller/retour par ligne (vue réseau) : tronc partagé + branches.
+        _precomputeMergedLines();
+        // Faisceaux : derrière --dart-define=LOOM_NETWORK=true, ordonnancement
+        // PRO pré-calculé au build par LOOM (tools/network, corridors complets
+        // ordonnés, croisements minimisés) ; sinon — ou si le JSON est absent —
+        // heuristique runtime historique : co-localisation (≥2 lignes même axe)
+        // → profils de slot -1/0/+1, ≤ 3 brins côte à côte, aucun trou.
+        if (loomReady || await LoomNetworkService.instance.ensureLoaded()) {
+          _populateStrandRunsFromLoom(); // avec retourSolo cette fois
+        } else {
+          _precomputeStrandRuns();
+        }
       }
       _precomputeBaseClusters();
       await _rebuildPublicTransportLayers();
@@ -3575,6 +3583,58 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   /// Zoom minimal d'affichage des billes d'arrêts en vue réseau LOOM
   /// (hors ligne sélectionnée, qui les montre à tout zoom).
   static const double _loomStopsMinZoom = 16.0;
+
+  // ───────── Vue réseau À PLAT (30/07/2026) ─────────
+  /// En vue « toutes lignes », les tracés ne sont plus retravaillés : ni fusion
+  /// aller/retour, ni faisceaux/slots latéraux, ni bordure noire. On dessine la
+  /// géométrie BRUTE de chaque sens et tous les bus prennent la même couleur
+  /// [_networkFlatColor]. Les chevauchements sont donc ASSUMÉS : deux lignes
+  /// partageant une avenue se recouvrent, mais comme rien ne les distingue
+  /// visuellement il n'y a plus rien à démêler. Les arrêts deviennent de
+  /// simples ronds blancs (plus de rectangles de correspondance, plus de
+  /// capsules de numéro, plus de gros terminus colorés sur la carte). Le filtre
+  /// zoom des lignes tombe aussi : TOUTES restent affichées au dézoom, le
+  /// squelette ne servait qu'à désencombrer des brins colorés côte à côte.
+  ///
+  /// La vue LIGNE SÉLECTIONNÉE est inchangée : couleur propre, bordure noire,
+  /// badges d'arrêts et flèches de sens.
+  ///
+  /// Repasser à `false` restaure les faisceaux LOOM / corridors v3 : tout le
+  /// pipeline ([_precomputeMergedLines], [_populateStrandRunsFromLoom],
+  /// [_precomputeStrandRuns], [_applyStrandOffset]) est conservé intact, il
+  /// n'est simplement plus appelé.
+  static const bool _networkFlatRendering = true;
+
+  /// Habillage « plan de réseau » façon IDFM en vue à plat (30/07/2026) :
+  ///  - CASING BLANC fin sous chaque tracé (et non plus noir) : détache les
+  ///    traits du fond et des labels, et fait passer proprement la ligne du
+  ///    dessus par-dessus celle du dessous aux croisements. Mettre à 0 pour
+  ///    revenir au trait nu.
+  ///  - bille d'arrêt calée sur la largeur du trait (rayon = moitié de la
+  ///    largeur) + liseré fin, au lieu du rond à 0,62 × largeur qui débordait
+  ///    largement. L'aspect « perles enfilées » venait surtout du TASSEMENT au
+  ///    dézoom : c'est [_flatStopsMinZoom] qui le règle, donc la bille peut
+  ///    rester franche et lisible en zoom serré (essayé à 0,30 : illisible).
+  /// Le hit-test du survol/clic est indépendant de ce rayon (`hoverRadius`
+  /// = 14 px dans `_handlePublicMapHover`) : rapetisser la bille ne dégrade
+  /// pas l'interaction.
+  static const double _flatCasingWhitePx = 3.0;
+  static const double _flatBeadInsetRatio = 0.50;
+  static const double _flatBeadStrokePx = 1.5;
+
+  /// Couleur unique des tracés de bus en vue réseau à plat : gris anthracite,
+  /// lisible sur le fond misy2 clair sans concurrencer les axes lavande, et
+  /// discret là où des dizaines de tracés se superposent. Le train et le
+  /// téléphérique gardent leur couleur d'identité (ossature repérable).
+  static const Color _networkFlatColor = Color(0xFF3A3A3A);
+
+  /// Zoom minimal d'affichage des ronds d'arrêts de BUS en vue réseau à plat
+  /// (« que quand l'user zoome bien », 30/07/2026). Calé sur 15 = le palier
+  /// « réseau complet » du zoom sémantique. En dessous, les arrêts sont espacés
+  /// de moins de ~25 px à l'écran : les ronds blancs se tassent sur le trait et
+  /// le transforment en POINTILLÉ (constaté à 13,5). Les arrêts ferrés, eux,
+  /// ignorent ce seuil.
+  static const double _flatStopsMinZoom = 15.0;
 
   static const double _corridorSampleStepM = 10.0;
   static const double _corridorMergeRadiusM = 25.0; // englobe un terre-plein
@@ -4136,6 +4196,37 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     return 3.5; // variantes locales
   }
 
+  /// Téléphérique (le `transportType` du manifest n'est pas normalisé : on
+  /// accepte les deux graphies rencontrées).
+  static bool _isTeleType(String type) =>
+      type == 'telepherique' || type == 'tele';
+
+  /// Train urbain (TCE).
+  static bool _isTrainType(String type) =>
+      type == 'urbantrain' || type == 'train';
+
+  /// Train OU téléphérique = l'ossature ferrée du réseau. Ces deux modes
+  /// gardent leur couleur d'identité en vue réseau à plat, et leurs arrêts
+  /// restent visibles à tous les zooms (cf. [_railBeadRadiusPx]).
+  static bool _isRailType(String type) =>
+      _isTeleType(type) || _isTrainType(type);
+
+  /// Rayon ÉCRAN (px) d'une bille d'arrêt train/téléphérique — INVERSÉ par
+  /// rapport au zoom (demande 30/07/2026) : gros au dézoom, où ces arrêts sont
+  /// les seuls repères visibles du réseau, puis rétrécissant en zoom serré pour
+  /// laisser voir la rue. Interpolation linéaire bornée entre les deux paliers.
+  /// (Les billes de bus, elles, gardent un rayon écran CONSTANT.)
+  static const double _railBeadZoomOut = 11.0; // ≤ : rayon max
+  static const double _railBeadZoomIn = 17.0; // ≥ : rayon min
+  static const double _railBeadMaxPx = 11.0;
+  static const double _railBeadMinPx = 4.5;
+
+  double _railBeadRadiusPx(double zoom) {
+    final t = ((zoom - _railBeadZoomOut) / (_railBeadZoomIn - _railBeadZoomOut))
+        .clamp(0.0, 1.0);
+    return _railBeadMaxPx + (_railBeadMinPx - _railBeadMaxPx) * t;
+  }
+
   /// Libellé court d'un arrêt en vue « ligne sélectionnée » : numéro sur
   /// 3 chiffres sans suffixe (« 9 » → « 009 », « 146 Rouge » → « 146 »,
   /// « 147BIS » → « 147 ») ; lignes nommées sans chiffre → initiale
@@ -4452,14 +4543,19 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // Filtrage zoom-dependent (axes longs prioritaires à dezoom).
     // La ligne sélectionnée force sa visibilité même si le zoom l'aurait
     // exclue (UX : elle vient d'être tappée dans la liste).
-    final visibleByZoom = svc.visibleLineNumbersForZoom(_publicMapZoom);
     Set<String> visible;
     if (selected != null) {
       // Mode "une ligne sélectionnée" : on n'affiche QUE cette ligne, les
       // autres sont totalement masquées (focus net, pas d'atténuation).
       visible = {selected};
+    } else if (_networkFlatRendering) {
+      // VUE RÉSEAU À PLAT : AUCUNE réduction au dézoom (demande 30/07/2026) —
+      // toutes les lignes restent affichées à tous les zooms. Le filtre
+      // squelette n'existait que pour désencombrer des brins colorés côte à
+      // côte ; à plat, tout est de la même couleur et se chevauche déjà.
+      visible = svc.linesByImportance.toSet();
     } else {
-      visible = visibleByZoom;
+      visible = svc.visibleLineNumbersForZoom(_publicMapZoom);
     }
 
     final polylines = <Polyline>{};
@@ -4477,9 +4573,21 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // faisceaux surchargent la carte : on ne les montre que pour la ligne
     // SÉLECTIONNÉE ou en zoom très proche (≥ [_loomStopsMinZoom], réglable
     // QA). Fallback heuristique : seuil historique 11 inchangé.
-    final showStops = _strandsFromLoom
-        ? (selected != null || _publicMapZoom >= _loomStopsMinZoom)
-        : _publicMapZoom >= 11;
+    // Vue réseau à plat (demande 30/07/2026) : les arrêts de BUS n'apparaissent
+    // qu'une fois bien zoomé (≥ [_flatStopsMinZoom]) — sinon les ~100 lignes
+    // noient la carte de ronds blancs. Les arrêts TRAIN / TÉLÉPHÉRIQUE, eux,
+    // restent visibles à TOUS les zooms : ce sont les repères de l'ossature.
+    // Le tri se fait par arrêt un peu plus bas (cf. `railOnly`), pas ici.
+    final showStops = _networkFlatRendering
+        ? true
+        : (_strandsFromLoom
+            ? (selected != null || _publicMapZoom >= _loomStopsMinZoom)
+            : _publicMapZoom >= 11);
+    // À plat et hors ligne sélectionnée, en dessous du seuil : SEULS les arrêts
+    // ferrés passent.
+    final railOnly = _networkFlatRendering &&
+        selected == null &&
+        _publicMapZoom < _flatStopsMinZoom;
     // Pastilles n° de ligne + capsules de correspondance : cachées par défaut,
     // affichées seulement TRÈS PROCHE (≥ 16) — ou, à tout zoom, sur l'arrêt
     // cliqué/survolé (géré par la branche isActive plus bas). Les billes rondes
@@ -4534,12 +4642,20 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       final group = svc.getLineGroup(lineNumber);
       if (group == null && _strandRuns[lineNumber] == null) continue;
       final meta = svc.metadataFor(lineNumber);
-      final color =
-          meta != null ? Color(meta.colorValue) : const Color(0xFF1565C0);
       final isSelected = selected != null;
       final tier = meta?.importanceTier ?? 2;
-      final type = (meta?.transportType ?? 'bus').toLowerCase();
-      final isTele = type == 'telepherique' || type == 'tele';
+      final type = (meta?.transportType ?? 'bus').trim().toLowerCase();
+      final isTele = _isTeleType(type);
+      final isTrain = _isTrainType(type);
+      // VUE RÉSEAU À PLAT : tous les BUS prennent la couleur unique, seuls le
+      // train et le téléphérique gardent leur identité. La vue ligne
+      // sélectionnée retrouve toujours la couleur propre de la ligne.
+      final lineColor =
+          meta != null ? Color(meta.colorValue) : const Color(0xFF1565C0);
+      final color =
+          (_networkFlatRendering && !isSelected && !isTele && !isTrain)
+              ? _networkFlatColor
+              : lineColor;
       final isTier1 = tier == 1;
       // Largeurs ÉCRAN CONSTANTES, style plan de réseau pro (IDFM) : le trait
       // garde la même épaisseur en pixels à tous les zooms — fini les rubans
@@ -4559,18 +4675,24 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         if (pts.length < 2) return;
         // Bordure NOIRE FINE sous chaque trait (~1 px de chaque côté) :
         // détoure proprement les brins côte à côte et les croisements,
-        // façon plan de métro.
-        polylines.add(Polyline(
-          polylineId: PolylineId('pt_${lineNumber}_${id}_casing'),
-          points: pts,
-          color: const Color(0xFF1A1A1A),
-          width: (w + 2).round(),
-          zIndex: baseZ - 1,
-          consumeTapEvents: false,
-          jointType: JointType.round,
-          startCap: Cap.roundCap,
-          endCap: Cap.roundCap,
-        ));
+        // façon plan de métro. En vue réseau à plat, elle devient BLANCHE et
+        // fine (pattern IDFM) : un liseré sombre par tracé empâterait les
+        // croisements alors qu'un liseré blanc les détache proprement.
+        if (!_networkFlatRendering || isSelected || _flatCasingWhitePx > 0) {
+          final bool whiteCasing = _networkFlatRendering && !isSelected;
+          polylines.add(Polyline(
+            polylineId: PolylineId('pt_${lineNumber}_${id}_casing'),
+            points: pts,
+            color:
+                whiteCasing ? Colors.white : const Color(0xFF1A1A1A),
+            width: (w + (whiteCasing ? _flatCasingWhitePx : 2)).round(),
+            zIndex: baseZ - 1,
+            consumeTapEvents: false,
+            jointType: JointType.round,
+            startCap: Cap.roundCap,
+            endCap: Cap.roundCap,
+          ));
+        }
         polylines.add(Polyline(
           polylineId: PolylineId('pt_${lineNumber}_$id'),
           points: pts,
@@ -4588,6 +4710,18 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
         // Vue ligne sélectionnée : tracé brut plein, aller + retour, INCHANGÉ.
         // (group null seulement pendant le fast path, où rien n'est encore
         // sélectionné — garde de complétude.)
+        if (group?.aller != null) {
+          addColored('aller', group!.aller!.coordinates, width);
+        }
+        if (group?.retour != null) {
+          addColored('retour', group!.retour!.coordinates, width);
+        }
+      } else if (_networkFlatRendering) {
+        // VUE RÉSEAU À PLAT : géométrie BRUTE des deux sens, AUCUN retravail
+        // d'affichage — pas de fusion aller/retour, pas de slot latéral, pas de
+        // bordure. L'aller et le retour se superposent sur la même chaussée, et
+        // deux lignes partageant un axe se recouvrent : assumé, elles ont la
+        // même couleur (cf. [_networkFlatRendering]).
         if (group?.aller != null) {
           addColored('aller', group!.aller!.coordinates, width);
         }
@@ -4678,7 +4812,11 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
       // Bouts du tracé (= les 2 terminus) à fermer par un gros point.
       // (group null pendant le fast path → caps au chargement complet.)
-      final capLine = group?.aller ?? group?.retour;
+      // Retirés en vue réseau à plat : le terminus a déjà son rond blanc
+      // d'arrêt, et une grosse bille pleine à la couleur de la ligne
+      // réintroduirait précisément la couleur qu'on vient d'unifier.
+      final bool wantTermCaps = !_networkFlatRendering || isSelected;
+      final capLine = wantTermCaps ? (group?.aller ?? group?.retour) : null;
       if (capLine != null && capLine.coordinates.length >= 2) {
         // Terminus un peu plus gros que le trait, en px → m au zoom courant.
         final capR = strokePx * 0.95 * mpp;
@@ -4691,11 +4829,31 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     // au moins une ligne desservant est visible. Si une ligne est
     // sélectionnée, c'est elle qui devient primaire pour le rendu (couleur
     // du badge), sinon on garde la primaire pré-calculée.
+    // Un arrêt est « ferré » dès qu'une des lignes qui le desservent est un
+    // train ou un téléphérique — c'est ce qui le garde visible au dézoom. On
+    // retient au passage la couleur de cette ligne : son tracé garde son
+    // identité en vue à plat, l'anneau de la bille doit donc l'accompagner
+    // plutôt que de rester anthracite.
+    Color? railColorOf(_PublicStopAggregate c) {
+      for (final l in c.lines) {
+        final m = svc.metadataFor(l);
+        if (m != null && _isRailType(m.transportType.trim().toLowerCase())) {
+          return Color(m.colorValue);
+        }
+      }
+      return null;
+    }
+
     final stopsByKey = <String, _PublicStopAggregate>{};
+    final railStopColors = <String, Color>{};
     if (showStops) {
       for (final c in _baseClusters) {
         final hasVisibleLine = c.lines.any(visible.contains);
         if (!hasVisibleLine) continue;
+        // Sous le seuil de zoom, seuls les arrêts ferrés subsistent.
+        final railColor = railColorOf(c);
+        if (railOnly && railColor == null) continue;
+        if (railColor != null) railStopColors[c.key] = railColor;
         // Restaure le primaire pré-calculé puis override si une ligne est
         // actuellement sélectionnée et passe par ce cluster.
         if (c.basePrimaryLine != null) {
@@ -4728,9 +4886,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       // Correspondance = ≥ 2 lignes VISIBLES AU ZOOM COURANT (vue réseau).
       // Compter les lignes filtrées gonflerait le rect au dézoom alors que
       // les brins masqués n'existent plus à l'écran.
-      final visibleAtStop =
-          selected == null ? agg.lines.where(visible.contains).length : 0;
-      final isInterchange = selected == null && visibleAtStop >= 2;
+      // Vue réseau à plat : plus de faisceau à barrer → tous les arrêts sont de
+      // simples ronds blancs, correspondance comprise (l'info reste dans la
+      // mini-carte au survol et la fiche au clic).
+      final visibleAtStop = selected == null && !_networkFlatRendering
+          ? agg.lines.where(visible.contains).length
+          : 0;
+      final isInterchange = visibleAtStop >= 2;
 
       // Le point d'arrêt doit tomber EXACTEMENT au milieu du trait : la coord.
       // brute de l'arrêt est souvent au bord de la chaussée, on la snappe donc
@@ -4795,20 +4957,41 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       }
 
       final dotMeta = svc.metadataFor(agg.primaryLine);
-      final dotType = (dotMeta?.transportType ?? 'bus').toLowerCase();
-      final dotTele = dotType == 'telepherique' || dotType == 'tele';
+      final dotType = (dotMeta?.transportType ?? 'bus').trim().toLowerCase();
+      final dotTele = _isTeleType(dotType);
       // Bille proportionnelle au trait (px constants → m au zoom courant).
-      final beadRadiusM =
-          _lineStrokePx(dotMeta?.importanceTier ?? 2, dotTele) * 0.62 * mpp;
+      // Arrêt FERRÉ en vue réseau à plat : rayon INVERSÉ au zoom — gros au
+      // dézoom (seul repère de l'ossature quand les arrêts de bus sont
+      // masqués), plus petit en zoom serré (cf. [_railBeadRadiusPx]).
+      final railBeadColor =
+          _networkFlatRendering ? railStopColors[agg.key] : null;
+      final isRailBead = railBeadColor != null;
+      final dotStrokePx = _lineStrokePx(dotMeta?.importanceTier ?? 2, dotTele);
+      final beadRadiusM = isRailBead
+          ? _railBeadRadiusPx(_publicMapZoom) * mpp
+          // À plat : bille INSCRITE dans le trait (façon IDFM). Sinon rond
+          // débordant du trait (0.62 × largeur), qui donnait l'effet perles.
+          : dotStrokePx *
+              (_networkFlatRendering ? _flatBeadInsetRatio : 0.62) *
+              mpp;
       // Survol/sélection : la bille grossit (feedback immédiat sous le
       // curseur, style IDFM) et passe au-dessus de ses voisines.
+      // Anneau : liseré FIN à plat (le casing blanc du trait fait déjà une
+      // partie du détourage) ; les billes ferrées le prennent à la couleur de
+      // leur ligne, les bus en anthracite. Épaissi au survol/clic.
+      final beadStroke = _networkFlatRendering
+          ? (railBeadColor ?? _networkFlatColor)
+          : agg.primaryColor;
+      final flatBusBead = _networkFlatRendering && !isRailBead && !isActive;
       circles.add(Circle(
         circleId: CircleId('dot_${agg.key}'),
         center: stopPos,
         radius: isActive ? beadRadiusM * 1.7 : beadRadiusM,
         fillColor: Colors.white,
-        strokeColor: agg.primaryColor,
-        strokeWidth: isActive ? 3 : 2,
+        strokeColor: beadStroke,
+        strokeWidth: isActive
+            ? 3
+            : (flatBusBead ? _flatBeadStrokePx.round() : 2),
         zIndex: isActive ? 9 : 8,
         consumeTapEvents: true,
         onTap: () => _onPublicStopTap(agg),
@@ -4834,7 +5017,9 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       }
 
       // Terminus : badge numéro flotté au-dessus du point (le rond reste).
-      if (useLabels && agg.isTerminus) {
+      // Retiré en vue réseau à plat (« tracés nus » : aucune capsule de numéro
+      // posée sur la carte).
+      if (!_networkFlatRendering && useLabels && agg.isTerminus) {
         addWidgetMarker(
           _lineCapsuleBadge([agg.primaryLine], big: useBigLabels),
           z: 10,
