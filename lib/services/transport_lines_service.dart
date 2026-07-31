@@ -52,6 +52,14 @@ class LineSchedule {
 
   /// Note libre pour tout ce qui ne rentre pas dans les champs structurés
   /// (ex: "pas de service les jours fériés", "horaires réduits le dimanche").
+  /// Départs FIXES de la journée (HH:mm), quand la ligne ne circule pas à
+  /// fréquence régulière. Cas du train urbain : 3 rotations par jour à des
+  /// heures précises — `frequencyMin` ne sait pas représenter ça.
+  final List<String> departures;
+
+  /// Départs fixes du SAMEDI quand ils diffèrent de la semaine.
+  final List<String> saturdayDepartures;
+
   final String? notes;
 
   const LineSchedule({
@@ -60,12 +68,15 @@ class LineSchedule {
     this.frequencyMin,
     this.daysOfOperation = const ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
     this.notes,
+    this.departures = const [],
+    this.saturdayDepartures = const [],
   });
 
   bool get isEmpty =>
       firstDeparture == null &&
       lastDeparture == null &&
       frequencyMin == null &&
+      departures.isEmpty &&
       (notes == null || notes!.trim().isEmpty);
 
   factory LineSchedule.fromJson(Map<String, dynamic>? json) {

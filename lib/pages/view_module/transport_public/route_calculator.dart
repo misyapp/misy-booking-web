@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:rider_ride_hailing_app/services/transit_schedule_defaults.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -408,7 +409,10 @@ class _RouteCalculatorState extends State<RouteCalculator> {
       //     marcher un poil plus loin).
       //   - > 2 correspondances (peu réalistes en pratique à Tana).
       final practical =
-          rawRoutes.where(_isPracticalRoute).toList();
+          rawRoutes
+              .where(_isPracticalRoute)
+              .where((r) => _isServiceAvailable(r, _scheduledTime))
+              .toList();
       final routes = practical.isNotEmpty
           ? practical.take(4).toList()
           : rawRoutes.take(4).toList();
@@ -524,6 +528,65 @@ class _RouteCalculatorState extends State<RouteCalculator> {
   /// transit ultra-court (≤ 1 arrêt) suivi d'un transfert, > 2
   /// correspondances. Ces routes existent parce que le moteur minimise
   /// le temps total sans tenir compte du coût mental d'une correspondance.
+  /// Écarte un itinéraire qui emprunte une ligne à DÉPARTS FIXES ne circulant
+  /// pas à l'heure (ou au jour) demandé.
+  ///
+  /// Plutôt que d'apprendre les horaires à RAPTOR — qui raisonne en fréquences
+  /// — on ne propose tout simplement pas l'itinéraire. Un train proposé à 15h30
+  /// alors qu'il part à 17h30 est pire qu'un train non proposé.
+  bool _isServiceAvailable(TransportRoute route, DateTime when) {
+    final svc = PublicTransportService.instance;
+    var offsetMin = 0;
+    for (final step in route.steps) {
+      if (step.type != RouteStepType.transport) {
+        offsetMin += step.durationMinutes;
+        continue;
+      }
+      final meta =
+          step.lineNumber == null ? null : svc.metadataFor(step.lineNumber!);
+      final sched = TransitScheduleDefaults.scheduleFor(meta);
+      offsetMin += step.durationMinutes;
+      if (sched == null) continue;
+
+      final boarding = when.add(Duration(minutes: offsetMin - step.durationMinutes));
+
+      // Jour non desservi (le train ne circule pas le dimanche).
+      const codes = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+      final dayCode = codes[boarding.weekday - 1];
+      if (!sched.daysOfOperation.contains(dayCode)) return false;
+
+      // Départs fixes : il faut qu'il en reste un après l'heure d'embarquement.
+      final fixed = boarding.weekday == DateTime.saturday &&
+              sched.saturdayDepartures.isNotEmpty
+          ? sched.saturdayDepartures
+          : sched.departures;
+      if (fixed.isNotEmpty) {
+        final minutesOfDay = boarding.hour * 60 + boarding.minute;
+        final hasLater = fixed.any((d) {
+          final p = d.split(':');
+          if (p.length != 2) return false;
+          final m = (int.tryParse(p[0]) ?? 0) * 60 + (int.tryParse(p[1]) ?? 0);
+          return m >= minutesOfDay;
+        });
+        if (!hasLater) return false;
+      }
+
+      // Amplitude de service (taxi-be) : hors plage, la ligne ne roule plus.
+      final last = sched.lastDeparture;
+      final first = sched.firstDeparture;
+      if (fixed.isEmpty && last != null && first != null) {
+        final mm = boarding.hour * 60 + boarding.minute;
+        int toMin(String h) {
+          final p = h.split(':');
+          return (int.tryParse(p[0]) ?? 0) * 60 + (int.tryParse(p[1]) ?? 0);
+        }
+
+        if (mm < toMin(first) || mm > toMin(last)) return false;
+      }
+    }
+    return true;
+  }
+
   bool _isPracticalRoute(TransportRoute r) {
     final transportSteps =
         r.steps.where((s) => s.type == RouteStepType.transport).toList();
@@ -1550,6 +1613,24 @@ class _RouteCalculatorState extends State<RouteCalculator> {
             style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280)),
           ),
         ),
+        // Horaires de la ligne : amplitude pour les taxi-be, départs fixes pour
+        // le train. Rien n'est affiché quand on ne sait pas.
+        if (TransitScheduleDefaults.summary(TransitScheduleDefaults.scheduleFor(
+                step.lineNumber == null
+                    ? null
+                    : PublicTransportService.instance
+                        .metadataFor(step.lineNumber!))) !=
+            null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text(
+              TransitScheduleDefaults.summary(
+                  TransitScheduleDefaults.scheduleFor(
+                      PublicTransportService.instance
+                          .metadataFor(step.lineNumber!)))!,
+              style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280)),
+            ),
+          ),
         if (step.endStop != null)
           Row(
             children: [
