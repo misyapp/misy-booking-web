@@ -996,8 +996,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     _subscribeToOnlineDrivers();
   }
 
-  /// Complète les chauffeurs EN LIGNE par la vitrine (chauffeurs hors ligne à leur
-  /// dernière position connue) jusqu'à 8 markers.
+  /// Les 8 markers les plus proches, chauffeurs EN LIGNE et HORS LIGNE confondus.
+  ///
+  /// Le classement est purement géographique : un chauffeur de la vitrine à 200 m
+  /// passe devant un chauffeur en ligne à 3 km. Compléter seulement les places
+  /// restantes ne servait à rien — à Tana il y a régulièrement plus de 8 chauffeurs
+  /// en ligne dans les 20 km (26 mesurés le 31/07), donc la vitrine n'apparaissait
+  /// jamais là où on veut justement la voir.
   ///
   /// Ces chauffeurs ne servent QU'À l'affichage : ils ne sont ni comptés comme
   /// disponibles, ni contactés, et n'entrent dans aucun calcul d'ETA ou de prix.
@@ -1007,11 +1012,8 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
       List<Map<String, dynamic>> online, double refLat, double refLng) {
     const int target = 8;
     final merged = List<Map<String, dynamic>>.from(online);
-    if (merged.length >= target) return merged;
 
     for (final s in NearbyShowcaseService.cached(refLat, refLng)) {
-      if (merged.length >= target) break;
-
       final bool overlapsLive = online.any((o) {
         final DriverModal d = o['driverData'];
         if (d.currentLat == null || d.currentLng == null) return false;
@@ -1026,7 +1028,7 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
     }
 
     merged.sort((a, b) => a['distance'].compareTo(b['distance']));
-    return merged;
+    return merged.length > target ? merged.sublist(0, target) : merged;
   }
 
   /// Récupère la vitrine en arrière-plan et redessine si elle a changé. Au premier
