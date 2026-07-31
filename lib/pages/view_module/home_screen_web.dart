@@ -33,6 +33,7 @@ import 'package:rider_ride_hailing_app/provider/trip_provider.dart';
 import 'package:rider_ride_hailing_app/provider/auth_provider.dart';
 import 'package:rider_ride_hailing_app/services/firestore_services.dart';
 import 'package:rider_ride_hailing_app/services/location.dart';
+import 'package:rider_ride_hailing_app/services/nearby_showcase_service.dart';
 import 'package:rider_ride_hailing_app/services/reverse_geocoder.dart';
 import 'package:rider_ride_hailing_app/services/places_autocomplete_web.dart';
 import 'package:rider_ride_hailing_app/services/route_service.dart';
@@ -119,6 +120,12 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   final Map<String, double> _targetDriverHeadings = {};
   final Map<String, double> _startDriverHeadings = {}; // Headings au début de l'animation
   final Map<String, DriverModal> _driversData = {};
+
+  // Derniers chauffeurs EN LIGNE reçus de Firestore (déjà triés, max 8). Sert à
+  // redessiner quand la vitrine « chauffeurs proches » arrive du réseau, sans
+  // relancer la souscription. Cf. NearbyShowcaseService.
+  List<Map<String, dynamic>> _lastOnlineNearest = [];
+
   Timer? _animationTimer;
   static const Duration _animationDuration = Duration(milliseconds: 800); // Plus rapide
   static const int _animationSteps = 24; // Moins de steps mais plus fluide
@@ -969,7 +976,13 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
 
       debugPrint('🚕 ${nearest8.length} chauffeurs les plus proches à afficher');
 
-      await _updateDriverMarkers(nearest8);
+      // Gardé pour pouvoir redessiner quand la vitrine arrive du réseau, sans
+      // relancer la souscription Firestore.
+      _lastOnlineNearest = nearest8;
+
+      await _updateDriverMarkers(
+          _mergeWithShowcase(nearest8, centerLat, centerLng));
+      _prefetchShowcase(centerLat, centerLng);
     }, onError: (error) {
       debugPrint('🚕 ❌ Erreur Firestore stream: $error');
     });
@@ -981,6 +994,52 @@ class _HomeScreenWebState extends State<HomeScreenWeb> {
   void _reloadDriversNearPosition(LatLng position) {
     _pickupLatLng = position;
     _subscribeToOnlineDrivers();
+  }
+
+  /// Complète les chauffeurs EN LIGNE par la vitrine (chauffeurs hors ligne à leur
+  /// dernière position connue) jusqu'à 8 markers.
+  ///
+  /// Ces chauffeurs ne servent QU'À l'affichage : ils ne sont ni comptés comme
+  /// disponibles, ni contactés, et n'entrent dans aucun calcul d'ETA ou de prix.
+  /// Un chauffeur de la vitrine collé (< 100 m) à un chauffeur en ligne est ignoré :
+  /// c'est très probablement le même, vu à sa position figée puis à sa position live.
+  List<Map<String, dynamic>> _mergeWithShowcase(
+      List<Map<String, dynamic>> online, double refLat, double refLng) {
+    const int target = 8;
+    final merged = List<Map<String, dynamic>>.from(online);
+    if (merged.length >= target) return merged;
+
+    for (final s in NearbyShowcaseService.cached(refLat, refLng)) {
+      if (merged.length >= target) break;
+
+      final bool overlapsLive = online.any((o) {
+        final DriverModal d = o['driverData'];
+        if (d.currentLat == null || d.currentLng == null) return false;
+        return getDistance(d.currentLat!, d.currentLng!, s.lat, s.lng) < 0.1;
+      });
+      if (overlapsLive) continue;
+
+      merged.add({
+        'distance': getDistance(s.lat, s.lng, refLat, refLng),
+        'driverData': s.toDriverModal(),
+      });
+    }
+
+    merged.sort((a, b) => a['distance'].compareTo(b['distance']));
+    return merged;
+  }
+
+  /// Récupère la vitrine en arrière-plan et redessine si elle a changé. Au premier
+  /// passage le cache est vide, donc `_mergeWithShowcase` n'a encore rien à ajouter.
+  ///
+  /// On redessine à partir de la DERNIÈRE liste de chauffeurs en ligne déjà reçue :
+  /// relancer la souscription Firestore relirait tous les chauffeurs en ligne pour
+  /// rien. `prefetch` ne rappelle rien tant que le cache est bon → pas de boucle.
+  void _prefetchShowcase(double lat, double lng) {
+    NearbyShowcaseService.prefetch(lat: lat, lng: lng, limit: 8).then((changed) {
+      if (!changed || !mounted) return;
+      _updateDriverMarkers(_mergeWithShowcase(_lastOnlineNearest, lat, lng));
+    });
   }
 
   Future<void> _updateDriverMarkers(List<Map<String, dynamic>> drivers) async {

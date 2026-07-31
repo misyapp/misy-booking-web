@@ -6,6 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:rider_ride_hailing_app/services/driver_snap_service.dart';
+import 'package:rider_ride_hailing_app/services/nearby_showcase_service.dart';
 import 'package:rider_ride_hailing_app/contants/global_data.dart';
 import 'package:rider_ride_hailing_app/contants/global_keys.dart';
 import 'package:rider_ride_hailing_app/contants/language_strings.dart';
@@ -35,9 +36,40 @@ class _RequestForRideState extends State<RequestForRide>
   // Liste des chauffeurs notifiés (pour l'affichage des photos empilées)
   final List<Map<String, dynamic>> _notifiedDrivers = [];
 
-  // Compteur de chauffeurs notifiés (pour affichage séquentiel)
-  int _notifiedDriversCount = 0;
-  int _previousNotifiedCount = 0; // Pour détecter les nouveaux chauffeurs ajoutés
+  // ── Vitrine « chauffeurs proches » pendant la recherche ─────────────────────────
+  // L'écran n'affichait que les chauffeurs RÉELLEMENT interrogés (`showOnly`). Depuis
+  // que les balayages auto-offline déconnectent les faux « en ligne », ça peut se
+  // réduire à un ou deux visages et donner l'impression d'une plateforme vide pendant
+  // toute la recherche. On complète donc la pile avec les chauffeurs les plus proches,
+  // hors ligne compris (NearbyShowcaseService), révélés progressivement pour garder la
+  // sensation de balayage. AUCUN de ces chauffeurs n'est contacté : c'est de l'affichage.
+  static const int _maxDriversShown = 30;
+  static const Duration _showcaseRevealInterval = Duration(milliseconds: 1200);
+  final List<Map<String, dynamic>> _showcaseDrivers = [];
+  List<ShowcaseDriver> _showcasePool = const [];
+  int _showcaseCursor = 0;
+  Timer? _showcaseRevealTimer;
+
+  /// Chauffeurs affichés dans la pile d'avatars : les vrais interrogés d'abord,
+  /// puis la vitrine.
+  List<Map<String, dynamic>> get _stackDrivers =>
+      [..._notifiedDrivers, ..._showcaseDrivers];
+
+  /// Compteur « X chauffeurs à proximité » — plafonné à 30.
+  ///
+  /// Compte les chauffeurs RÉELLEMENT AFFICHÉS, pas `showOnly.length` : le compteur
+  /// et la pile de photos sont ainsi la même donnée et ne peuvent plus diverger.
+  int get _driversAroundCount {
+    final n = _stackDrivers.length;
+    return n > _maxDriversShown ? _maxDriversShown : n;
+  }
+
+  // Chauffeurs déjà vus dans `showOnly`, toutes vagues confondues. On mémorise les
+  // IDS et non un COMPTE : le dispatch réécrit `showOnly` à chaque vague et peut le
+  // vider, ce qui faisait retomber le compteur à 0 en pleine recherche et, pire,
+  // bloquait l'affichage des vagues suivantes (l'ancien test `newCount >
+  // _previousNotifiedCount` n'était plus jamais vrai après une remise à zéro).
+  final Set<String> _seenNotifiedIds = {};
   StreamSubscription? _bookingStreamSubscription;
 
   @override
@@ -50,6 +82,77 @@ class _RequestForRideState extends State<RequestForRide>
       _fitCameraToRoute(); // Afficher l'itinéraire complet (pickup → drop)
     });
     _listenToNotifiedDrivers(); // Écoute showOnly et affiche uniquement les chauffeurs interrogés
+    _loadShowcaseDrivers(); // Complète la pile avec les chauffeurs proches hors ligne
+  }
+
+  /// Récupère la vitrine (jusqu'à 30 chauffeurs les plus proches, hors ligne compris)
+  /// autour du point de départ, puis les révèle un par un. Fail-open : si l'appel
+  /// échoue, l'écran se comporte exactement comme avant (chauffeurs interrogés seuls).
+  Future<void> _loadShowcaseDrivers() async {
+    try {
+      final tripProvider = Provider.of<TripProvider>(context, listen: false);
+      // `pickLocation` vient tantôt de Firestore, tantôt du cache local : la valeur
+      // peut être un double, un int ou une String selon le chemin → on parse.
+      final lat = double.tryParse('${tripProvider.pickLocation?['lat']}');
+      final lng = double.tryParse('${tripProvider.pickLocation?['lng']}');
+      if (lat == null || lng == null) return;
+
+      await NearbyShowcaseService.prefetch(
+          lat: lat, lng: lng, limit: _maxDriversShown);
+      if (!mounted) return;
+
+      _showcasePool = NearbyShowcaseService.cached(lat, lng);
+      if (_showcasePool.isEmpty) return;
+
+      _showcaseRevealTimer?.cancel();
+      _showcaseRevealTimer = Timer.periodic(_showcaseRevealInterval, (t) {
+        if (!mounted) {
+          t.cancel();
+          return;
+        }
+        if (_showcaseCursor >= _showcasePool.length ||
+            _driversAroundCount >= _maxDriversShown) {
+          t.cancel();
+          return;
+        }
+        _revealShowcaseDriver(_showcasePool[_showcaseCursor++]);
+      });
+    } catch (e) {
+      debugPrint('Vitrine chauffeurs (recherche) indisponible: $e');
+    }
+  }
+
+  /// Ajoute un chauffeur de la vitrine à la pile, photo préchargée quand elle existe.
+  Future<void> _revealShowcaseDriver(ShowcaseDriver s) async {
+    // Le miroir de la vitrine est reconstruit toutes les heures : un chauffeur
+    // repassé en ligne depuis peut y figurer encore ET être réellement interrogé.
+    // Sans ce filtre il compterait double, avec la même tête deux fois dans la pile.
+    if (_isAlreadyNotified(s.photo)) return;
+
+    ImageProvider? cachedImage;
+    if (s.photo.isNotEmpty) {
+      try {
+        final networkImage = NetworkImage(s.photo);
+        await precacheImage(networkImage, context);
+        cachedImage = networkImage;
+      } catch (_) {
+        // Photo indisponible → avatar par défaut, on garde quand même le chauffeur.
+      }
+    }
+    if (!mounted || _isAlreadyNotified(s.photo)) return;
+    setState(() {
+      _showcaseDrivers
+          .add({'id': s.key, 'cachedImage': cachedImage, 'photo': s.photo});
+    });
+  }
+
+  /// Vrai si un chauffeur RÉELLEMENT interrogé porte déjà cette photo.
+  /// La vitrine ne transmet pas d'id Firestore (données publiques anonymisées),
+  /// l'URL de la photo est donc le seul point commun exploitable.
+  bool _isAlreadyNotified(String photo) {
+    if (photo.isEmpty) return false;
+    return _notifiedDrivers.any((d) =>
+        ((d['data'] as Map?)?['profileImage']?.toString() ?? '') == photo);
   }
 
   /// Ajuste la caméra pour afficher l'itinéraire complet (pickup → drop)
@@ -262,23 +365,18 @@ class _RequestForRideState extends State<RequestForRide>
         final data = snapshot.data();
         if (data != null) {
           final showOnly = List<String>.from(data['showOnly'] ?? []);
-          final newCount = showOnly.length;
 
-          setState(() {
-            _notifiedDriversCount = newCount;
-          });
-
-          // Nouveau chauffeur ajouté à showOnly
-          if (newCount > _previousNotifiedCount && showOnly.isNotEmpty) {
-            // Récupérer le dernier chauffeur ajouté et l'afficher
-            // La caméra reste fixe sur ce chauffeur jusqu'au prochain
-            final newDriverId = showOnly.last;
-            await _fetchAndDisplayDriver(newDriverId);
-
-            _previousNotifiedCount = newCount;
+          // Tous les chauffeurs jamais vus, pas seulement `showOnly.last` :
+          // si la vague en ajoute deux d'un coup, ou si le dispatch a réécrit la
+          // liste, on n'en perd aucun. `Set.add` renvoie true seulement au premier
+          // ajout, donc chaque chauffeur n'est affiché qu'une fois.
+          final fresh =
+              showOnly.where((id) => id.isNotEmpty && _seenNotifiedIds.add(id));
+          for (final driverId in fresh) {
+            // La caméra reste fixe sur ce chauffeur jusqu'au prochain.
+            await _fetchAndDisplayDriver(driverId);
+            if (!mounted) return;
           }
-          // Tous les chauffeurs ont été notifiés - on reste sur le dernier marker
-          // (plus de boucle, la caméra reste fixe jusqu'au prochain chauffeur)
         }
       }
     });
@@ -332,6 +430,11 @@ class _RequestForRideState extends State<RequestForRide>
       // Éviter les doublons
       _notifiedDrivers.removeWhere((d) => d['id'] == driverId);
       _notifiedDrivers.add(driverInfo);
+      // Ce chauffeur était peut-être déjà là en tant que « vitrine » (miroir horaire
+      // qui le croyait hors ligne) : on retire la doublure, le vrai prime.
+      if (profileImage != null && profileImage.isNotEmpty) {
+        _showcaseDrivers.removeWhere((s) => s['photo'] == profileImage);
+      }
 
       // Mettre à jour l'UI maintenant que l'image est prête
       if (mounted) setState(() {});
@@ -350,6 +453,7 @@ class _RequestForRideState extends State<RequestForRide>
   }
   @override
   void dispose() {
+    _showcaseRevealTimer?.cancel();
     _progressController.dispose();
     _pulseController.dispose();
     _bookingStreamSubscription?.cancel();
@@ -608,10 +712,12 @@ class _RequestForRideState extends State<RequestForRide>
   /// Icône compteur de chauffeurs notifiés
   /// Affiche les photos de profil des chauffeurs notifiés empilées
   Widget _buildDriverCountIcon() {
+    // Pile = chauffeurs interrogés + vitrine (chauffeurs proches hors ligne).
+    final stack = _stackDrivers;
     // Calculer la largeur nécessaire pour les photos empilées
     // Chaque photo fait 45px, décalées de 12px, + badge si >5
-    final int visibleCount = _notifiedDrivers.length.clamp(0, 5);
-    final bool hasBadge = _notifiedDrivers.length > 5;
+    final int visibleCount = stack.length.clamp(0, 5);
+    final bool hasBadge = stack.length > 5;
     final double neededWidth = visibleCount > 0
         ? 45.0 + ((visibleCount - 1) * 12.0) + (hasBadge ? 12.0 : 0)
         : 70.0;
@@ -621,7 +727,7 @@ class _RequestForRideState extends State<RequestForRide>
         SizedBox(
           width: neededWidth.clamp(70.0, 120.0),
           height: 70,
-          child: _notifiedDrivers.isEmpty
+          child: stack.isEmpty
               // Aucun chauffeur notifié - afficher l'icône par défaut
               ? Center(
                   child: Container(
@@ -647,7 +753,7 @@ class _RequestForRideState extends State<RequestForRide>
                   alignment: Alignment.center,
                   children: [
                     // Badge compteur des chauffeurs cachés (à gauche, derrière)
-                    if (_notifiedDrivers.length > 5)
+                    if (stack.length > 5)
                       Positioned(
                         left: 0,
                         child: Container(
@@ -660,7 +766,7 @@ class _RequestForRideState extends State<RequestForRide>
                           ),
                           child: Center(
                             child: Text(
-                              '+${_notifiedDrivers.length - 5}',
+                              '+${stack.length - 5}',
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
@@ -672,15 +778,14 @@ class _RequestForRideState extends State<RequestForRide>
                         ),
                       ),
                     // Photos des 5 derniers chauffeurs (les plus récents)
-                    for (int i = 0; i < 5 && i < _notifiedDrivers.length; i++)
+                    for (int i = 0; i < 5 && i < stack.length; i++)
                       Positioned(
                         // Décalage : badge +12, puis chaque photo +12
-                        left: (_notifiedDrivers.length > 5 ? 12.0 : 0) + (i * 12.0),
+                        left: (stack.length > 5 ? 12.0 : 0) + (i * 12.0),
                         child: _buildDriverAvatar(
                           // Prendre les 5 derniers (index depuis la fin)
-                          _notifiedDrivers[_notifiedDrivers.length > 5
-                              ? _notifiedDrivers.length - 5 + i
-                              : i]['cachedImage'] as ImageProvider?,
+                          stack[stack.length > 5 ? stack.length - 5 + i : i]
+                              ['cachedImage'] as ImageProvider?,
                         ),
                       ),
                   ],
@@ -690,8 +795,8 @@ class _RequestForRideState extends State<RequestForRide>
         SizedBox(
           width: 90,
           child: Text(
-            _notifiedDriversCount > 0
-                ? '$_notifiedDriversCount ${translate('driversNearby')}'
+            _driversAroundCount > 0
+                ? '$_driversAroundCount ${translate('driversNearby')}'
                 : translate('driversNearby'),
             style: TextStyle(
               fontSize: 10,
