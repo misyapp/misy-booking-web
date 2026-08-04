@@ -1,0 +1,50 @@
+rules_version = '2';
+
+// ──────────────────────────────────────────────────────────────────
+// ⚠️  AVANT DE DÉPLOYER CE FICHIER (firebase deploy --only storage) :
+//
+// 1. Récupérer les rules ACTUELLEMENT ACTIVES dans la console Firebase :
+//        firebase storage:rules:get
+//    (ou Firebase Console → Storage → Rules)
+//
+// 2. Les MERGER ici. Ce fichier ne contient à ce stade que les rules
+//    nouvelles pour `vehicle_verifications/` ; les autres paths
+//    (profile photos, etc.) doivent être préservés sinon driverapp
+//    et l'app passager peuvent casser.
+//
+// 3. Tester avec l'émulateur :
+//        firebase emulators:start --only storage,auth
+//
+// 4. Ce fichier n'est PAS référencé dans firebase.json (volontaire) ;
+//    pour l'activer, ajouter `"storage": { "rules": "storage.rules" }`
+//    dans firebase.json.
+//
+// Référence côté web : ~/StudioProjects/website/site/src/lib/driver/
+// firestore.client.ts → uploadVerification() pousse dans
+// vehicle_verifications/{driverId}/{type}-{timestamp}-{filename}
+// ──────────────────────────────────────────────────────────────────
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Documents véhicule chauffeur — owner-only.
+    // Path produit par driverapp ET par l'espace chauffeur web :
+    //   vehicle_verifications/{driverId}/{fileName}
+    match /vehicle_verifications/{driverId}/{file=**} {
+      allow read: if request.auth != null
+                  && request.auth.uid == driverId;
+
+      allow write: if request.auth != null
+                   && request.auth.uid == driverId
+                   && request.resource.size < 8 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*|application/pdf');
+    }
+
+    // ───────── À COMPLÉTER avant deploy ─────────
+    // Coller ici les rules existantes (profile photos, autres paths…)
+    // récupérées via `firebase storage:rules:get`.
+    //
+    // Sans cela, TOUS LES AUTRES UPLOADS seront refusés par défaut
+    // (rules v2 = deny par défaut).
+  }
+}
