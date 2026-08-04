@@ -13,8 +13,10 @@
 //   0. Cache RAM résultats (clé lat/lng arrondi 5 décimales, cap 200)
 //   1. Si first != "none" → tenter ce provider, normalize, return
 //   2. Si fallback != "none" ET fallback != first → tenter, normalize, return
-//   3. Safety net : Nominatim public (nominatim.openstreetmap.org)
-//   4. Fallback texte "Position GPS (lat, lng)"
+//   3. Fallback texte "Position GPS (lat, lng)"
+//
+// 🚫 Aucun repli sur l'instance publique d'OSM : sa politique d'usage interdit
+// le trafic applicatif automatisé. Notre instance ou rien.
 //
 // Normalisation : peu importe Google ou Nominatim, retourne un format
 // 2-3 segments unifié pour rendre la bascule invisible côté UX.
@@ -87,6 +89,19 @@ class ReverseGeocoder {
   String _resultKey(double lat, double lng) =>
       '${lat.toStringAsFixed(5)}_${lng.toStringAsFixed(5)}';
 
+  /// Endpoint de NOTRE Nominatim, pour les appelants qui bâtissent leurs
+  /// propres requêtes (recherche/autocomplétion — cf. [NominatimService]).
+  ///
+  /// `null` s'il n'y a pas de token configuré : dans ce cas l'appelant ne
+  /// géocode pas. 🚫 Jamais de repli sur `nominatim.openstreetmap.org`.
+  Future<({String base, String token})?> selfHostedNominatim() async {
+    final cfg = await _getConfig();
+    final url = cfg.nominatimUrl.trim();
+    final token = cfg.nominatimBearerToken.trim();
+    if (url.isEmpty || token.isEmpty) return null;
+    return (base: url.replaceAll(RegExp(r'/+$'), ''), token: token);
+  }
+
   Future<_GeocodingConfig> _getConfig() async {
     final now = DateTime.now();
     if (now.difference(_configFetchedAt) < _configTTL) {
@@ -143,14 +158,9 @@ class ReverseGeocoder {
       }
     }
 
-    // Safety net : Nominatim public OSM (sans token, gratuit)
-    resolved ??= await _tryNominatim(
-      latitude,
-      longitude,
-      'https://nominatim.openstreetmap.org',
-      bearerToken: '',
-      label: 'OSM-public',
-    );
+    // 🚫 Plus de safety net public : la politique d'usage de la fondation OSM
+    // interdit ce trafic applicatif. Si notre instance est muette, on affiche
+    // la coordonnée.
 
     // Fallback ultime : texte coords
     resolved ??= 'Position GPS (${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)})';
@@ -185,13 +195,7 @@ class ReverseGeocoder {
       bearerToken: config.nominatimBearerToken,
       label: 'self-hosted',
     );
-    resolved ??= await _tryNominatim(
-      latitude,
-      longitude,
-      'https://nominatim.openstreetmap.org',
-      bearerToken: '',
-      label: 'OSM-public',
-    );
+    // 🚫 Pas de repli sur l'instance publique d'OSM (politique d'usage).
     resolved ??=
         'Position GPS (${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)})';
 

@@ -1,12 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:rider_ride_hailing_app/services/transit_schedule_defaults.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
+import 'package:rider_ride_hailing_app/services/reverse_geocoder.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 import 'package:latlong2/latlong.dart' as ll2;
 import 'package:provider/provider.dart';
@@ -198,14 +197,16 @@ class _RouteCalculatorState extends State<RouteCalculator> {
   Future<void> _reverseGeocodeLabel(
       String target, LatLng pos, String fallback) async {
     try {
-      final uri = Uri.parse(
-          'https://nominatim.openstreetmap.org/reverse?lat=${pos.latitude}&lon=${pos.longitude}&format=jsonv2&zoom=18&addressdetails=0');
-      final resp =
-          await http.get(uri).timeout(const Duration(seconds: 4));
-      if (resp.statusCode != 200 || !mounted) return;
-      final data = json.decode(resp.body) as Map<String, dynamic>;
-      final display = data['display_name']?.toString() ?? '';
-      if (display.isEmpty) return;
+      // 🚫 Jamais l'instance publique d'OSM : on passe par ReverseGeocoder, qui
+      // ne parle qu'à `nominatim.misy.app`. Sans réponse, le label reste la
+      // coordonnée déjà affichée.
+      final display = await ReverseGeocoder.instance
+          .reverseGeocodeNominatim(
+              latitude: pos.latitude, longitude: pos.longitude)
+          .timeout(const Duration(seconds: 4), onTimeout: () => '');
+      if (display.isEmpty || display.startsWith('Position GPS') || !mounted) {
+        return;
+      }
       final i = display.indexOf(',');
       final short = i > 0 ? display.substring(0, i).trim() : display;
       // Re-applique seulement si le user n'a pas changé le champ entre temps.

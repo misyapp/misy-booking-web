@@ -17,7 +17,11 @@ import urllib.parse
 import re
 
 OSRM_URL = "https://osrm2.misy.app"
-NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+# 🚫 Jamais l'instance publique d'OSM (sa politique d'usage interdit le trafic
+# automatisé) : on passe par la nôtre. Le Bearer vient de
+# `setting/geocoding_config` (Firestore) ou de la variable d'environnement.
+NOMINATIM_URL = os.environ.get("MISY_NOMINATIM_URL", "https://nominatim.misy.app") + "/search"
+NOMINATIM_TOKEN = os.environ.get("MISY_NOMINATIM_TOKEN", "")
 GEOJSON_DIR = "assets/transport_lines/core"
 MANIFEST_PATH = "assets/transport_lines/manifest.json"
 
@@ -122,6 +126,11 @@ def geocode_place(name: str) -> tuple:
     url = f"{NOMINATIM_URL}?{params}"
     req = urllib.request.Request(url)
     req.add_header("User-Agent", "MisyTransportGeocoder/1.0")
+    if not NOMINATIM_TOKEN:
+        print("      ⚠️  MISY_NOMINATIM_TOKEN absent → géocodage ignoré "
+              "(on ne se rabat pas sur l'instance publique OSM)")
+        return None
+    req.add_header("Authorization", f"Bearer {NOMINATIM_TOKEN}")
 
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
