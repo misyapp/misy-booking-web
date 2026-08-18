@@ -5,7 +5,10 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../utils/ios_map_fix.dart';
 import '../utils/map_utils.dart';
 
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6464,12 +6467,8 @@ class TripProvider extends ChangeNotifier {
     await showLoading();
 
     try {
-      // Récupérer les détails du chauffeur (nécessaire pour les calculs)
-      final driverDoc = await FirestoreServices.users.doc(driverId).get();
-      final DriverModal driverDetails = DriverModal.fromJson(driverDoc.data() as Map);
-      final double walletAmount = driverDetails.balance;
-
-      myCustomPrintStatement('🔶 PAYMENT_OPTIM: Driver fetched in ${stopwatch.elapsedMilliseconds}ms');
+      // (Le règlement du solde chauffeur est désormais fait par la CF settleRide,
+      //  plus besoin de lire le doc chauffeur ici.)
 
       // ⚡ PARALLÉLISER les opérations Firestore indépendantes
       final List<Future> parallelOperations = [];
@@ -6486,63 +6485,56 @@ class TripProvider extends ChangeNotifier {
         FirestoreServices.bookingHistory.doc(bookingId).set(bookingCopy)
       );
 
-      // 3. Mettre à jour le solde du chauffeur (si applicable)
-      if (extraAmount > 0) {
-        parallelOperations.add(
-          FirestoreServices.users.doc(driverId).update({
-            'balance': FieldValue.increment(extraAmount)
-          })
-        );
-        parallelOperations.add(
-          FirestoreServices.users
-              .doc(driverId)
-              .collection('wallet_history')
-              .doc()
-              .set({
-            "bookingRef": bookingId,
-            "amount": extraAmount,
-            "action": "credit",
-            "time": DateTime.now(),
-            "text": "${translateToSpecificLangaue(key: "The amount has been credited to your account for booking ID", languageCode: driverDetails.preferedLanguage)} #$bookingId",
-          })
-        );
-      }
+      // 3+4. RÈGLEMENT PORTEFEUILLE — CÔTÉ SERVEUR (PLAN_SECURITE P8, 2026-08-18).
+      // L'app N'écrit PLUS le solde du chauffeur (faille : écriture client
+      // falsifiable). La CF `settleRide` (idempotente, par devise, COMMISSION
+      // recalculée serveur) fait foi. Appelée via HTTP (cloud_functions désactivé
+      // ici), APRÈS les écritures ci-dessus (elle lit le booking).
 
-      // 4. Déduire la commission (si applicable)
-      if (cashCommissionAmount > 0) {
-        if (walletAmount >= cashCommissionAmount) {
-          parallelOperations.add(
-            FirestoreServices.users.doc(driverId).update({
-              'balance': FieldValue.increment(cashCommissionAmount * -1)
-            })
-          );
-          parallelOperations.add(
-            FirestoreServices.users
-                .doc(driverId)
-                .collection('wallet_history')
-                .doc()
-                .set({
-              "bookingRef": bookingId,
-              "amount": cashCommissionAmount.toString(),
-              "text": translateToSpecificLangaue(
-                  key: "admin commission deducted",
-                  languageCode: driverDetails.preferedLanguage),
-              "action": "debit",
-              "time": DateTime.now()
-            })
-          );
-        } else {
-          parallelOperations.add(
-            FirestoreServices.users.doc(driverId).update({
-              'balance': walletAmount - cashCommissionAmount
-            })
-          );
-        }
-      }
-
-      // ⚡ Exécuter TOUTES les opérations en parallèle
+      // ⚡ Écritures restantes (paymentStatusSummary + bookingHistory) en parallèle
       await Future.wait(parallelOperations);
       myCustomPrintStatement('🔶 PAYMENT_OPTIM: Parallel Firestore ops completed in ${stopwatch.elapsedMilliseconds}ms');
+
+      // Règlement idempotent côté serveur (retries, PAS de repli client).
+      myCustomPrintStatement(
+          '🔶 Règlement via settleRide (indicatif client): extra=$extraAmount commission=$cashCommissionAmount');
+      bool settled = false;
+      for (int attempt = 1; attempt <= 3 && !settled; attempt++) {
+        try {
+          final idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
+          final resp = await http
+              .post(
+                Uri.parse('https://asia-east1-misy-95336.cloudfunctions.net/settleRide'),
+                headers: {
+                  'Authorization': 'Bearer $idToken',
+                  'Content-Type': 'application/json',
+                },
+                body: jsonEncode({
+                  'data': {'bookingId': bookingId}
+                }),
+              )
+              .timeout(const Duration(seconds: 15));
+          final decoded = resp.statusCode == 200 ? jsonDecode(resp.body) : null;
+          final data = decoded is Map ? decoded['result'] : null;
+          if (data is Map && data['ok'] == true) {
+            settled = true;
+            myCustomPrintStatement(
+                '🔶 settleRide OK: net=${data['netBalanceChange']} commission=${data['commission']} idempotent=${data['idempotent']}');
+          } else {
+            myCustomPrintStatement(
+                '🔶 settleRide refusé (HTTP ${resp.statusCode}): ${data is Map ? data['reason'] : resp.body} (tentative $attempt)');
+          }
+        } catch (e) {
+          myCustomPrintStatement('🔶 settleRide échec (tentative $attempt): $e');
+        }
+        if (!settled && attempt < 3) {
+          await Future.delayed(Duration(seconds: 1 << (attempt - 1)));
+        }
+      }
+      if (!settled) {
+        myCustomPrintStatement(
+            '⚠️ settleRide NON réglé pour $bookingId — à rattraper (course en historique)');
+      }
 
       // ═══════════════════════════════════════════════════════════════════════
       // PHASE 4: Court délai pour sync driver app, puis suppression
